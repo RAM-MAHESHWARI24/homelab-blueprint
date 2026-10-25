@@ -32,6 +32,7 @@ homelab-blueprint/
 └── apps/                               # Real application source trees & pipelines
     ├── control-hub/                    # Custom Python/Flask dark glassmorphism dashboard (<25MB RAM)
     ├── tv-updater/                     # Zero-overhead background Android TV ADB updater
+    ├── noodle-gallery/                 # High-performance photo & video cloud with VectorChord search
     ├── immich-face-xmp-exporter/       # Non-destructive face-to-XMP sidecar exporter & cloud sync
     └── mediaserver/                    # Complete Docker Compose media stack with TMDB DPI patch
 ```
@@ -44,6 +45,7 @@ homelab-blueprint/
 | :--- | :--- | :--- | :--- |
 | **Control Hub** | [`apps/control-hub/`](apps/control-hub/) | High-performance dashboard & server management daemon | Python, Flask, Vanilla ES6 |
 | **CleanYourTV** | [`apps/tv-updater/`](apps/tv-updater/) | Silent background Android TV ADB app updater | Python, Network ADB (Port 5555) |
+| **Noodle Gallery** | [`apps/noodle-gallery/`](apps/noodle-gallery/) | High-performance photo cloud with vector search | Open-Noodle Gallery, PostgreSQL, Valkey |
 | **Immich XMP Tools** | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Batch ExifTool face-to-XMP sidecar generator & cloud backup | Python, ExifTool, Rclone |
 | **Media Pipeline** | [`apps/mediaserver/`](apps/mediaserver/) | Jellyfin, Arr stack, atomic hardlinks & TMDB ISP patch | Docker Compose, Jellyfin, Arr suite |
 
@@ -67,6 +69,12 @@ nano .env
 * **Launch Media Server:**
   ```bash
   cd apps/mediaserver
+  cp .env.example .env
+  docker compose up -d
+  ```
+* **Launch Noodle Gallery:**
+  ```bash
+  cd apps/noodle-gallery
   cp .env.example .env
   docker compose up -d
   ```

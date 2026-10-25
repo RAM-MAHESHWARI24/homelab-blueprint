@@ -1,0 +1,34 @@
+# Configurations for hardware-accelerated video transcoding in Immich
+# See https://docs.immich.app/features/hardware-transcoding for details.
+
+services:
+  cpu: {}
+
+  nvenc:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
+                - compute
+                - video
+
+  quicksync:
+    devices:
+      - /dev/dri:/dev/dri
+
+  vaapi:
+    devices:
+      - /dev/dri:/dev/dri
+
+  vaapi-wsl:
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/dxg:/dev/dxg
+    volumes:
+      - /usr/lib/wsl:/usr/lib/wsl
+    environment:
+      - LIBVA_DRIVER_NAME=d3d12

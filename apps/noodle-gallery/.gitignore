@@ -1,0 +1,41 @@
+# ==============================================================================
+# Immich .gitignore - ZERO LEAK GUARANTEE
+# ==============================================================================
+
+# 1. Environment & Local Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+*.secret
+*.key
+*.pem
+
+# 2. Heavy Persistent Databases & Embeddings (NEVER COMMIT)
+postgres/
+data/
+*.sql
+*.sql.gz
+backups/
+
+# 3. Media, Thumbnails & Transcoded Video (NEVER COMMIT)
+thumbs/
+encoded-video/
+library/
+upload/
+photos/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.mp4
+*.mov
+
+# 4. Logs & Caches
+*.log
+logs/
+.cache/
+model-cache/
+
+# 5. OS Junk
+.DS_Store
+Thumbs.db

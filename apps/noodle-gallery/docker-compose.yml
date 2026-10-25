@@ -1,0 +1,75 @@
+# ==============================================================================
+# Noodle Gallery (Open-Noodle) - Modular Production Compose Stack
+# ==============================================================================
+# High-performance, low-power self-hosted photo & video cloud with AI facial
+# recognition, VectorChord similarity search, and full mobile app support.
+#
+# Quickstart:
+#   1. cp .env.example .env
+#   2. Edit .env with your storage paths and a secure DB_PASSWORD
+#   3. docker compose up -d
+# ==============================================================================
+
+name: noodle-gallery
+
+services:
+  gallery-server:
+    container_name: immich_server
+    image: ghcr.io/open-noodle/gallery-server:${NOODLE_VERSION:-release}
+    # Standard upstream Immich image alternative:
+    # image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    volumes:
+      - ${UPLOAD_LOCATION:-./data/uploads}:/data
+      - ${THUMBS_LOCATION:-./data/thumbs}:/data/thumbs
+      - ${ENCODED_VIDEO_LOCATION:-./data/encoded-video}:/data/encoded-video
+      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    ports:
+      - "${GALLERY_PORT:-2283}:2283"
+    depends_on:
+      - redis
+      - database
+    restart: unless-stopped
+    healthcheck:
+      disable: false
+
+  gallery-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/open-noodle/gallery-ml:${NOODLE_VERSION:-release}
+    # Standard upstream Immich image alternative:
+    # image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    volumes:
+      - model-cache:/cache
+      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro
+    env_file:
+      - .env
+    restart: "no" # Throttled via system/power/immich-ml-control.sh during off-peak hours
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:8e8d64b405ce18f41b8e5ee20aa4687a8ed0022d1298f2ce31cdcf3a76e09411
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: unless-stopped
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      - ${DB_DATA_LOCATION:-./data/postgres}:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: unless-stopped
+    healthcheck:
+      disable: false
+
+volumes:
+  model-cache:
