@@ -93,7 +93,8 @@ Once provisioning finishes, the wizard seamlessly transitions to your **Control 
 * [Hardware Acceleration (VAAPI / QSV) & Low-Power Quirks](docs/HARDWARE_ACCELERATION_VAAPI_QSV.md)
 * [Low-Power CPU & Direct Play Optimization](docs/HASWELL_DIRECT_PLAY_GUIDE.md)
 * [Gigabit LAN Diagnostics & Physical Link Auto-Negotiation](docs/GIGABIT_LAN_DIAGNOSTICS.md)
-* [Master AI Agent Guidelines & Architecture Cheatsheet](docs/AI_AGENT_INSTRUCTIONS.md)
+* [Master Verification & End-to-End Test Suite Report](docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md)
+* [Control Hub Node Configuration Center & AI Copilot](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)
 * [Web GUI Setup Wizard Verification & Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)
 
 ---
