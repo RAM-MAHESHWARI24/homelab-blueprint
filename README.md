@@ -43,6 +43,8 @@ homelab-blueprint/
 │   ├── static/                         # High-DPI dark glassmorphism onboarding interface
 │   ├── test_setup.py                   # Automated verification test suite
 │   └── README.md                       # Setup wizard architectural documentation
+├── testing/                            # Master quality assurance, VM sandboxes & CI/CD
+│   └── README.md                       # Full testing plan, hardware matrix, and DoD
 ├── system/                             # Host OS automation & configurations
 │   ├── cron.d/                         # Template cron definitions (suspend, backup, updates)
 │   ├── systemd/                        # Systemd unit files (Control Hub background daemon)

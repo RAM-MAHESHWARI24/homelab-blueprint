@@ -1,0 +1,86 @@
+name: Homelab Blueprint CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-security:
+    name: Linting & Secret Sanitization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify No Secrets Committed (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ShellCheck Static Analysis
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck bootstrap.sh setup.sh
+          shellcheck system/maintenance/watchtower-run.sh
+          shellcheck system/power/immich-ml-control.sh
+          shellcheck system/power/server-suspend.sh
+          shellcheck apps/tv-updater/setup_cron.sh
+
+  setup-wizard-test-matrix:
+    name: Setup Wizard Matrix Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Execute Setup Wizard Verification Test Suite
+        run: |
+          python setup/test_setup.py
+
+  docker-compose-validation:
+    name: Docker Compose & Multi-Arch Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Media Stack Compose Syntax
+        run: |
+          cd apps/mediaserver
+          cp .env.example .env
+          docker compose config --quiet
+          echo "✅ apps/mediaserver docker-compose.yml is valid."
+
+      - name: Validate Noodle Gallery Compose Syntax
+        run: |
+          cd apps/noodle-gallery
+          cp .env.example .env
+          docker compose config --quiet
+          echo "✅ apps/noodle-gallery docker-compose.yml is valid."
+
+      - name: Set up QEMU for Cross-Platform Simulation (ARM64)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Verify Multi-Arch Image Availability
+        run: |
+          docker manifest inspect ghcr.io/seerr-team/seerr:latest | grep -E "amd64|arm64"
+          docker manifest inspect ghcr.io/thephaseless/byparr:latest | grep -E "amd64|arm64"
+          docker manifest inspect lscr.io/linuxserver/jellyfin:latest | grep -E "amd64|arm64"
+          echo "✅ Multi-arch container images verified."
