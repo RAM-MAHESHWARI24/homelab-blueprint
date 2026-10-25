@@ -21,6 +21,9 @@
    * [Module 4: Docker Stacks & Pipeline Orchestration](#module-4-docker-stacks--pipeline-orchestration)
    * [Module 5: Host Daemons, Cron, & Power Management](#module-5-host-daemons-cron--power-management)
    * [Module 6: Security, Secrets & Sanitization](#module-6-security-secrets--sanitization)
+   * [Module 7: Full-Lifecycle Media Ingestion, Recyclarr Sync, Hardlinks & Subtitles](#module-7-full-lifecycle-media-ingestion-recyclarr-sync-hardlinks--subtitles)
+   * [Module 8: Photo Cloud (Immich/Noodle), 4-Face Recognition & XMP Roundtrip](#module-8-photo-cloud-immichnoodle-4-face-recognition--xmp-roundtrip)
+   * [Module 9: Simulated Cloud Backup, Database Dumps & Rclone Mirror](#module-9-simulated-cloud-backup-database-dumps--rclone-mirror)
 6. [GitHub Actions CI/CD Pipeline Strategy](#6-github-actions-cicd-pipeline-strategy)
    * [Can we test this in CI/CD? Is it advisable?](#can-we-test-this-in-cicd-is-it-advisable)
    * [The Two-Tier CI/CD Architecture](#the-two-tier-cicd-architecture)
@@ -254,6 +257,133 @@ multipass delete homelab-low-spec --purge
 
 ---
 
+### Module 7: Full-Lifecycle Media Ingestion, Recyclarr Sync, Hardlinks & Subtitles
+
+* **Target Source:** [`apps/mediaserver/`](../apps/mediaserver), [`apps/mediaserver/recyclarr/`](../apps/mediaserver/recyclarr), [`apps/mediaserver/config/seerr/tmdb-interceptor.js`](../apps/mediaserver/config/seerr/tmdb-interceptor.js)
+* **Goal:** Conclusively verify that requesting media via Seerr routes through Prowlarr, triggers qBittorrent download, completes **instant 0-I/O atomic hardlinks** with standard renaming in Radarr/Sonarr, matches Recyclarr custom format scoring, and automatically downloads subtitles via Bazarr.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                   FULL-LIFECYCLE MEDIA INGESTION REGRESSION PIPELINE                   │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. Seerr Request (Port 5055)                                                           │
+│    • User requests Movie (Radarr) or TV Series (Sonarr).                               │
+│    • tmdb-interceptor.js redirects api.themoviedb.org -> api.tmdb.org (No ISP drop). │
+│                                  │                                                     │
+│ 2. Prowlarr Indexer Query (Port 9696)                                                  │
+│    • Queries Torrent indexers; Byparr (Port 8191) clears Cloudflare challenge.         │
+│                                  │                                                     │
+│ 3. Recyclarr Profile Scoring Filter                                                    │
+│    • Evaluates release metadata against TRaSH guides and custom format scores.         │
+│    • Hindi dual-audio (+50000 bonus), 1080p WebDL, Haswell Direct-Play codecs.        │
+│                                  │                                                     │
+│ 4. qBittorrent Ingestion (Port 8080)                                                   │
+│    • Downloads .torrent to single-mount path /data/torrents/{movies,tv}.               │
+│                                  │                                                     │
+│ 5. Atomic Hardlink & Renaming Engine                                                   │
+│    • Radarr/Sonarr import from /data/torrents/ to /data/media/{movies,tv}.             │
+│    • VERIFY: stat.st_ino identical, st_nlink >= 2, Disk I/O = 0 bytes transferred.     │
+│    • Renamed to standard: Title (Year) [Quality] [Codec].mkv                           │
+│                                  │                                                     │
+│ 6. Bazarr Subtitle Fetcher (Port 6767)                                                 │
+│    • Detects new library media; downloads matching .en.srt / .hi.srt.                  │
+│    • Forces UTF-8 encoding without BOM; saves adjacent to media file.                  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **`TC-MEDIA-E2E-01`** | Prowlarr & Byparr Indexer Validation | Trigger Prowlarr API `POST /api/v1/indexer/testall`. Route via Byparr proxy on port 8191. | Byparr solves Cloudflare challenge tokens; Prowlarr indexers report active status. | All configured indexers return `isValid: true`; zero HTTP 403 blocks. |
+| **`TC-MEDIA-E2E-02`** | Recyclarr Profile & Format Sync | Run `recyclarr sync --config apps/mediaserver/recyclarr/mediaserver-profiles.example.yml`. | Syncs custom formats, release profiles, and quality definitions into Radarr & Sonarr databases. | Radarr API returns Custom Format `Hindi-Audio` with score `+50000`; Sonarr has `1080p Compact`. |
+| **`TC-MEDIA-E2E-03`** | Seerr Request & TMDB Interceptor | Submit movie request (*Big Buck Bunny* / TMDB 10378) & TV request (*Cosmos Laundromat*) via Seerr. | Seerr queries TMDB metadata via `tmdb-interceptor.js`. Dispatches request to Radarr/Sonarr. | HTTP 201 Created; Radarr/Sonarr add media to library monitoring. |
+| **`TC-MEDIA-E2E-04`** | qBittorrent Download Lifecycle | Monitor qBittorrent API `GET /api/v2/torrents/info` for active grab. | qBittorrent downloads payload into `/data/torrents/movies/` and `/data/torrents/tv/`. | Torrent reaches state `uploading` / `completed`; correct category tags assigned. |
+| **`TC-MEDIA-E2E-05`** | Atomic Hardlink & Rename Proof | Compare source download with imported library file via `stat -c "%i %h" <src> <dst>`. | **Exact identical inode number** (`stat.st_ino`); link count `st_nlink >= 2`. File renamed to standard format. | Inodes match; 0 disk bytes copied; instant completion (<10ms). |
+| **`TC-MEDIA-E2E-06`** | Bazarr Subtitle Ingestion | Check Bazarr API `GET /api/v1/subtitles` for newly imported media item. | Bazarr queries subtitle providers, downloads matching `.srt`, forces UTF-8 encoding, places adjacent to media. | `.en.srt` exists in media folder with UTF-8 encoding; subtitle sync offset < 200ms. |
+
+---
+
+### Module 8: Photo Cloud (Immich/Noodle), 4-Face Recognition & XMP Roundtrip
+
+* **Target Source:** [`apps/noodle-gallery/`](../apps/noodle-gallery), [`apps/immich-face-xmp-exporter/`](../apps/immich-face-xmp-exporter)
+* **Goal:** Verify that Noodle Gallery (Immich) ingests photos cleanly, performs AI facial clustering, and uses `export_faces_to_xmp.py` to write recognized faces directly into standard **XMP-mwg-rs universal sidecars** without vendor lock-in and without altering original image binaries.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               4-FACE RECOGNITION & NON-DESTRUCTIVE XMP ROUNDTRIP PIPELINE              │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. Input Media Fixture:                                                                │
+│    • Image: sample_reunion.jpg (Contains 4 visible faces: Person 1, 2, 3, 4).          │
+│    • Pre-Existing Sidecar: sample_reunion.jpg.xmp                                      │
+│      - Already contains 2 recognized faces: "Alice" and "Bob" in standard XMP format.   │
+│                                  │                                                     │
+│ 2. Immich Photo Ingestion (Port 2283)                                                  │
+│    • POST /api/assets uploads sample_reunion.jpg. Sanity check verifies HTTP 201.      │
+│    • Server generates high-DPI thumbnails in ./data/thumbs/ without crashing.          │
+│                                  │                                                     │
+│ 3. Machine Learning Facial Clustering                                                  │
+│    • Immich ML detects all 4 faces in the photo.                                      │
+│    • Retains "Alice" and "Bob"; clusters the 2 new faces as "Person 3" and "Person 4". │
+│    • User names Person 3 -> "Charlie" and Person 4 -> "Diana" via Immich API.          │
+│                                  │                                                     │
+│ 4. Face-to-XMP Batch Exporter Execution                                                │
+│    • Runs apps/immich-face-xmp-exporter/export_faces_to_xmp.py.                        │
+│    • Queries PostgreSQL asset_face table; normalizes bounding boxes to MWG standard.  │
+│    • Executes high-performance ExifTool batch to update sample_reunion.jpg.xmp.       │
+│                                  │                                                     │
+│ 5. Conclusive Verification & Zero-Corruption Guarantee                                │
+│    • exiftool -struct -XMP-mwg-rs:all verifies ALL 4 FACES present in sidecar:         │
+│      [Alice, Bob, Charlie, Diana] with accurate Area coordinates.                      │
+│    • sha256sum sample_reunion.jpg confirms ORIGINAL PHOTO BINARY IS 100% UNTOUCHED.    │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **`TC-FACE-E2E-01`** | Photo Ingestion Sanity Check | Submit image via Immich REST API `POST /api/assets` (`multipart/form-data`). | Immich accepts payload, returns HTTP 201 with `id`. Thumbnails generated in cache. | HTTP 201; thumbnail accessible at `GET /api/assets/{id}/thumbnail`. |
+| **`TC-FACE-E2E-02`** | 4-Face Recognition Setup | Load test photo with 4 faces and pre-existing `.xmp` containing 2 faces ("Alice", "Bob"). | Immich indexes existing metadata and isolates 2 remaining unlabelled faces. | DB contains 4 `asset_face` entries; 2 mapped to existing people. |
+| **`TC-FACE-E2E-03`** | Face Identification | Name the 2 remaining faces ("Charlie", "Diana") via Immich API `PUT /api/people/{id}`. | Person records updated in PostgreSQL `person` table with `isHidden = false`. | Query `SELECT name FROM person` returns all 4 names. |
+| **`TC-FACE-E2E-04`** | XMP Sidecar Writeback | Run `python3 apps/immich-face-xmp-exporter/export_faces_to_xmp.py`. | Exporter queries database, builds ExifTool argument file, and updates `.xmp` sidecar. | Exit code 0; `.faces_export_cache.json` updated with asset ID. |
+| **`TC-FACE-E2E-05`** | MWG Structure Conformance | Run `exiftool -struct -XMP-mwg-rs:all sample_reunion.jpg.xmp`. | Inspect XMP `RegionList`. Must contain 4 distinct region structs with names and coordinates. | Exactly 4 Region names match `[Alice, Bob, Charlie, Diana]`; `AreaType=Face`. |
+| **`TC-FACE-E2E-06`** | Binary Preservation Guarantee | Compute `sha256sum sample_reunion.jpg` before and after XMP export. | SHA-256 hash of original photo remains identical. | Hash identical; zero bytes modified in original media file. |
+
+---
+
+### Module 9: Simulated Cloud Backup, Database Dumps & Rclone Mirror
+
+* **Target Source:** [`system/cron.d/immich-backup`](../system/cron.d/immich-backup), [`apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)
+* **Goal:** Conclusively verify that nightly database snapshots, exported XMP sidecars, and the Memories photo library are mirrored to simulated Google Drive storage using `rclone` with server-side move tracking and accidental deletion protection.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                SIMULATED GOOGLE DRIVE BACKUP & DISASTER RECOVERY PIPELINE              │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. Local Rclone Cloud Mock:                                                            │
+│    • Configure rclone with [gdrive] type = local pointing to /var/tmp/simulated_gdrive.│
+│                                  │                                                     │
+│ 2. Nightly Backup Routine Execution:                                                   │
+│    • Step A: Runs export_faces_to_xmp.py to ensure all new faces are written to sidecars│
+│    • Step B: Executes docker exec immich_postgres pg_dumpall | gzip to local backup dir.│
+│    • Step C: rclone copy uploads database dump to gdrive:Immich_Backup/database/.      │
+│    • Step D: rclone sync mirrors /mnt/hdd/Memories to gdrive:Memories/.                 │
+│                                  │                                                     │
+│ 3. Conclusive Verification & Safety Tests:                                             │
+│    • Check 1: gzip -t verifies database snapshot is healthy and uncorrupted.           │
+│    • Check 2: Checksum match between local photos/XMPs and cloud-mirrored files.       │
+│    • Check 3: Accidental Deletion Protection Test: Delete local photo, re-run backup.  │
+│      VERIFY: Photo is moved to gdrive:Immich_Trash/<date>/, NEVER permanently deleted! │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **`TC-BACKUP-E2E-01`** | Cloud Remote Simulation | Create `~/.config/rclone/rclone.conf` with `[gdrive] type = local path = /var/tmp/simulated_gdrive`. | `rclone lsd gdrive:` returns success. | Rclone recognizes simulated cloud storage backend without errors. |
+| **`TC-BACKUP-E2E-02`** | Database Dump Integrity | Run backup script. Inspect generated `immich_db_<date>.sql.gz`. | Executes `docker exec immich_postgres pg_dumpall | gzip`. | File exists in cloud mirror; `gzip -t` returns 0; contains `CREATE TABLE asset`. |
+| **`TC-BACKUP-E2E-03`** | Media & XMP Mirroring | Run `rclone check /mnt/hdd/Memories gdrive:Memories --one-way`. | Mirrors all media files and universal `.xmp` sidecars to cloud destination. | 0 differences found; all files and hashes match. |
+| **`TC-BACKUP-E2E-04`** | Accidental Deletion Trash Buffer | Delete a photo locally in `/mnt/hdd/Memories/test.jpg` and execute backup script. | `rclone sync --backup-dir gdrive:Immich_Trash/<date>` preserves deleted photo in trash buffer. | `test.jpg` is safely archived in `Immich_Trash/<date>/test.jpg`; not destroyed. |
+| **`TC-BACKUP-E2E-05`** | Local Retention Pruning | Create artificial database dump with timestamp older than 8 days. Run backup script. | Pruning routine (`find -mtime +7 -delete`) cleans old dumps while retaining recent 7 days. | Old dump deleted; dumps <= 7 days retained. |
+
+---
+
 ## 6. GitHub Actions CI/CD Pipeline Strategy
 
 ### Can we test this in CI/CD? Is it advisable?
@@ -402,6 +532,7 @@ jobs:
 
 Use this checklist during manual releases or automated pipeline reviews:
 
+### Foundation & System Setup
 - [ ] **TC-BOOT-01:** `bootstrap.sh` executes zero-touch on fresh Ubuntu.
 - [ ] **TC-BOOT-02:** `./setup.sh` auto-elevates with `sudo`.
 - [ ] **TC-STOR-01:** `os.link` passes with `latency < 5ms` on ext4 single-mount.
@@ -414,3 +545,23 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [ ] **TC-SYS-01:** Control Hub starts via systemd and stays `< 25MB RAM`.
 - [ ] **TC-SYS-03:** Sleep Guard honors `/run/server-suspend.skip` flag.
 - [ ] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
+
+### E2E Media Ingestion & Hardlinks
+- [ ] **TC-MEDIA-E2E-01:** Prowlarr indexers tested and Byparr FlareSolverr proxy verified active.
+- [ ] **TC-MEDIA-E2E-02:** Recyclarr synced profiles (Hindi +50000 audio bonus & 1080p Compact in Radarr/Sonarr).
+- [ ] **TC-MEDIA-E2E-03:** Seerr requested movie & TV series; TMDB interceptor logged 0 drops.
+- [ ] **TC-MEDIA-E2E-04:** qBittorrent downloaded files into `/data/torrents/{movies,tv}`.
+- [ ] **TC-MEDIA-E2E-05:** Radarr/Sonarr completed atomic hardlink (`stat.st_ino` equal, `st_nlink >= 2`, 0 bytes disk I/O).
+- [ ] **TC-MEDIA-E2E-06:** Bazarr downloaded matching UTF-8 subtitles adjacent to media.
+
+### Photo Cloud, Face Recognition & Cloud Backup
+- [ ] **TC-FACE-E2E-01:** Immich photo ingestion sanity check passed (`POST /api/assets` returns 201).
+- [ ] **TC-FACE-E2E-02:** 4-face scenario loaded (2 pre-existing in `.xmp`, 2 newly detected by ML).
+- [ ] **TC-FACE-E2E-04:** `export_faces_to_xmp.py` wrote all 4 faces back into `.xmp` sidecar.
+- [ ] **TC-FACE-E2E-05:** `exiftool` verified universal `XMP-mwg-rs` regions for all 4 people.
+- [ ] **TC-FACE-E2E-06:** Original photo binary SHA-256 hash verified 100% unchanged.
+- [ ] **TC-BACKUP-E2E-01:** Simulated Google Drive local remote configured in `rclone.conf`.
+- [ ] **TC-BACKUP-E2E-02:** Database dump compressed with `pigz`/`gzip` and verified with `gzip -t`.
+- [ ] **TC-BACKUP-E2E-03:** Media and XMP sidecars mirrored to simulated cloud with matching checksums.
+- [ ] **TC-BACKUP-E2E-04:** Accidental deletion safety buffer verified in `Immich_Trash/<date>/`.
+
