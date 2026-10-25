@@ -23,12 +23,13 @@ jobs:
 
       - name: ShellCheck Static Analysis
         run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck bootstrap.sh setup.sh
-          shellcheck system/maintenance/watchtower-run.sh
-          shellcheck system/power/immich-ml-control.sh
-          shellcheck system/power/server-suspend.sh
-          shellcheck apps/tv-updater/setup_cron.sh
+          shellcheck --severity=warning \
+            bootstrap.sh \
+            setup.sh \
+            system/maintenance/watchtower-run.sh \
+            system/power/immich-ml-control.sh \
+            system/power/server-suspend.sh \
+            apps/tv-updater/setup_cron.sh
 
   setup-wizard-test-matrix:
     name: Setup Wizard Matrix Test

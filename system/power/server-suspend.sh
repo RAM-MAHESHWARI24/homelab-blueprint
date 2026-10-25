@@ -9,7 +9,6 @@ LOG_FILE="/var/log/server-suspend.log"
 SKIP_FILE="/run/server-suspend.skip"
 OVERRIDE_FILE="/run/server-suspend.override"
 CONFIG_FILE="/etc/server-suspend.conf"
-LOCK_FILE="/run/server-suspend.lock"
 
 # Touch log if doesn't exist
 touch "$LOG_FILE"
