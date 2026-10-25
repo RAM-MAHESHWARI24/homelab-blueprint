@@ -6,7 +6,7 @@
 
 # Runtime Configs & Database Folders
 config/jellyfin/
-config/seerr/
+config/seerr/*
 !config/seerr/tmdb-interceptor.js
 config/prowlarr/
 config/qbittorrent/
