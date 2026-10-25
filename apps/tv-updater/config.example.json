@@ -1,26 +1,32 @@
 {
-  "_comment": "CleanYourTV Configuration Template. Copy to config.json and edit with your devices.",
+  "_README": "CleanYourTV Android TV Fleet Configuration Template. Copy to 'config.json' and customize for your home network.",
+  "_GUIDE": {
+    "subnet_prefix": "First 3 octets of your local LAN (e.g. '192.168.1' or '10.0.0'). Used by the ARP/ADB dynamic IP resolver.",
+    "dhcp_scan_range": "[start_host, end_host] range to sweep when a TV's IP changes under DHCP lease renewals.",
+    "how_to_find_model": "Run 'adb -s <TV_IP>:5555 shell getprop ro.product.model' or 'getprop ro.product.device' to find your TV identifier.",
+    "how_to_enable_adb": "On your Android TV, go to Settings -> Device Preferences -> About -> Click 'Build' 7 times. Then go to Developer Options -> Enable 'USB / Network Debugging'."
+  },
   "subnet_prefix": "192.168.1",
-  "dhcp_scan_range": [32, 100],
+  "dhcp_scan_range": [30, 120],
   "target_profiles": [
     {
       "id": "living_room_tv",
-      "name": "Living Room TV (Mi Box / Shield)",
-      "match_models": ["mibox4", "oneday", "shield"],
+      "name": "Living Room TV (Nvidia Shield / Mi Box)",
+      "match_models": ["shield", "mdz-22-ab", "mibox4", "oneday"],
       "default_ip": "192.168.1.150",
       "port": 5555
     },
     {
       "id": "bedroom_tv",
-      "name": "Bedroom Smart TV (Chromecast / Mi TV)",
-      "match_models": ["mitv-axfr0", "rango", "mitv", "chromecast"],
+      "name": "Bedroom Smart TV (Chromecast with Google TV / Sony)",
+      "match_models": ["chromecast", "sabrina", "bravia", "mitv-axfr0", "rango"],
       "default_ip": "192.168.1.151",
       "port": 5555
     },
     {
       "id": "guest_room_tv",
-      "name": "Guest Room TV (Fire TV / Generic)",
-      "match_models": ["aftmm", "mantis", "sheldon"],
+      "name": "Guest Room TV (Amazon Fire TV / TCL Google TV)",
+      "match_models": ["aftmm", "mantis", "sheldon", "tcl", "beyondtv"],
       "default_ip": "192.168.1.152",
       "port": 5555
     }

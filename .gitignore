@@ -1,23 +1,65 @@
-# Environment & Secrets
+# ==============================================================================
+# Master Monorepo .gitignore
+# ==============================================================================
+
+# 1. Environment & Local Secrets (NEVER COMMIT)
 .env
-.env.local
+.env.*
+!.env.example
 *.secret
 *.key
+*.pem
 
-# Backups & Archives
+# 2. Local Custom Configuration Overrides
+config.json
+!config.example.json
+config.local.py
+!config.py
+
+# 3. Python Bytecode & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+
+# 4. Runtime State, Devices, and Caches
+state.json
+*cache.json
+*.cache
+devices_cache.json
+incompatible_apks.json
+.faces_export_cache.json
+speedtest_cache.json
+
+# 5. Application Binaries & Downloads
+*.apk
+cache/
+installed_apks/
+incoming_apks/*
+!incoming_apks/.gitkeep
+
+# 6. Logs & Runtime Locks
+*.log
+logs/
+*.lock
+*.pid
+
+# 7. Backups, Dumps & Database Snapshots
 *.tar.gz
+*.tar.xz
+*.bak
+*.swp
 *.sql
 *.sql.gz
 backups/
 
-# Logs
-*.log
-logs/
-
-# State & Caches
-*.cache.json
-state.json
-
-# OS Junk
+# 8. OS Junk & Editor Files
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
