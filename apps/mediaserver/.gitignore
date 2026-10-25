@@ -1,0 +1,36 @@
+# Environment & Secrets
+.env
+.env.local
+*.secret
+*.key
+
+# Runtime Configs & Database Folders
+config/jellyfin/
+config/seerr/
+!config/seerr/tmdb-interceptor.js
+config/prowlarr/
+config/qbittorrent/
+config/radarr/
+config/sonarr/
+config/bazarr/
+arr-backups/
+
+# History & Runtime Logs
+download_history.json
+*.log
+logs/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Scratch & Backups
+scratch_*.json
+*.bak
+*.swp
+
+# OS Junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,133 @@
+name: mediaserver
+
+services:
+  byparr:
+    container_name: byparr
+    image: ghcr.io/thephaseless/byparr:latest
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+
+  jellyfin:
+    container_name: jellyfin
+    image: lscr.io/linuxserver/jellyfin:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "8096:8096"
+      - "8920:8920"
+      - "7359:7359/udp"
+      - "1900:1900/udp"
+    volumes:
+      - ${CONFIG_DIR:-./config}/jellyfin:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    restart: unless-stopped
+
+  seerr:
+    container_name: seerr
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+      - PORT=5055
+      - LOG_LEVEL=info
+      - NODE_OPTIONS=--dns-result-order=ipv4first --require /app/config/tmdb-interceptor.js
+    ports:
+      - "5055:5055"
+    volumes:
+      - ${CONFIG_DIR:-./config}/seerr:/app/config
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
+  prowlarr:
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "9696:9696"
+    volumes:
+      - ${CONFIG_DIR:-./config}/prowlarr:/config
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
+  qbittorrent:
+    container_name: qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+      - WEBUI_PORT=8080
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - ${CONFIG_DIR:-./config}/qbittorrent:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
+  radarr:
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "7878:7878"
+    volumes:
+      - ${CONFIG_DIR:-./config}/radarr:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
+  sonarr:
+    container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "8989:8989"
+    volumes:
+      - ${CONFIG_DIR:-./config}/sonarr:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Asia/Kolkata}
+    ports:
+      - "6767:6767"
+    volumes:
+      - ${CONFIG_DIR:-./config}/bazarr:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    restart: unless-stopped

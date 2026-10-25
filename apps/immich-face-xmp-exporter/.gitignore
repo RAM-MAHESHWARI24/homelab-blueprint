@@ -1,0 +1,29 @@
+# State & Cache (NEVER COMMIT PHOTO PATHS)
+.faces_export_cache.json
+*.cache.json
+
+# Environment & Credentials
+.env
+.env.local
+*.secret
+*.key
+
+# Backups & SQL dumps
+*.sql
+*.sql.gz
+*.tar.gz
+backups/
+
+# Logs
+*.log
+logs/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# OS Junk
+.DS_Store
+Thumbs.db

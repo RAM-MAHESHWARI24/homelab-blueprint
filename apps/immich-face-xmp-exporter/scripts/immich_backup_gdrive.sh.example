@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# Immich Automated Backup & Cloud Mirror Script
+# Dumps PostgreSQL database snapshot & mirrors media library to cloud with
+# server-side move tracking and accidental deletion protection.
+# ==============================================================================
+
+BACKUP_LOCAL="${BACKUP_LOCAL:-/opt/immich/backups}"
+MEDIA_PATH="${MEDIA_PATH:-/mnt/hdd/Memories}"
+GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:}"
+GDRIVE_MEMORIES="${GDRIVE_REMOTE}Memories"
+GDRIVE_DB_BACKUP="${GDRIVE_REMOTE}Immich_Backup/database"
+DATE=$(date +%Y%m%d_%H%M%S)
+LOG_FILE="${BACKUP_LOCAL}/backup.log"
+
+mkdir -p "$BACKUP_LOCAL"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "=================================================="
+echo "Starting Immich Backup: $(date)"
+echo "=================================================="
+
+# 1. Export named faces to XMP sidecars
+echo "[1/4] Running Face-to-XMP Exporter..."
+python3 "$(dirname "$0")/../export_faces_to_xmp.py" || echo "Warning: Face export had warnings, continuing backup."
+
+# 2. Dump PostgreSQL database (consistent snapshot)
+echo "[2/4] Creating PostgreSQL database dump..."
+DB_DUMP="$BACKUP_LOCAL/immich_db_${DATE}.sql.gz"
+COMPRESS_CMD=$(command -v pigz >/dev/null 2>&1 && echo "pigz -p 4 -1" || echo "gzip")
+docker exec immich_postgres pg_dumpall -U postgres | $COMPRESS_CMD > "$DB_DUMP"
+echo "Database dumped successfully: $DB_DUMP ($(du -h "$DB_DUMP" | cut -f1))"
+
+# Prune local database backups older than 7 days
+echo "Pruning local database dumps older than 7 days..."
+find "$BACKUP_LOCAL" -name "immich_db_*.sql.gz" -type f -mtime +7 -delete || true
+
+# 3. Copy Database Dump to Google Drive
+echo "[3/4] Uploading database dump to Cloud..."
+rclone copy "$DB_DUMP" "$GDRIVE_DB_BACKUP/" --stats 30s
+
+# 4. Sync Photos / Media to Cloud (With Server-Side Move / Rename Tracking & Trash Buffer)
+echo "[4/4] Syncing Media library to Cloud ($GDRIVE_MEMORIES)..."
+rclone sync "$MEDIA_PATH" "$GDRIVE_MEMORIES/" \
+    --track-renames \
+    --backup-dir "${GDRIVE_REMOTE}Immich_Trash/${DATE}" \
+    --transfers 4 \
+    --checkers 8 \
+    --fast-list \
+    --stats 60s \
+    --exclude ".dtrash/**"
+
+echo "=================================================="
+echo "Immich Backup Completed Successfully: $(date)"
+echo "=================================================="

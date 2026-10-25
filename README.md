@@ -1,83 +1,97 @@
-# Homelab Blueprint & Modular Sub-Repositories 🏠⚡
+# Homelab Blueprint & All-in-One Monorepo 🏠⚡
 
-> A production-tested, low-power homelab blueprint featuring atomic media hardlinks, automated RTC wake power management, ISP SNI DPI bypasses, silent Android TV maintenance, and non-vendor-locked photo metadata tools.
+> A production-tested, low-power homelab monorepo featuring atomic media hardlinks, automated RTC wake power management, ISP SNI DPI bypasses, silent Android TV maintenance, and non-vendor-locked photo metadata tools.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-26.04%20LTS-orange.svg)](https://ubuntu.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Monorepo](https://img.shields.io/badge/Monorepo-All--in--One-success.svg)](#repository-layout)
 
 ---
 
-## 🏗️ Repository Architecture
+## 🌟 Why an All-in-One Monorepo?
 
-This blueprint uses an **Umbrella Architecture** combining 4 decoupled, standalone sub-repositories:
+Instead of juggling multiple scattered repositories and tricky Git submodule commands, this repository contains **everything in one place**. A single `git clone` gives you the full server orchestration suite, hardware optimization runbooks, custom dashboard, TV updater, and media ingestion stack:
 
 ```
-                               ┌──────────────────────────────────────────────┐
-                               │           homelab-blueprint (Parent)         │
-                               │  • Complete end-to-end setup runbook         │
-                               │  • Tailscale, ZeroTier & Samba configs       │
-                               │  • RTCWake power management & self-healing   │
-                               │  • System cron definitions & systemd units   │
-                               └──────────────────────┬───────────────────────┘
-                                                      │
-          ┌───────────────────┬───────────────────────┼───────────────────────┐
-          ▼                   ▼                       ▼                       ▼
- ┌──────────────────┐┌──────────────────┐┌──────────────────┐┌───────────────────────────┐
- │   control-hub    ││    tv-updater    ││ immich-xmp-tools ││    mediaserver-blueprint  │
- │  (Submodule 1)   ││  (Submodule 2)   ││  (Submodule 3)   ││       (Submodule 4)       │
- │ • Custom Web GUI ││ • ADB TV updater ││ • Face XMP side- ││ • Docker Compose stack    │
- │ • Dozzle v11 log ││ • DHCP discovery ││   car exporter   ││ • TMDB DPI SNI patch      │
- │ • Sleep guard    ││ • Zero TV RAM    ││ • Google Drive   ││ • Recyclarr profiles      │
- │ • Vitals/Network ││ • SmartTube / CS ││   sync pipeline  ││ • Webhook / Seerr listener│
- └──────────────────┘└──────────────────┘└──────────────────┘└───────────────────────────┘
+homelab-blueprint/
+├── README.md                           # Master homelab overview & quickstart
+├── ARCHITECTURE.md                     # Deep technical dive (storage, CPU, memory, power)
+├── .env.example                        # Unified server configuration template
+├── docs/                               # Engineering runbooks & deep dives
+│   ├── STORAGE_AND_HARDLINKS.md        # Single ext4 mount atomic hardlink guide (0 disk I/O)
+│   ├── POWER_MANAGEMENT_RTCWAKE.md     # S3 suspend (1.2W) & post-wake self-healing runbook
+│   ├── NETWORKING_TAILSCALE_SAMBA.md   # Tailscale subnet routing & Samba dual shares
+│   ├── HASWELL_DIRECT_PLAY_GUIDE.md    # Low-power CPU transcode protection & direct play
+│   └── GIGABIT_LAN_DIAGNOSTICS.md      # Ethernet link auto-negotiation & PHY diagnostics
+├── system/                             # Host OS automation & configurations
+│   ├── cron.d/                         # Template cron definitions (suspend, backup, updates)
+│   ├── systemd/                        # Systemd unit files (Control Hub daemon)
+│   ├── power/                          # Suspend, RTC wake, and ML container scripts
+│   ├── networking/                     # Tailscale forwarding & Samba shares (smb.conf)
+│   └── maintenance/                    # Automated Watchtower updater with log rotation
+└── apps/                               # Real application source trees & pipelines
+    ├── control-hub/                    # Custom Python/Flask dark glassmorphism dashboard (<25MB RAM)
+    ├── tv-updater/                     # Zero-overhead background Android TV ADB updater
+    ├── immich-face-xmp-exporter/       # Non-destructive face-to-XMP sidecar exporter & cloud sync
+    └── mediaserver/                    # Complete Docker Compose media stack with TMDB DPI patch
 ```
-
-### Modular Standalone Repositories
-
-| Repository | Purpose | Key Tech |
-| :--- | :--- | :--- |
-| **[`control-hub`](submodules/control-hub)** | Lightweight (<25MB RAM) glassmorphism server dashboard | Python, Flask, ES6 Modules |
-| **[`tv-updater`](submodules/tv-updater)** | Zero-overhead Android TV background ADB updater (SmartTube, CloudStream) | Python, Network ADB |
-| **[`immich-face-xmp-exporter`](submodules/immich-face-xmp-exporter)** | Batch ExifTool MWG XMP sidecar generator & cloud sync pipeline | Python, ExifTool, Rclone |
-| **[`mediaserver-blueprint`](submodules/mediaserver-blueprint)** | Media ingest pipeline with atomic hardlinks & TMDB ISP patch | Docker Compose, Jellyfin, Arr stack |
 
 ---
 
-## 🚀 How to Clone & Use
+## 📦 What's Inside
 
-### 1. Clone Entire Homelab Blueprint (With All Submodules)
+| Module | Location | Purpose | Key Tech |
+| :--- | :--- | :--- | :--- |
+| **Control Hub** | [`apps/control-hub/`](apps/control-hub/) | High-performance dashboard & server management daemon | Python, Flask, Vanilla ES6 |
+| **CleanYourTV** | [`apps/tv-updater/`](apps/tv-updater/) | Silent background Android TV ADB app updater | Python, Network ADB (Port 5555) |
+| **Immich XMP Tools** | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Batch ExifTool face-to-XMP sidecar generator & cloud backup | Python, ExifTool, Rclone |
+| **Media Pipeline** | [`apps/mediaserver/`](apps/mediaserver/) | Jellyfin, Arr stack, atomic hardlinks & TMDB ISP patch | Docker Compose, Jellyfin, Arr suite |
+
+---
+
+## 🚀 Quickstart
+
+### 1. Clone Everything in One Command
 ```bash
-git clone --recurse-submodules https://github.com/<your-username>/homelab-blueprint.git
+git clone https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git
+cd homelab-blueprint
 ```
 
-### 2. Or Clone Only the Specific Component You Need
-* **Just the Dashboard:**
+### 2. Configure Environment
+```bash
+cp .env.example .env
+nano .env
+```
+
+### 3. Deploy Components
+* **Launch Media Server:**
   ```bash
-  git clone https://github.com/<your-username>/control-hub.git
+  cd apps/mediaserver
+  cp .env.example .env
+  docker compose up -d
   ```
-* **Just the Android TV Updater:**
+* **Launch Control Hub Dashboard:**
   ```bash
-  git clone https://github.com/<your-username>/tv-updater.git
+  cd apps/control-hub
+  pip install -r requirements.txt
+  python3 server.py
   ```
-* **Just the Immich Face Exporter:**
+* **Run CleanYourTV Android Updater:**
   ```bash
-  git clone https://github.com/<your-username>/immich-face-xmp-exporter.git
-  ```
-* **Just the Media Pipeline:**
-  ```bash
-  git clone https://github.com/<your-username>/mediaserver-blueprint.git
+  cd apps/tv-updater
+  python3 tv_updater.py --status
   ```
 
 ---
 
-## 📚 Deep Dive Guides
+## 📚 Deep Dive Runbooks
 * [Storage Architecture & 0 I/O Hardlinks](docs/STORAGE_AND_HARDLINKS.md)
 * [Power Management & RTC Wake Self-Healing](docs/POWER_MANAGEMENT_RTCWAKE.md)
-* [Networking: Tailscale Subnet Routing & Samba](docs/NETWORKING_TAILSCALE_SAMBA.md)
+* [Networking: Tailscale Subnet Routing & Samba Shares](docs/NETWORKING_TAILSCALE_SAMBA.md)
 * [Low-Power CPU & Direct Play Optimization](docs/HASWELL_DIRECT_PLAY_GUIDE.md)
 * [Gigabit LAN Diagnostics & Physical Link Auto-Negotiation](docs/GIGABIT_LAN_DIAGNOSTICS.md)
 
 ---
 
 ## 📄 License
-MIT License. Free to use and build your own dream homelab!
+MIT License. Free to use, adapt, and build your own dream homelab!

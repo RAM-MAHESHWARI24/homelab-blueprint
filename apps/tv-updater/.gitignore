@@ -1,0 +1,30 @@
+# State & Cache (NEVER COMMIT)
+*.cache.json
+state.json
+devices_cache.json
+incompatible_apks.json
+
+# APK binaries & downloads
+*.apk
+cache/
+installed_apks/
+incoming_apks/*
+!incoming_apks/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Local custom config
+config.json
+
+# OS Junk
+.DS_Store
+Thumbs.db

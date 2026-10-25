@@ -1,0 +1,2 @@
+# Pure Python standard library is used for export_faces_to_xmp.py
+# System requirement: libimage-exiftool-perl (exiftool) and docker-cli
