@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Homelab Blueprint | Setup Wizard</title>
+  <meta name="description" content="Frictionless, hardware-optimized Web GUI onboarding for your Ubuntu Server homelab.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/setup.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2300f2fe'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body>
+  <!-- Glowing Ambient Background Orbs -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+
+  <div class="wizard-wrapper">
+    <!-- Header -->
+    <header class="wizard-header">
+      <div class="brand-badge">
+        <span class="pulse-dot"></span>
+        <span>Ubuntu Server Homelab Onboarding</span>
+      </div>
+      <h1>Homelab Blueprint Setup</h1>
+      <p>Configure storage paths, single-mount atomic hardlinks, and core services in under 60 seconds.</p>
+    </header>
+
+    <!-- Host System Live Auto-Detected Snapshot -->
+    <section class="glass-card" id="card-snapshot">
+      <div class="card-title-row">
+        <h2>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          Detected Host Profile
+        </h2>
+        <span class="badge-soft badge-cyan" id="hwaccel-badge">Probing hardware...</span>
+      </div>
+      <div class="sys-snapshot-grid">
+        <div class="snap-stat">
+          <div class="lbl">Processor</div>
+          <div class="val" id="snap-cpu">Detecting...</div>
+        </div>
+        <div class="snap-stat">
+          <div class="lbl">Memory (RAM)</div>
+          <div class="val" id="snap-ram">Detecting...</div>
+        </div>
+        <div class="snap-stat">
+          <div class="lbl">LAN IP & NIC</div>
+          <div class="val" id="snap-ip">Detecting...</div>
+        </div>
+        <div class="snap-stat">
+          <div class="lbl">Host User (UID:GID)</div>
+          <div class="val" id="snap-user">Detecting...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mode Selector Tabs -->
+    <nav class="mode-selector" aria-label="Configuration Experience">
+      <button class="mode-tab-btn active" data-mode="express" id="tab-btn-express">
+        <span class="tab-icon">⚡</span>
+        <span>Express Mode (Least Setup)</span>
+      </button>
+      <button class="mode-tab-btn" data-mode="power" id="tab-btn-power">
+        <span class="tab-icon">🛠️</span>
+        <span>Power User Mode</span>
+      </button>
+      <button class="mode-tab-btn" data-mode="ai" id="tab-btn-ai">
+        <span class="tab-icon">🤖</span>
+        <span>AI Copilot & Diagnostics</span>
+      </button>
+    </nav>
+
+    <!-- =========================================================================
+         MODE A: EXPRESS MODE ("Least Setup")
+         ========================================================================= -->
+    <main id="section-express">
+      <div class="glass-card">
+        <div class="card-title-row">
+          <h2>⚡ Express Configuration</h2>
+          <span class="badge-soft badge-emerald">60s Ready</span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+          Only the critical storage paths and master password are required. Everything else is auto-tuned with production defaults.
+        </p>
+
+        <!-- Media Storage Path -->
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="exp-data-dir">1. Media & Downloads Storage Mount (Single ext4 mount)</label>
+            <span class="default-hint" onclick="document.getElementById('exp-data-dir').value='/mnt/hdd/data'">[Default: /mnt/hdd/data]</span>
+          </div>
+          <div class="input-with-action">
+            <input type="text" id="exp-data-dir" placeholder="/mnt/hdd/data" value="/mnt/hdd/data">
+            <button type="button" class="btn-secondary" id="btn-test-exp-hl">Verify Hardlink</button>
+          </div>
+          <div class="suggestion-chips" id="disk-chips-container"></div>
+          <div class="hardlink-tester-box">
+            <div class="hl-status-indicator" id="exp-hl-status">
+              <span style="color: var(--cyan)">Click 'Verify Hardlink' to test atomic 0-I/O capability</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Family Photos Path -->
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="exp-photos-dir">2. Family Photos & Videos Mount</label>
+            <span class="default-hint" onclick="document.getElementById('exp-photos-dir').value='/mnt/hdd/Memories'">[Default: /mnt/hdd/Memories]</span>
+          </div>
+          <input type="text" id="exp-photos-dir" placeholder="/mnt/hdd/Memories" value="/mnt/hdd/Memories">
+        </div>
+
+        <!-- Safe Netplan Static IP Toggle -->
+        <div class="toggle-card">
+          <input type="checkbox" id="exp-static-ip-toggle" checked>
+          <div class="toggle-info">
+            <h4>Lock current LAN IP as Permanent Static IP via Netplan</h4>
+            <p>Uses <code>netplan try --timeout 45</code> with automatic rollback so your SSH connection is never severed if network fails.</p>
+          </div>
+        </div>
+
+        <!-- Server IP -->
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="exp-server-ip">Server LAN IP Address</label>
+          </div>
+          <input type="text" id="exp-server-ip" placeholder="192.168.1.100" value="192.168.1.100">
+        </div>
+
+        <!-- Admin Master Password -->
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="exp-admin-pass">Master Password (qBittorrent & Database)</label>
+            <span class="default-hint" id="btn-gen-exp-secrets">⚡ Click to Auto-Generate Secure Passwords</span>
+          </div>
+          <input type="text" id="exp-admin-pass" placeholder="Enter password or auto-generate" value="adminadmin">
+        </div>
+
+        <!-- Safe Dry-Run Simulation Toggle -->
+        <div class="toggle-card" style="border-color: rgba(0, 242, 254, 0.35); background: rgba(0, 242, 254, 0.06);">
+          <input type="checkbox" id="exp-dry-run-toggle" checked>
+          <div class="toggle-info">
+            <h4 style="color: var(--cyan);">🧪 Safe Dry-Run Simulation Mode (Enabled by default)</h4>
+            <p>Safely tests the entire setup, validates storage and Netplan, and writes preview configs to <code>setup/dry_run_preview/</code> without modifying your real network, existing .env files, or touching Docker.</p>
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <span style="font-size: 0.8rem; color: var(--text-dim);">Core stacks (Jellyfin, qBittorrent, Sonarr, Radarr, Noodle Gallery, Control Hub) will be enabled.</span>
+          <button type="button" class="btn-primary" id="btn-deploy-express">
+            <span>🚀 Run Deployment Pipeline</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- =========================================================================
+         MODE B: POWER USER MODE ("Granular Customization")
+         ========================================================================= -->
+    <main id="section-power" style="display: none;">
+      <!-- Stage 1: Network & Safe Netplan -->
+      <div class="glass-card">
+        <div class="card-title-row">
+          <h2>1. Network & Safe Netplan Static IP</h2>
+          <span class="badge-soft badge-cyan">Netplan v2</span>
+        </div>
+        <div class="sys-snapshot-grid">
+          <div class="form-group">
+            <label class="form-label" for="pow-server-ip">Server Static IP</label>
+            <input type="text" id="pow-server-ip" value="192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-nic">Active Network Interface</label>
+            <input type="text" id="pow-nic" value="eth0">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-gateway">Default Gateway</label>
+            <input type="text" id="pow-gateway" value="192.168.1.1">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-tz">Server Timezone</label>
+            <input type="text" id="pow-tz" value="Asia/Kolkata">
+          </div>
+        </div>
+        <div class="toggle-card">
+          <input type="checkbox" id="pow-static-ip-toggle" checked>
+          <div class="toggle-info">
+            <h4>Apply Safe Static IP via Netplan</h4>
+            <p>Generates <code>/etc/netplan/99-homelab-blueprint.yaml</code>, tests syntax with <code>netplan generate</code>, and applies with <code>netplan try --timeout 45</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stage 2: Host Permissions & Storage Layout -->
+      <div class="glass-card">
+        <div class="card-title-row">
+          <h2>2. Storage Layout & Hardlinks Architecture</h2>
+          <span class="badge-soft badge-cyan">0 Disk I/O</span>
+        </div>
+        <div class="sys-snapshot-grid">
+          <div class="form-group">
+            <label class="form-label" for="pow-user">Host Username</label>
+            <input type="text" id="pow-user" value="homelab_user">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-puid">User PUID</label>
+            <input type="number" id="pow-puid" value="1000">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-pgid">User PGID</label>
+            <input type="number" id="pow-pgid" value="1000">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="pow-ssd-dir">SSD Config Root (Databases & Metadata)</label>
+            <span class="default-hint" onclick="document.getElementById('pow-ssd-dir').value='./config'">[Default: ./config - Keep Default]</span>
+          </div>
+          <input type="text" id="pow-ssd-dir" value="./config">
+        </div>
+
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="pow-data-dir">HDD Single-Mount Root (Torrents + Media Library)</label>
+            <span class="default-hint" onclick="document.getElementById('pow-data-dir').value='/mnt/hdd/data'">[Default: /mnt/hdd/data - Keep Default]</span>
+          </div>
+          <div class="input-with-action">
+            <input type="text" id="pow-data-dir" value="/mnt/hdd/data">
+            <button type="button" class="btn-secondary" id="btn-test-pow-hl">Test Atomic Hardlinks</button>
+          </div>
+          <div class="suggestion-chips" id="power-disk-chips-container"></div>
+          <div class="hardlink-tester-box">
+            <div class="hl-status-indicator" id="pow-hl-status">
+              <span style="color: var(--cyan)">Click 'Test Atomic Hardlinks' to verify</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="pow-photos-dir">HDD Photos Location</label>
+            <span class="default-hint" onclick="document.getElementById('pow-photos-dir').value='/mnt/hdd/Memories'">[Default: /mnt/hdd/Memories - Keep Default]</span>
+          </div>
+          <input type="text" id="pow-photos-dir" value="/mnt/hdd/Memories">
+        </div>
+      </div>
+
+      <!-- Stage 3: Modular Service Matrix -->
+      <div class="glass-card">
+        <div class="card-title-row">
+          <h2>3. Service Matrix Selection</h2>
+          <span class="badge-soft badge-cyan">Docker Stacks</span>
+        </div>
+        <div class="service-grid">
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-media" checked>
+            <div class="service-meta">
+              <h4>🎬 Media Server Stack</h4>
+              <p>Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-photos" checked>
+            <div class="service-meta">
+              <h4>📸 Noodle Photo Cloud</h4>
+              <p>Open-Noodle Gallery, PostgreSQL with VectorChord vector AI search</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-tv" checked>
+            <div class="service-meta">
+              <h4>📺 CleanYourTV</h4>
+              <p>Silent ADB background app updater for Android / Google TVs</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-sleep" checked>
+            <div class="service-meta">
+              <h4>⚡ Sleep Guard</h4>
+              <p>S3 Suspend (12:00 AM) & RTC Wake (06:00 AM) power management</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Stage 4: Secrets & Credentials -->
+      <div class="glass-card">
+        <div class="card-title-row">
+          <h2>4. Credentials & Ingest API Keys</h2>
+          <button type="button" class="btn-secondary" id="btn-gen-pow-secrets">⚡ Auto-Generate All</button>
+        </div>
+        <div class="sys-snapshot-grid">
+          <div class="form-group">
+            <label class="form-label" for="pow-qbit-user">qBittorrent User</label>
+            <input type="text" id="pow-qbit-user" value="admin">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-qbit-pass">qBittorrent Password</label>
+            <input type="text" id="pow-qbit-pass" value="adminadmin">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-pg-pass">Postgres DB Password</label>
+            <input type="text" id="pow-pg-pass" value="postgres_secure_pass">
+          </div>
+        </div>
+        <div class="sys-snapshot-grid">
+          <div class="form-group">
+            <label class="form-label" for="pow-radarr-key">Radarr API Key</label>
+            <input type="text" id="pow-radarr-key" placeholder="Optional - auto-generated">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-sonarr-key">Sonarr API Key</label>
+            <input type="text" id="pow-sonarr-key" placeholder="Optional - auto-generated">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-prowlarr-key">Prowlarr API Key</label>
+            <input type="text" id="pow-prowlarr-key" placeholder="Optional - auto-generated">
+          </div>
+        </div>
+
+        <!-- Safe Dry-Run Simulation Toggle -->
+        <div class="toggle-card" style="border-color: rgba(0, 242, 254, 0.35); background: rgba(0, 242, 254, 0.06); margin-top: 1.5rem;">
+          <input type="checkbox" id="pow-dry-run-toggle" checked>
+          <div class="toggle-info">
+            <h4 style="color: var(--cyan);">🧪 Safe Dry-Run Simulation Mode (Preview only)</h4>
+            <p>Safely tests the entire configuration, writes preview configs to <code>setup/dry_run_preview/</code> without modifying your current setup.</p>
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <span style="font-size: 0.8rem; color: var(--text-dim);">All settings will be atomically synchronized across monorepo .env files.</span>
+          <button type="button" class="btn-primary" id="btn-deploy-power">
+            <span>🚀 Run Custom Deployment</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- =========================================================================
+         MODE C: AI COPILOT & TOKEN-EFFICIENT DIAGNOSTICS
+         ========================================================================= -->
+    <main id="section-ai" style="display: none;">
+      <div class="glass-card">
+        <div class="ai-copilot-banner">
+          <h3>🤖 AI Assistant Diagnostic Copilot</h3>
+          <p>Designed for naive operators who want to consult an LLM (ChatGPT, Claude, Cursor, Copilot, Antigravity) without wasting thousands of tokens.</p>
+          
+          <div class="ai-recommendation-box" id="ai-rec-text">
+            Analyzing system specs and generating architectural recommendations...
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.8rem; color: #cbd5e1; font-weight: 600;">Token-Optimized Diagnostic Prompt (~300 tokens):</span>
+            <button type="button" class="btn-secondary" id="btn-copy-ai-prompt">📋 Copy AI Prompt</button>
+          </div>
+          <div class="ai-prompt-preview" id="ai-prompt-content">Loading snapshot prompt...</div>
+        </div>
+
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Modular Quirks & Runbooks (docs/)</h3>
+        <ul style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.8; margin-left: 1.5rem;">
+          <li><b>STORAGE_AND_HARDLINKS.md:</b> Explains 0 disk I/O atomic inode pointers.</li>
+          <li><b>NETPLAN_STATIC_IP_QUIRKS.md:</b> Safe <code>netplan try --timeout 45</code> to prevent SSH lockouts.</li>
+          <li><b>HASWELL_DIRECT_PLAY_GUIDE.md:</b> CPU-protective direct play for older low-power processors.</li>
+          <li><b>POWER_MANAGEMENT_RTCWAKE.md:</b> S3 RAM suspend & RTC wake with backup deferral guards.</li>
+          <li><b>DOCKER_PERMISSIONS_PUID_PGID.md:</b> PUID/PGID matching and UMASK 002.</li>
+        </ul>
+      </div>
+    </main>
+  </div>
+
+  <!-- Deployment Progress & Success Modal -->
+  <div class="deploy-overlay" id="deploy-overlay">
+    <div class="deploy-modal">
+      <h3 id="deploy-modal-title">Provisioning Homelab Blueprint...</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem;">Applying single-mount directory trees, safe Netplan IP, environment files, and Docker containers.</p>
+      
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+
+      <div class="deploy-terminal" id="deploy-terminal">Initializing deployment...</div>
+
+      <!-- Success Service Launch Catalog -->
+      <div id="deploy-success-section" style="display: none;">
+        <h4 style="font-size: 1.1rem; color: var(--emerald); margin-bottom: 0.3rem;">🎉 Homelab Successfully Deployed!</h4>
+        <p style="color: var(--text-dim); font-size: 0.8rem;">Your services are now running and accessible across your local network:</p>
+        
+        <div class="launch-grid" id="service-launch-grid"></div>
+
+        <div style="margin-top: 1.8rem; text-align: center;">
+          <a href="#" class="btn-primary" id="btn-goto-dashboard">
+            <span>Open Custom Command Center</span>
+          </a>
+          <p style="color: var(--text-dim); font-size: 0.75rem; margin-top: 0.6rem;">
+            Auto-redirecting in <span id="redirect-countdown">8</span> seconds...
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/setup.js"></script>
+</body>
+</html>

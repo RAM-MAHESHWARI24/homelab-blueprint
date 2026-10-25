@@ -51,53 +51,50 @@ homelab-blueprint/
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quickstart & Automated Web GUI Setup
 
-### 1. Clone Everything in One Command
+Deploy your homelab on a fresh Ubuntu Server in under 60 seconds with our zero-dependency Web GUI onboarding wizard.
+
+### Option A: 1-Line Automated Bootstrap (Fastest)
+Run this single command on your Ubuntu Server terminal:
 ```bash
-git clone https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git
-cd homelab-blueprint
+curl -sSL https://raw.githubusercontent.com/RAM-MAHESHWARI24/homelab-blueprint/main/bootstrap.sh | sudo bash
 ```
 
-### 2. Configure Environment
+### Option B: Standard Git Clone
 ```bash
-cp .env.example .env
-nano .env
+git clone https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git /opt/homelab-blueprint
+cd /opt/homelab-blueprint
+sudo ./setup.sh
 ```
 
-### 3. Deploy Components
-* **Launch Media Server:**
-  ```bash
-  cd apps/mediaserver
-  cp .env.example .env
-  docker compose up -d
-  ```
-* **Launch Noodle Gallery:**
-  ```bash
-  cd apps/noodle-gallery
-  cp .env.example .env
-  docker compose up -d
-  ```
-* **Launch Control Hub Dashboard:**
-  ```bash
-  cd apps/control-hub
-  pip install -r requirements.txt
-  python3 server.py
-  ```
-* **Run CleanYourTV Android Updater:**
-  ```bash
-  cd apps/tv-updater
-  python3 tv_updater.py --status
-  ```
+### 🌐 Open the Web GUI in your Browser
+The terminal will display your clickable LAN URL:
+```
+👉 http://<your-server-ip>:8000   (from your laptop, phone, or console)
+```
+
+Select your configuration experience:
+* **⚡ Express Mode ("Least Setup"):** Asks only for Media/Data path, Memories photo path, master password, and safe Netplan static IP toggle. Deploys in 60s.
+* **🛠️ Power User Mode:** Granular control over all ports, services, paths, and power schedules. Every optional field features a clear default badge and a 1-click **"Keep Default"** action.
+* **🤖 AI Copilot Mode:** Hardware-tailored recommendations and a 1-click token-optimized diagnostic prompt (~300 tokens) for ChatGPT, Claude, Cursor, or Antigravity.
+
+Once provisioning finishes, the wizard seamlessly transitions to your **Control Hub** command center (`http://<your-server-ip>:7575`)!
 
 ---
 
-## 📚 Deep Dive Runbooks
+## 📚 Deep Dive Runbooks & Guides
 * [Storage Architecture & 0 I/O Hardlinks](docs/STORAGE_AND_HARDLINKS.md)
 * [Power Management & RTC Wake Self-Healing](docs/POWER_MANAGEMENT_RTCWAKE.md)
 * [Networking: Tailscale Subnet Routing & Samba Shares](docs/NETWORKING_TAILSCALE_SAMBA.md)
+* [Safe Netplan Static IP & SSH Safety Quirks](docs/NETPLAN_STATIC_IP_QUIRKS.md)
+* [Docker File Permissions, PUID/PGID & UMASK](docs/DOCKER_PERMISSIONS_PUID_PGID.md)
+* [Port Bindings, Network Mapping & Conflict Resolution](docs/PORT_BINDINGS_AND_CONFLICTS.md)
+* [Hardware Acceleration (VAAPI / QSV) & Low-Power Quirks](docs/HARDWARE_ACCELERATION_VAAPI_QSV.md)
 * [Low-Power CPU & Direct Play Optimization](docs/HASWELL_DIRECT_PLAY_GUIDE.md)
 * [Gigabit LAN Diagnostics & Physical Link Auto-Negotiation](docs/GIGABIT_LAN_DIAGNOSTICS.md)
+* [Master AI Agent Guidelines & Architecture Cheatsheet](docs/AI_AGENT_INSTRUCTIONS.md)
+* [Web GUI Setup Wizard Verification & Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)
 
 ---
 

@@ -24,6 +24,7 @@ venv/
 .venv/
 env/
 .pytest_cache/
+setup/dry_run_preview/
 
 # 4. Runtime State, Devices, and Caches
 state.json
