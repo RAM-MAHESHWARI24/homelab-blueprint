@@ -29,7 +29,8 @@ jobs:
             system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \
-            apps/tv-updater/setup_cron.sh
+            apps/tv-updater/setup_cron.sh \
+            apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example
 
   setup-wizard-test-matrix:
     name: Setup Wizard Matrix Test

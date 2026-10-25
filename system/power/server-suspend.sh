@@ -5,14 +5,15 @@ set -euo pipefail
 # Homelab Dynamic Suspend to RAM (S3) & Post-Wake Self-Healing Routine
 # ==============================================================================
 
-LOG_FILE="/var/log/server-suspend.log"
-SKIP_FILE="/run/server-suspend.skip"
-OVERRIDE_FILE="/run/server-suspend.override"
-CONFIG_FILE="/etc/server-suspend.conf"
+LOG_FILE="${SERVER_SUSPEND_LOG:-/var/log/server-suspend.log}"
+SKIP_FILE="${SERVER_SUSPEND_SKIP:-/run/server-suspend.skip}"
+OVERRIDE_FILE="${SERVER_SUSPEND_OVERRIDE:-/run/server-suspend.override}"
+CONFIG_FILE="${SERVER_SUSPEND_CONF:-/etc/server-suspend.conf}"
 
-# Touch log if doesn't exist
-touch "$LOG_FILE"
-chmod 644 "$LOG_FILE"
+# Touch log if directory is accessible
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+touch "$LOG_FILE" 2>/dev/null || true
+chmod 644 "$LOG_FILE" 2>/dev/null || true
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S %Z'
@@ -33,8 +34,17 @@ fi
 
 # 2. Check for Tonight's Override Deferral (unless invoked with --override or --force)
 IS_OVERRIDE_RUN=false
-if [[ "${1:-}" == "--override" || "${1:-}" == "--force" ]]; then
-    IS_OVERRIDE_RUN=true
+IS_DRY_RUN=false
+for arg in "$@"; do
+    if [[ "$arg" == "--override" || "$arg" == "--force" ]]; then
+        IS_OVERRIDE_RUN=true
+    elif [[ "$arg" == "--dry-run" ]]; then
+        IS_DRY_RUN=true
+    fi
+done
+
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    IS_DRY_RUN=true
 fi
 
 if [ "$IS_OVERRIDE_RUN" = false ] && [ -f "$OVERRIDE_FILE" ]; then
@@ -73,15 +83,19 @@ fi
 
 HOURS_FLOAT=$(awk "BEGIN {printf \"%.1f\", $SLEEP_DURATION/3600}")
 echo "[$(ts)] [SUSPEND] Preparing to suspend system to RAM (S3) for ${HOURS_FLOAT} hours (${SLEEP_DURATION}s)..." >> "$LOG_FILE"
-echo "[$(ts)] [SUSPEND] Invoking '/usr/sbin/rtcwake -m mem -s ${SLEEP_DURATION}'..." >> "$LOG_FILE"
 
-# Run rtcwake and log output
-if /usr/sbin/rtcwake -m mem -s "$SLEEP_DURATION" >> "$LOG_FILE" 2>&1; then
-    echo "[$(ts)] [RESUME] rtcwake completed successfully. System has resumed from sleep." >> "$LOG_FILE"
+if [ "$IS_DRY_RUN" = true ]; then
+    echo "[$(ts)] [DRY_RUN] Dry run enabled. Skipping actual rtcwake execution." >> "$LOG_FILE"
 else
-    EXIT_CODE=$?
-    echo "[$(ts)] [ERROR] rtcwake failed with exit code $EXIT_CODE!" >> "$LOG_FILE"
-    exit $EXIT_CODE
+    echo "[$(ts)] [SUSPEND] Invoking '/usr/sbin/rtcwake -m mem -s ${SLEEP_DURATION}'..." >> "$LOG_FILE"
+    # Run rtcwake and log output
+    if /usr/sbin/rtcwake -m mem -s "$SLEEP_DURATION" >> "$LOG_FILE" 2>&1; then
+        echo "[$(ts)] [RESUME] rtcwake completed successfully. System has resumed from sleep." >> "$LOG_FILE"
+    else
+        EXIT_CODE=$?
+        echo "[$(ts)] [ERROR] rtcwake failed with exit code $EXIT_CODE!" >> "$LOG_FILE"
+        exit $EXIT_CODE
+    fi
 fi
 
 # Clear tonight's override upon waking up
