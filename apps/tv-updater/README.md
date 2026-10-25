@@ -126,5 +126,13 @@ nano config.json
 
 ---
 
+## 🖥️ Live Monitoring on Control Hub
+Android TV fleet status is integrated directly into [Control Hub](../control-hub/):
+* **Living Room & Bedroom TV Card:** Visual status indicators (`UP TO DATE`, `PENDING`, `OFFLINE`).
+* **Active Version Tracking:** Displays target vs installed versionCodes for SmartTube, CloudStream, and custom sideloads.
+* **1-Click Sync:** Trigger updates or inspect ADB logs directly from the browser without opening SSH.
+
+---
+
 ## 📄 License
-MIT License. Feel free to use and modify for your smart home setup!
+MIT License. Part of the [Homelab Blueprint](../../README.md) monorepo.

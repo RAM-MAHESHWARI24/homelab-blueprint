@@ -62,13 +62,11 @@ It transparently patches Node.js `https.request`, `http.request`, and `globalThi
 * Docker & Docker Compose v2+
 * Storage mounted at `/mnt/hdd/data` (or your chosen path)
 
-### 2. Configuration
+### 2. Configuration & Automated Provisioning
+You can configure and deploy the media server stack in two ways:
+* **Automated Web GUI (Recommended):** Use the [Homelab Setup Wizard](../../setup/README.md) (`http://<server-ip>:8000`) or [Control Hub Settings](../../apps/control-hub/README.md) (`http://<server-ip>:7575`). It automatically tests your disk mounts with live `os.link` hardlink inode probes and auto-generates API keys.
+* **Manual Setup:**
 ```bash
-# Clone repository
-git clone https://github.com/your-username/mediaserver-blueprint.git /opt/mediaserver
-cd /opt/mediaserver
-
-# Create environment file
 cp .env.example .env
 nano .env
 ```
@@ -89,5 +87,13 @@ recyclarr sync
 
 ---
 
+## 🖥️ Live Monitoring & Management
+Once launched, the entire media pipeline is monitored in real-time by [Control Hub](../control-hub/):
+* **Live Downloads:** qBittorrent ingest speeds, queue progress, and 1-click pause.
+* **Port Matrix:** Real-time port connectivity prober for Jellyfin (8096), Seerr (5055), Sonarr (8989), Radarr (7878), Prowlarr (9696), and Bazarr (6767).
+* **Container Logs:** 1-Click Dozzle log streaming with 12-char hex Docker ID deep linking.
+
+---
+
 ## 📄 License
-MIT License. Feel free to use and adapt for your home media server!
+MIT License. Part of the [Homelab Blueprint](../../README.md) monorepo.

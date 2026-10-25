@@ -87,3 +87,10 @@ For naive users needing guidance without burning thousands of tokens:
 * **Zero Network Disruption**: Netplan YAML was generated and tested in memory; `/etc/netplan/` remained untouched.
 * **Zero Docker State Changes**: Container launch commands were intercepted and simulated.
 * **Self-Cleaning Probes**: Atomic hardlink test probes were created, measured, and immediately unlinked.
+
+---
+
+## 📚 5. Related Test Reports & Runbooks
+* **[Master Verification & End-to-End Test Suite Report](HOMELAB_VERIFICATION_AND_TEST_REPORT.md)**: Full verification document featuring all 13 screenshots across both Setup Wizard and Control Hub, risk analysis, and automated test suite results.
+* **[Control Hub Configuration Center & AI Copilot](CONTROL_HUB_CONFIGURATION_CENTER.md)**: Architectural runbook for post-install node management and AI copilot.
+* **[Storage Architecture & 0-I/O Hardlinks](STORAGE_AND_HARDLINKS.md)**: Deep dive into single ext4 mount atomic moves.

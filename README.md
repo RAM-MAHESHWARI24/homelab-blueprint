@@ -1,36 +1,56 @@
 # Homelab Blueprint & All-in-One Monorepo 🏠⚡
 
-> A production-tested, low-power homelab monorepo featuring atomic media hardlinks, automated RTC wake power management, ISP SNI DPI bypasses, silent Android TV maintenance, and non-vendor-locked photo metadata tools.
+> A production-tested, ultra-low-power homelab monorepo featuring **instant 0-I/O atomic media hardlinks**, **automated RTC-wake power management (1.2W S3 sleep)**, **ISP SNI DPI bypasses**, **silent Android TV maintenance**, **non-vendor-locked photo metadata tools**, and a **custom <25MB RAM dark glassmorphism dashboard with integrated AI Copilot**.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-26.04%20LTS-orange.svg)](https://ubuntu.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Monorepo](https://img.shields.io/badge/Monorepo-All--in--One-success.svg)](#repository-layout)
+[![Hardlinks](https://img.shields.io/badge/Hardlinks-Instant%200%20I%2FO-brightgreen.svg)](docs/STORAGE_AND_HARDLINKS.md)
+[![Control Hub RAM](https://img.shields.io/badge/Control%20Hub%20RAM-%3C25MB-success.svg)](apps/control-hub/)
+[![Automated Tests](https://img.shields.io/badge/Tests-100%25%20Passing-blue.svg)](setup/test_setup.py)
 
 ---
 
 ## 🌟 Why an All-in-One Monorepo?
 
-Instead of juggling multiple scattered repositories and tricky Git submodule commands, this repository contains **everything in one place**. A single `git clone` gives you the full server orchestration suite, hardware optimization runbooks, custom dashboard, TV updater, and media ingestion stack:
+Instead of juggling multiple scattered repositories, conflicting `.env` files, and fragile Git submodule commands, this repository contains **everything in one place**. A single clone provides the complete server orchestration suite, hardware optimization runbooks, custom dashboard daemon, automated TV updater, and media ingestion stack:
 
 ```
 homelab-blueprint/
 ├── README.md                           # Master homelab overview & quickstart
-├── ARCHITECTURE.md                     # Deep technical dive (storage, CPU, memory, power)
+├── ARCHITECTURE.md                     # Deep technical architecture (storage, CPU, memory, power)
+├── bootstrap.sh                        # 1-Line zero-dependency Ubuntu server installer
+├── setup.sh                            # Local repository setup and wizard launcher
 ├── .env.example                        # Unified server configuration template
-├── docs/                               # Engineering runbooks & deep dives
+├── docs/                               # Engineering runbooks & visual test reports
 │   ├── STORAGE_AND_HARDLINKS.md        # Single ext4 mount atomic hardlink guide (0 disk I/O)
 │   ├── POWER_MANAGEMENT_RTCWAKE.md     # S3 suspend (1.2W) & post-wake self-healing runbook
 │   ├── NETWORKING_TAILSCALE_SAMBA.md   # Tailscale subnet routing & Samba dual shares
+│   ├── NETPLAN_STATIC_IP_QUIRKS.md     # Safe Netplan rollback & SSH disconnection prevention
+│   ├── DOCKER_PERMISSIONS_PUID_PGID.md # Linux file ownership, UMASK 002, and user mapping
+│   ├── PORT_BINDINGS_AND_CONFLICTS.md  # Complete 13-service port allocation directory
+│   ├── HARDWARE_ACCELERATION_VAAPI_QSV.md # Intel QuickSync, VAAPI /dev/dri render node guide
 │   ├── HASWELL_DIRECT_PLAY_GUIDE.md    # Low-power CPU transcode protection & direct play
-│   └── GIGABIT_LAN_DIAGNOSTICS.md      # Ethernet link auto-negotiation & PHY diagnostics
+│   ├── GIGABIT_LAN_DIAGNOSTICS.md      # Ethernet link auto-negotiation & PHY diagnostics
+│   ├── AI_AGENT_INSTRUCTIONS.md        # High-density token-optimized LLM guidelines
+│   ├── CONTROL_HUB_CONFIGURATION_CENTER.md # Control Hub Settings modal & AI Copilot runbook
+│   ├── SETUP_WIZARD_TEST_RESULTS.md    # Initial setup wizard verification & dry-run test
+│   ├── HOMELAB_VERIFICATION_AND_TEST_REPORT.md # Master E2E verification report (13 visual proofs)
+│   └── assets/                         # Full visual verification screenshot gallery
+├── setup/                              # Zero-dependency Python 3 onboarding wizard (Port 8000)
+│   ├── server.py                       # Pure standard-library HTTP server & REST API
+│   ├── config_core/                    # System probing, secrets generator, Netplan manager
+│   ├── static/                         # High-DPI dark glassmorphism onboarding interface
+│   ├── test_setup.py                   # Automated verification test suite
+│   └── README.md                       # Setup wizard architectural documentation
 ├── system/                             # Host OS automation & configurations
 │   ├── cron.d/                         # Template cron definitions (suspend, backup, updates)
-│   ├── systemd/                        # Systemd unit files (Control Hub daemon)
-│   ├── power/                          # Suspend, RTC wake, and ML container scripts
+│   ├── systemd/                        # Systemd unit files (Control Hub background daemon)
+│   ├── power/                          # Suspend, RTC wake, and ML container schedule scripts
 │   ├── networking/                     # Tailscale forwarding & Samba shares (smb.conf)
 │   └── maintenance/                    # Automated Watchtower updater with log rotation
 └── apps/                               # Real application source trees & pipelines
-    ├── control-hub/                    # Custom Python/Flask dark glassmorphism dashboard (<25MB RAM)
+    ├── control-hub/                    # Custom Python/Flask command center (<25MB RAM, Port 7575)
     ├── tv-updater/                     # Zero-overhead background Android TV ADB updater
     ├── noodle-gallery/                 # High-performance photo & video cloud with VectorChord search
     ├── immich-face-xmp-exporter/       # Non-destructive face-to-XMP sidecar exporter & cloud sync
@@ -41,22 +61,51 @@ homelab-blueprint/
 
 ## 📦 What's Inside
 
-| Module | Location | Purpose | Key Tech |
-| :--- | :--- | :--- | :--- |
-| **Control Hub** | [`apps/control-hub/`](apps/control-hub/) | High-performance dashboard & server management daemon | Python, Flask, Vanilla ES6 |
-| **CleanYourTV** | [`apps/tv-updater/`](apps/tv-updater/) | Silent background Android TV ADB app updater | Python, Network ADB (Port 5555) |
-| **Noodle Gallery** | [`apps/noodle-gallery/`](apps/noodle-gallery/) | High-performance photo cloud with vector search | Open-Noodle Gallery, PostgreSQL, Valkey |
-| **Immich XMP Tools** | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Batch ExifTool face-to-XMP sidecar generator & cloud backup | Python, ExifTool, Rclone |
-| **Media Pipeline** | [`apps/mediaserver/`](apps/mediaserver/) | Jellyfin, Arr stack, atomic hardlinks & TMDB ISP patch | Docker Compose, Jellyfin, Arr suite |
+| Module | Location | Purpose | Key Tech | RAM Footprint |
+| :--- | :--- | :--- | :--- | :--- |
+| **Control Hub** | [`apps/control-hub/`](apps/control-hub/) | Active command center, hardware telemetry, node config & AI Copilot | Python, Flask, Vanilla ES6 | **< 25 MB** |
+| **CleanYourTV** | [`apps/tv-updater/`](apps/tv-updater/) | Silent background Android TV ADB app updater | Python, Network ADB (Port 5555) | **< 5 MB** |
+| **Noodle Gallery** | [`apps/noodle-gallery/`](apps/noodle-gallery/) | High-performance photo cloud with vector search | Open-Noodle Gallery, PostgreSQL, Valkey | Scheduled |
+| **Immich XMP Tools** | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Batch ExifTool face-to-XMP sidecar generator & cloud backup | Python, ExifTool, Rclone | On-Demand |
+| **Media Pipeline** | [`apps/mediaserver/`](apps/mediaserver/) | Jellyfin, Arr stack, atomic hardlinks & TMDB ISP patch | Docker Compose, Jellyfin, Arr suite | Containerized |
+| **Setup Wizard** | [`setup/`](setup/) | Zero-dependency onboarding wizard with Safe Netplan rollback | Python 3 Standard Library | Standby |
 
 ---
 
-## 🚀 Quickstart & Automated Web GUI Setup
+## ⚡ Two-Phase Operational Architecture
+
+This repository is engineered around a clean lifecycle separation:
+1. **Phase 1: Day 0 Onboarding & Provisioning Wizard** (`http://<server-ip>:8000`)
+2. **Phase 2: Day 1+ Command Center & Live Configuration Hub** (`http://<server-ip>:7575`)
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  PHASE 1: Zero-Dependency Onboarding Wizard (Port 8000)                │
+│  • Express Mode (60s setup) or Power User Mode                         │
+│  • Atomic os.link filesystem inode validation                          │
+│  • Safe Netplan static IP test with auto-rollback                      │
+│  • Dry-run simulation mode (zero host disruption)                      │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Automated handoff
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│  PHASE 2: Control Hub Command Center & Management Daemon (Port 7575)   │
+│  • Sleep Guard hero card with dynamic process-aware deferral           │
+│  • Non-blocking real-time Rx/Tx network bandwidth sampling             │
+│  • Settings Modal: Storage paths, 13-service port matrix, secrets gen  │
+│  • AI Copilot Modal: Hardware specs & ~300-token prompt exporter       │
+│  • Dozzle 12-char hex Docker ID container log streamer                 │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Phase 1: Quickstart & Automated Onboarding (Port 8000)
 
 Deploy your homelab on a fresh Ubuntu Server in under 60 seconds with our zero-dependency Web GUI onboarding wizard.
 
 ### Option A: 1-Line Automated Bootstrap (Fastest)
-Run this single command on your Ubuntu Server terminal:
+Run this single command in your Ubuntu Server terminal:
 ```bash
 curl -sSL https://raw.githubusercontent.com/RAM-MAHESHWARI24/homelab-blueprint/main/bootstrap.sh | sudo bash
 ```
@@ -69,35 +118,100 @@ sudo ./setup.sh
 ```
 
 ### 🌐 Open the Web GUI in your Browser
-The terminal will display your clickable LAN URL:
 ```
-👉 http://<your-server-ip>:8000   (from your laptop, phone, or console)
+👉 http://<your-server-ip>:8000   (accessible from any laptop, phone, or tablet on your LAN)
 ```
 
-Select your configuration experience:
+### The Three Onboarding Modes:
 * **⚡ Express Mode ("Least Setup"):** Asks only for Media/Data path, Memories photo path, master password, and safe Netplan static IP toggle. Deploys in 60s.
 * **🛠️ Power User Mode:** Granular control over all ports, services, paths, and power schedules. Every optional field features a clear default badge and a 1-click **"Keep Default"** action.
 * **🤖 AI Copilot Mode:** Hardware-tailored recommendations and a 1-click token-optimized diagnostic prompt (~300 tokens) for ChatGPT, Claude, Cursor, or Antigravity.
 
-Once provisioning finishes, the wizard seamlessly transitions to your **Control Hub** command center (`http://<your-server-ip>:7575`)!
+| Express Mode Verification | Power User Granular Setup |
+| :---: | :---: |
+| ![Express Mode](docs/assets/setup-wizard/express_mode_stage2_verified.png) | ![Power User Mode](docs/assets/setup-wizard/power_user_stage1_network_storage.png) |
 
 ---
 
-## 📚 Deep Dive Runbooks & Guides
-* [Storage Architecture & 0 I/O Hardlinks](docs/STORAGE_AND_HARDLINKS.md)
-* [Power Management & RTC Wake Self-Healing](docs/POWER_MANAGEMENT_RTCWAKE.md)
-* [Networking: Tailscale Subnet Routing & Samba Shares](docs/NETWORKING_TAILSCALE_SAMBA.md)
-* [Safe Netplan Static IP & SSH Safety Quirks](docs/NETPLAN_STATIC_IP_QUIRKS.md)
-* [Docker File Permissions, PUID/PGID & UMASK](docs/DOCKER_PERMISSIONS_PUID_PGID.md)
-* [Port Bindings, Network Mapping & Conflict Resolution](docs/PORT_BINDINGS_AND_CONFLICTS.md)
-* [Hardware Acceleration (VAAPI / QSV) & Low-Power Quirks](docs/HARDWARE_ACCELERATION_VAAPI_QSV.md)
-* [Low-Power CPU & Direct Play Optimization](docs/HASWELL_DIRECT_PLAY_GUIDE.md)
-* [Gigabit LAN Diagnostics & Physical Link Auto-Negotiation](docs/GIGABIT_LAN_DIAGNOSTICS.md)
-* [Master Verification & End-to-End Test Suite Report](docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md)
-* [Control Hub Node Configuration Center & AI Copilot](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)
-* [Web GUI Setup Wizard Verification & Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)
+## 🖥️ Phase 2: Day-to-Day Node Management in Control Hub (Port 7575)
+
+Once provisioned, your server is managed around the clock via **Control Hub** at `http://<your-server-ip>:7575`.
+
+![Control Hub Header](docs/assets/control-hub/hub_header_settings_ai.png)
+
+### ⚙️ Integrated Node Configuration Center
+Clicking **⚙️ Settings** in the dashboard header opens a 5-tab live configuration modal:
+* **Storage & Atomic Hardlinks:** Run live `os.link` inode verification tests directly against your disks to guarantee instant, 0-I/O hardlinks.
+* **13-Service Port Matrix:** Live socket prober scans all homelab ports in real time (Jellyfin `8096`, Seerr `5055`, Sonarr `8989`, Radarr `7878`, Prowlarr `9696`, Immich `2283`, etc.).
+* **Security & Credentials:** 1-Click CSPRNG generator for high-entropy alphanumeric passwords and 32-character API keys.
+* **Safe Netplan Static IP:** Inspect active network interfaces, preview Netplan YAML, and apply changes safely with `netplan try --timeout 45`.
+* **Wizard Fast Launcher:** Re-open the zero-dependency onboarding wizard on port `8000` with 1 click.
+
+| Inode Hardlink Verification | 13-Service Port Matrix & Prober |
+| :---: | :---: |
+| ![Hardlink Test](docs/assets/control-hub/hub_settings_hardlink_test.png) | ![Port Matrix](docs/assets/control-hub/hub_settings_port_matrix.png) |
+
+### 🤖 Built-in AI Copilot
+Clicking **🤖 AI Copilot** in the header opens a dedicated drawer for operators working with AI coding assistants:
+* Gathers live host CPU model, core/thread count, physical memory, active IP, and `/dev/dri` GPU render node status.
+* 1-Click **"📋 Copy AI Prompt"** exports a dense, token-optimized context prompt (~300 tokens) ready to paste into ChatGPT, Claude, Cursor, or Antigravity.
+* Direct links to offline markdown engineering runbooks for zero-overhead troubleshooting.
+
+![AI Copilot Drawer](docs/assets/control-hub/hub_ai_copilot_drawer.png)
+
+---
+
+## 🧪 Verification & Automated Test Suite
+
+We maintain strict verification standards to guarantee that deployments never break host networking, corrupt permissions, or trigger storage bottlenecks:
+
+```bash
+# Run the automated setup wizard test suite
+python3 setup/test_setup.py
+```
+
+### Verified Test Matrix:
+* **✓ Healthcheck Endpoint (`GET /api/health`):** 100% responsiveness.
+* **✓ Hardware Auto-Probing (`GET /api/probe`):** Accurately detects CPU cores, memory, NICs, and physical disks.
+* **✓ Atomic Hardlink Probe (`POST /api/verify/hardlink`):** Validates single-mount inode compatibility in <50ms.
+* **✓ Cryptographic Secrets (`POST /api/secrets/generate`):** High-entropy passwords and API keys.
+* **✓ Dry-Run Pipeline (`POST /api/deploy` with `dry_run=true`):** Full end-to-end simulation writing isolated configs to `setup/dry_run_preview/` without touching production files.
+* **✓ UI Visual Verification:** All 13 test stage screenshots documented in [`docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md`](docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md).
+
+---
+
+## 📚 Deep Dive Engineering Runbooks
+
+Comprehensive technical documentation covering every homelab subsystem:
+
+| Document | Description |
+| :--- | :--- |
+| **[Master Verification & Test Report](docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md)** | Full end-to-end verification report with 13 visual proofs & risk analysis |
+| **[Control Hub Configuration Center](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)** | Deep dive into the live dashboard configuration drawer & AI Copilot |
+| **[Storage Architecture & 0-I/O Hardlinks](docs/STORAGE_AND_HARDLINKS.md)** | Single ext4 mount atomic hardlink guide (0 disk space, 0 I/O load) |
+| **[Power Management & RTC Wake](docs/POWER_MANAGEMENT_RTCWAKE.md)** | S3 suspend (1.2W) at midnight, 06:00 AM RTC wake & self-healing |
+| **[Networking: Tailscale & Samba](docs/NETWORKING_TAILSCALE_SAMBA.md)** | Tailscale subnet routing & Samba dual shares (`MediaDrive`, `RootFS`) |
+| **[Safe Netplan Static IP](docs/NETPLAN_STATIC_IP_QUIRKS.md)** | Rollback mechanics (`netplan try --timeout 45`) & SSH safety |
+| **[Docker Permissions & PUID/PGID](docs/DOCKER_PERMISSIONS_PUID_PGID.md)** | Linux file permissions, user mapping (`1000:1000`), and `UMASK=002` |
+| **[Port Bindings & Network Matrix](docs/PORT_BINDINGS_AND_CONFLICTS.md)** | Directory of all 13 active ports and socket collision handling |
+| **[Hardware Acceleration (VAAPI/QSV)](docs/HARDWARE_ACCELERATION_VAAPI_QSV.md)** | Intel QuickSync, `/dev/dri` render node permissions & drivers |
+| **[Low-Power CPU & Direct Play](docs/HASWELL_DIRECT_PLAY_GUIDE.md)** | Haswell i3 / low-power CPU optimization & direct play enforcement |
+| **[Gigabit LAN Diagnostics](docs/GIGABIT_LAN_DIAGNOSTICS.md)** | Ethernet auto-negotiation, PHY diagnostics, and Cat6 verification |
+| **[AI Agent Master Instructions](docs/AI_AGENT_INSTRUCTIONS.md)** | High-density architectural cheatsheet for AI coding agents |
+| **[Setup Wizard Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)** | Early browser test validation and dry-run execution results |
+
+---
+
+## 💻 Recommended Hardware Profiles
+
+This blueprint is tuned for maximum energy efficiency on repurposed hardware:
+
+* **Tier 1 (Ultra Low Power / Legacy):** Intel 4th-Gen Haswell (e.g. i3-4005U / i5-4200U), 8GB DDR3 RAM, 240GB SSD + 1TB HDD. Idle draw: **~8W daytime, 1.2W sleep**.
+* **Tier 2 (Modern Mini-PC):** Intel Alder Lake-N (N100 / N200 / N305), 16GB DDR5 RAM, NVMe SSD + USB3/SATA DAS. Idle draw: **~6W daytime, 1.0W sleep**.
+* **Tier 3 (Small Form Factor):** Intel 8th-12th Gen Core i3/i5 SFF PC, 16-32GB RAM, NVMe + dual HDD mirror.
 
 ---
 
 ## 📄 License
+
 MIT License. Free to use, adapt, and build your own dream homelab!
