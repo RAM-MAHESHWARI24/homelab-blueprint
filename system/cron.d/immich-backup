@@ -1,0 +1,3 @@
+# Nightly Immich/Noodle Google Drive backup (DB dump + face export + Memories sync)
+# Logs progress to /opt/immich/backups/backup.log and runner output to /opt/immich/backups/cron.log
+0 22 * * * root /opt/immich/immich_backup_gdrive.sh >> /opt/immich/backups/cron.log 2>&1

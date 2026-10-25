@@ -1,0 +1,43 @@
+[global]
+   workgroup = WORKGROUP
+   server string = Homelab File Server
+   domain master = yes
+   local master = yes
+   preferred master = yes
+   os level = 255
+
+   # Protocol & Performance Settings
+   server min protocol = SMB2
+   server max protocol = SMB3
+   server multi channel = yes
+   ea support = yes
+
+   # macOS Fruit Extensions
+   fruit:metadata = stream
+   fruit:model = Macmini
+   fruit:veto_appledouble = no
+   fruit:posix_rename = yes
+   fruit:zero_file_id = yes
+   fruit:wipe_intentionally_left_blank_rfork = yes
+   fruit:delete_empty_adfiles = yes
+   map to guest = bad user
+
+[MediaDrive]
+   comment = Homelab Media Storage
+   path = /mnt/hdd/data
+   valid users = homelab_user
+   read only = no
+   browseable = yes
+   guest ok = no
+   create mask = 0775
+   directory mask = 0775
+
+[RootFS]
+   comment = Administrative Root Filesystem (Hidden)
+   path = /
+   available = yes
+   valid users = homelab_user
+   read only = no
+   browseable = no
+   create mask = 0700
+   directory mask = 0700

@@ -1,0 +1,4 @@
+# Automated Watchtower Docker Container Updates
+# Runs every morning at 07:00 AM IST (1 hour after 06:00 AM wake)
+# Executes /usr/local/sbin/watchtower-run.sh and writes to /var/log/watchtower/ (7 days retained)
+0 7 * * * root /usr/local/sbin/watchtower-run.sh

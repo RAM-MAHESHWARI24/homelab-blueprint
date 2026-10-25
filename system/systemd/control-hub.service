@@ -1,0 +1,21 @@
+[Unit]
+Description=Control Hub (Custom Dashboard & API Engine)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=homelab_user
+Group=homelab_user
+WorkingDirectory=/opt/control-hub
+ExecStart=/usr/bin/python3 /opt/control-hub/server.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+# Low-power resource bounds (prevents runaway processes)
+CPUQuota=20%
+MemoryMax=100M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+# Environment & Secrets
+.env
+.env.local
+*.secret
+*.key
+
+# Backups & Archives
+*.tar.gz
+*.sql
+*.sql.gz
+backups/
+
+# Logs
+*.log
+logs/
+
+# State & Caches
+*.cache.json
+state.json
+
+# OS Junk
+.DS_Store
+Thumbs.db
