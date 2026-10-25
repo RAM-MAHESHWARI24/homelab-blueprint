@@ -193,6 +193,7 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any]) -> Dict[str, 
                 "default_ip": ip.strip(),
                 "port": 5555,
             })
+        tv_data["target_profiles"] = target_profiles
     tv_config_file.parent.mkdir(parents=True, exist_ok=True)
     with open(tv_config_file, "w", encoding="utf-8") as f:
         json.dump(tv_data, f, indent=2)

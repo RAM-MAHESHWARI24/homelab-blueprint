@@ -128,12 +128,42 @@ def deploy_homelab_stack(base_dir: str, config: Dict[str, Any]) -> Dict[str, Any
         for env_name, env_path in env_result.items():
             log(f"  -> Generated: {Path(env_path).relative_to(root_path)}")
 
-    # Step 4: Docker Stacks Orchestration
+    # Step 4: Docker Stacks & Host Services Orchestration
     services_launched = []
     launch_errors = []
 
     server_ip = config.get("server_ip", "192.168.1.100")
     enabled_services = config.get("enabled_services", ["media", "photos", "control_hub", "tv_updater"])
+    ch_port = config.get("control_hub_port", 7575)
+
+    # Ensure TMDB interceptor exists in seerr config dir for out-of-the-box ISP DPI bypass
+    seerr_src = root_path / "apps" / "mediaserver" / "config" / "seerr" / "tmdb-interceptor.js"
+    seerr_dst = Path(config_dir) / "seerr" / "tmdb-interceptor.js"
+    if seerr_src.exists() and not seerr_dst.exists():
+        try:
+            seerr_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(seerr_src, seerr_dst)
+            log("Ensured TMDB ISP bypass interceptor is in Seerr config directory.")
+        except Exception as e:
+            log(f"Notice copying TMDB interceptor: {e}")
+
+    # Install host maintenance scripts to /usr/local/sbin/
+    if not is_dry_run and os.name != "nt":
+        sbin = Path("/usr/local/sbin")
+        try:
+            sbin.mkdir(parents=True, exist_ok=True)
+            helpers = [
+                (root_path / "system" / "power" / "server-suspend.sh", sbin / "server-suspend.sh"),
+                (root_path / "system" / "power" / "immich-ml-control.sh", sbin / "immich-ml-control.sh"),
+                (root_path / "system" / "maintenance" / "watchtower-run.sh", sbin / "watchtower-run.sh"),
+            ]
+            for src, dst in helpers:
+                if src.exists():
+                    shutil.copy2(src, dst)
+                    os.chmod(str(dst), 0o755)
+            log("Installed host maintenance scripts to /usr/local/sbin/")
+        except Exception as e:
+            log(f"Notice installing /usr/local/sbin helpers: {e}")
 
     if is_dry_run:
         if "media" in enabled_services:
@@ -142,6 +172,12 @@ def deploy_homelab_stack(base_dir: str, config: Dict[str, Any]) -> Dict[str, Any
         if "photos" in enabled_services:
             log("Simulating Noodle Gallery Docker Compose deployment (skipping container start).")
             services_launched.append("photos (dry-run)")
+        if "control_hub" in enabled_services:
+            log("Simulating Control Hub Python environment and systemd service deployment.")
+            services_launched.append("control_hub (dry-run)")
+        if "tv_updater" in enabled_services:
+            log("Simulating CleanYourTV cron schedule setup.")
+            services_launched.append("tv_updater (dry-run)")
     else:
         # Real launch
         if "media" in enabled_services:
@@ -165,6 +201,51 @@ def deploy_homelab_stack(base_dir: str, config: Dict[str, Any]) -> Dict[str, Any
             else:
                 log(f"Docker Compose photos notice: {cmd_res['stderr'] or cmd_res['stdout']}")
                 launch_errors.append({"service": "noodle-gallery", "msg": cmd_res['stderr']})
+
+        # Control Hub service
+        if "control_hub" in enabled_services:
+            ch_dir = root_path / "apps" / "control-hub"
+            log("Deploying Control Hub management daemon...")
+            venv_python = ch_dir / "venv" / "bin" / "python3"
+            if not venv_python.exists() and os.name != "nt":
+                run_command(["python3", "-m", "venv", "venv"], cwd=str(ch_dir))
+
+            pip_bin = ch_dir / "venv" / "bin" / "pip"
+            req_file = ch_dir / "requirements.txt"
+            if pip_bin.exists() and req_file.exists():
+                run_command([str(pip_bin), "install", "-q", "-r", str(req_file)], cwd=str(ch_dir))
+
+            unit_src = root_path / "system" / "systemd" / "control-hub.service"
+            unit_dst = Path("/etc/systemd/system/control-hub.service")
+            if unit_src.exists() and os.name != "nt":
+                try:
+                    shutil.copy2(unit_src, unit_dst)
+                    run_command(["systemctl", "daemon-reload"])
+                    start_res = run_command(["systemctl", "enable", "--now", "control-hub.service"])
+                    if start_res["success"]:
+                        log(f"Control Hub service started successfully on port {ch_port}.")
+                        services_launched.append("control_hub")
+                    else:
+                        log(f"Notice starting control-hub.service: {start_res['stderr']}")
+                except Exception as e:
+                    log(f"Notice installing control-hub.service: {e}")
+            else:
+                services_launched.append("control_hub")
+
+        # CleanYourTV cron
+        if "tv_updater" in enabled_services:
+            cron_src = root_path / "system" / "cron.d" / "tv-updater"
+            cron_dst = Path("/etc/cron.d/tv-updater")
+            if cron_src.exists() and os.name != "nt":
+                try:
+                    shutil.copy2(cron_src, cron_dst)
+                    os.chmod(str(cron_dst), 0o644)
+                    log("CleanYourTV background cron registered in /etc/cron.d/tv-updater.")
+                    services_launched.append("tv_updater")
+                except Exception as e:
+                    log(f"Notice setting tv-updater cron: {e}")
+            else:
+                services_launched.append("tv_updater")
 
     # Step 5: Build Service Access Catalog for UI Handoff
     ch_port = config.get("control_hub_port", 7575)

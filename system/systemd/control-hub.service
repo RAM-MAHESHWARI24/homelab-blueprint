@@ -5,10 +5,10 @@ Wants=docker.service
 
 [Service]
 Type=simple
-User=homelab_user
-Group=homelab_user
-WorkingDirectory=/opt/control-hub
-ExecStart=/usr/bin/python3 /opt/control-hub/server.py
+User=root
+WorkingDirectory=/opt/homelab-blueprint/apps/control-hub
+EnvironmentFile=-/opt/homelab-blueprint/.env
+ExecStart=/opt/homelab-blueprint/apps/control-hub/venv/bin/python3 /opt/homelab-blueprint/apps/control-hub/server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

@@ -21,10 +21,11 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Ensure git and python3 are installed
+# Ensure git, python3, and curl are installed
 MISSING_PKGS=()
 if ! command -v git &>/dev/null; then MISSING_PKGS+=("git"); fi
 if ! command -v python3 &>/dev/null; then MISSING_PKGS+=("python3"); fi
+if ! command -v curl &>/dev/null; then MISSING_PKGS+=("curl"); fi
 
 if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
     echo "📦 Installing prerequisites (${MISSING_PKGS[*]})..."
