@@ -5,14 +5,10 @@
 *.key
 
 # Runtime Configs & Database Folders
-config/jellyfin/
+config/*
+!config/seerr/
 config/seerr/*
 !config/seerr/tmdb-interceptor.js
-config/prowlarr/
-config/qbittorrent/
-config/radarr/
-config/sonarr/
-config/bazarr/
 arr-backups/
 
 # History & Runtime Logs
