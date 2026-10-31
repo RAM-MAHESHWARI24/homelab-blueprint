@@ -50,6 +50,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Control Hub Test Dependencies
+        run: |
+          pip install -r apps/control-hub/requirements.txt
+
       - name: Execute Setup Wizard Verification Test Suite
         run: |
           python setup/test_setup.py
@@ -57,6 +61,10 @@ jobs:
       - name: Execute E2E Pipeline Regression Suite
         run: |
           python testing/test_e2e_regression.py
+
+      - name: Execute Full Lifecycle Handoff Regression Suite
+        run: |
+          python testing/test_lifecycle_handoff.py
 
   docker-compose-validation:
     name: Docker Compose & Multi-Arch Verification

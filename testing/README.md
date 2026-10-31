@@ -490,6 +490,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Control Hub Test Dependencies
+        run: |
+          pip install -r apps/control-hub/requirements.txt
+
       - name: Execute Setup Wizard Verification Test Suite
         run: |
           python setup/test_setup.py
@@ -497,6 +501,10 @@ jobs:
       - name: Execute E2E Pipeline Regression Suite
         run: |
           python testing/test_e2e_regression.py
+
+      - name: Execute Full Lifecycle Handoff Regression Suite
+        run: |
+          python testing/test_lifecycle_handoff.py
 
   docker-compose-validation:
     name: Docker Compose & Multi-Arch Verification
@@ -553,6 +561,16 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [ ] **TC-SYS-03:** Sleep Guard honors `/run/server-suspend.skip` flag.
 - [ ] **TC-SYS-06:** Sleep Guard dry-run verifies duration logic without hardware `rtcwake`.
 - [ ] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
+
+### Full Lifecycle & Wizard-to-Hub Handoff (`testing/test_lifecycle_handoff.py`)
+- [x] **TC-FLOW-01:** Setup Wizard initialization, zero-dependency environment probe, and port safety audit.
+- [x] **TC-FLOW-02:** Media filesystem single-mount storage validation & microsecond atomic hardlink verification.
+- [x] **TC-FLOW-03:** Cryptographic token & secret generation with key uniqueness and entropy validation.
+- [x] **TC-FLOW-04:** Simulated dry-run deployment producing master `.env` and per-stack configuration synchronizations.
+- [x] **TC-FLOW-05:** Zero-touch handoff transition from Setup Wizard (:8099) to Control Hub (:7575) runtime.
+- [x] **TC-FLOW-06:** Control Hub hardware telemetry & widget endpoints (System Vitals, Dynamic Block Device I/O, Dual Speedometers, Sleep Guard).
+- [x] **TC-FLOW-07:** Control Hub static cyber-HUD dashboard and dynamic DOM widget hierarchy rendering.
+- [x] **TC-FLOW-08:** Configuration Center live port reachability matrix and AI Copilot markdown assistant streaming.
 
 ### E2E Media Ingestion & Hardlinks
 - [ ] **TC-MEDIA-E2E-01:** Prowlarr indexers tested and Byparr FlareSolverr proxy verified active.
