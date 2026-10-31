@@ -42,6 +42,11 @@ if ! command -v docker &>/dev/null; then
     echo "✅ Docker Engine installed and running."
 fi
 
-# 3. Launch the zero-dependency Python Setup Daemon
+# 3. Ensure unprivileged system user 'homelab' exists for background daemon
+if ! id -u homelab &>/dev/null; then
+    useradd -r -s /usr/sbin/nologin -G docker homelab 2>/dev/null || true
+fi
+
+# 4. Launch the zero-dependency Python Setup Daemon
 echo "🚀 Starting Web GUI daemon..."
 exec python3 "$SCRIPT_DIR/setup/server.py"

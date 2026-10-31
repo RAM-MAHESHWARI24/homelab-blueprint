@@ -1,0 +1,16 @@
+# ==============================================================================
+# Homelab Blueprint - Least-Privilege Sudoers Whitelist for Control Hub
+# Target Location: /etc/sudoers.d/homelab-blueprint
+# Permissions: 0440 (root:root)
+# ==============================================================================
+
+# Grant unprivileged 'homelab' daemon user exact rights needed for system telemetry & power automation
+homelab ALL=(ALL) NOPASSWD: /usr/bin/smbstatus -S
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/watchtower-run.sh
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh *
+homelab ALL=(ALL) NOPASSWD: /bin/touch /run/server-suspend.skip
+homelab ALL=(ALL) NOPASSWD: /bin/rm -f /run/server-suspend.skip
+homelab ALL=(ALL) NOPASSWD: /bin/rm -f /run/server-suspend.override
+homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop server-suspend-override.timer
+homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service
+homelab ALL=(ALL) NOPASSWD: /usr/sbin/rtcwake *

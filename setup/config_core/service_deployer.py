@@ -215,6 +215,28 @@ def deploy_homelab_stack(base_dir: str, config: Dict[str, Any]) -> Dict[str, Any
             if pip_bin.exists() and req_file.exists():
                 run_command([str(pip_bin), "install", "-q", "-r", str(req_file)], cwd=str(ch_dir))
 
+            # Security Hardening: Ensure unprivileged homelab system user & sudoers whitelist
+            if os.name != "nt":
+                check_user = run_command(["id", "-u", "homelab"])
+                if not check_user["success"]:
+                    run_command(["useradd", "-r", "-s", "/usr/sbin/nologin", "-G", "docker", "homelab"])
+                    log("Created unprivileged 'homelab' system service account.")
+                else:
+                    run_command(["usermod", "-aG", "docker", "homelab"])
+
+                if (ch_dir / "venv").exists():
+                    run_command(["chown", "-R", "homelab:homelab", str(ch_dir / "venv")])
+
+                sudoers_src = root_path / "system" / "systemd" / "homelab-sudoers.example"
+                sudoers_dst = Path("/etc/sudoers.d/homelab-blueprint")
+                if sudoers_src.exists():
+                    try:
+                        shutil.copy2(sudoers_src, sudoers_dst)
+                        os.chmod(str(sudoers_dst), 0o440)
+                        log("Installed least-privilege sudoers whitelist in /etc/sudoers.d/homelab-blueprint.")
+                    except Exception as e:
+                        log(f"Notice installing sudoers whitelist: {e}")
+
             unit_src = root_path / "system" / "systemd" / "control-hub.service"
             unit_dst = Path("/etc/systemd/system/control-hub.service")
             if unit_src.exists() and os.name != "nt":

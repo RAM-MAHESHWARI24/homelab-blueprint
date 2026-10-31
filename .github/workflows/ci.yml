@@ -26,6 +26,7 @@ jobs:
           shellcheck --severity=warning \
             bootstrap.sh \
             setup.sh \
+            teardown.sh \
             system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \

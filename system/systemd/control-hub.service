@@ -5,7 +5,9 @@ Wants=docker.service
 
 [Service]
 Type=simple
-User=root
+User=homelab
+Group=homelab
+SupplementaryGroups=docker
 WorkingDirectory=/opt/homelab-blueprint/apps/control-hub
 EnvironmentFile=-/opt/homelab-blueprint/.env
 ExecStart=/opt/homelab-blueprint/apps/control-hub/venv/bin/python3 /opt/homelab-blueprint/apps/control-hub/server.py

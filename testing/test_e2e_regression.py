@@ -380,5 +380,43 @@ class TestUniversalHardwareDetection(unittest.TestCase):
         self.assertTrue(len(nic) > 0)
 
 
+class TestTeardownAndPackagingStandards(unittest.TestCase):
+    """Module 11: Teardown Uninstaller & Least-Privilege Security Hardening"""
+
+    def test_teardown_script_structure_and_safety_guards(self):
+        """TC-TEARDOWN-01: Verify teardown uninstaller supports safety flags, dry-run, and clean removal"""
+        teardown_path = REPO_ROOT / "teardown.sh"
+        self.assertTrue(teardown_path.exists(), "teardown.sh must exist at root")
+        text = teardown_path.read_text(encoding="utf-8")
+
+        # Verify safety options
+        self.assertIn("--dry-run", text)
+        self.assertIn("--purge-data", text)
+        self.assertIn("--force", text)
+
+        # Verify comprehensive target removal
+        self.assertIn("control-hub.service", text)
+        self.assertIn("/etc/cron.d/", text)
+        self.assertIn("docker compose down", text)
+        self.assertIn("apps/control-hub/venv", text)
+
+    def test_least_privilege_daemon_hardening(self):
+        """TC-SEC-UNPRIV-01: Verify systemd service runs as unprivileged user with sudoers whitelist"""
+        service_path = REPO_ROOT / "system" / "systemd" / "control-hub.service"
+        self.assertTrue(service_path.exists())
+        text = service_path.read_text(encoding="utf-8")
+
+        self.assertIn("User=homelab", text, "Control Hub must NOT run as root")
+        self.assertIn("Group=homelab", text)
+        self.assertIn("SupplementaryGroups=docker", text)
+
+        sudoers_path = REPO_ROOT / "system" / "systemd" / "homelab-sudoers.example"
+        self.assertTrue(sudoers_path.exists(), "homelab-sudoers.example must exist")
+        sudoers_text = sudoers_path.read_text(encoding="utf-8")
+        self.assertIn("homelab ALL=(ALL) NOPASSWD:", sudoers_text)
+        self.assertIn("/usr/sbin/rtcwake", sudoers_text)
+        self.assertIn("control-hub.service", sudoers_text)
+
+
 if __name__ == "__main__":
     unittest.main()

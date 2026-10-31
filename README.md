@@ -22,6 +22,7 @@ homelab-blueprint/
 ├── ARCHITECTURE.md                     # Deep technical architecture (storage, CPU, memory, power)
 ├── bootstrap.sh                        # 1-Line zero-dependency Ubuntu server installer
 ├── setup.sh                            # Local repository setup and wizard launcher
+├── teardown.sh                         # Clean cluster uninstaller & host state restoration
 ├── .env.example                        # Unified server configuration template
 ├── docs/                               # Engineering runbooks, ADRs & visual test reports
 │   ├── README.md                       # Master documentation hub & Diátaxis navigation portal
@@ -168,6 +169,26 @@ Clicking **🤖 AI Copilot** in the header opens a dedicated drawer for operator
 * Direct links to offline markdown engineering runbooks for zero-overhead troubleshooting.
 
 ![AI Copilot Drawer](docs/assets/control-hub/hub_ai_copilot_diagnostics.png)
+
+---
+
+## 🧹 Clean Teardown & Uninstallation
+
+If you ever need to decommission or move your installation, run the clean uninstaller:
+
+```bash
+# Safe interactive uninstallation (preserves media, photos & databases)
+sudo ./teardown.sh
+
+# Non-interactive uninstallation
+sudo ./teardown.sh -y
+
+# Simulation mode (shows what would be removed without making changes)
+./teardown.sh --dry-run
+```
+
+* **What it stops & cleans:** Stops all Docker Compose stacks, disables & removes `control-hub.service`, removes cron entries from `/etc/cron.d/`, and removes helper binaries.
+* **Data Safety:** By default, all media files (`/mnt/hdd/data`), photos, and databases are **safely preserved on disk**. Use `--purge-data` only if you wish to wipe app configurations.
 
 ---
 

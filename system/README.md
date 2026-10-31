@@ -31,7 +31,8 @@ While application workloads (Jellyfin, qBittorrent, Immich, Radarr) run inside i
 ```
 system/
 ├── systemd/
-│   └── control-hub.service               # Systemd daemon for Control Hub Flask runtime
+│   ├── control-hub.service               # Systemd daemon for Control Hub Flask runtime (unprivileged)
+│   └── homelab-sudoers.example           # Least-privilege sudoers whitelist (/etc/sudoers.d/)
 ├── power/
 │   ├── server-suspend.sh                 # Intelligent ACPI S3 sleep & self-healing wake script
 │   ├── server-suspend.conf.example       # Threshold configuration (SMB, downloads, network limits)
@@ -58,6 +59,7 @@ system/
 Runs the Control Hub web dashboard and telemetry daemon on port `7575`.
 
 * **Service Definition:** `system/systemd/control-hub.service`
+* **Security Model (Least Privilege):** Executes as unprivileged service user `User=homelab` with `SupplementaryGroups=docker` (instead of `root`), restricting daemon privileges.
 * **Restart Policy:** `Restart=always` with 5-second backoff.
 * **Resource Bounds:**
   ```ini
@@ -66,9 +68,16 @@ Runs the Control Hub web dashboard and telemetry daemon on port `7575`.
   ```
   Strict resource caps ensure telemetry polling never starves container workloads or runs away with host memory.
 
-#### Installation & Control Commands:
+#### Installation & Security Setup:
 ```bash
-# Link and enable systemd service
+# 1. Create unprivileged service user if not present
+sudo useradd -r -s /usr/sbin/nologin -G docker homelab 2>/dev/null || true
+
+# 2. Deploy least-privilege sudoers whitelist
+sudo cp system/systemd/homelab-sudoers.example /etc/sudoers.d/homelab-blueprint
+sudo chmod 0440 /etc/sudoers.d/homelab-blueprint
+
+# 3. Link and enable systemd service
 sudo cp system/systemd/control-hub.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now control-hub.service
