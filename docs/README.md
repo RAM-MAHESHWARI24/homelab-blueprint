@@ -108,8 +108,10 @@ Find the most efficient entry point based on your current task:
 * **[Early Setup Wizard Test Results](SETUP_WIZARD_TEST_RESULTS.md)**
   * *Why it matters:* Historical validation log of the zero-dependency onboarding wizard browser interactions and dry-run execution results.
 
-### 4. AI Pairing & Automated Testing
+### 4. AI Pairing, Standards & Automated Testing
 
+* **[Industry Standards & Engineering Maturity Model](STANDARDS_AND_MATURITY_MODEL.md)**
+  * *Why it matters:* Audit of industry standards (SemVer, CIS, 12-Factor, SLSA, OpenAPI), our current implementation, and actionable roadmap for public packaging.
 * **[AI Coding Agent Master Operating Standards](../AGENTS.md)**
   * *Why it matters:* Foundational rules for AI coding assistants on how to code, how to document, architectural invariants, and mandatory verification gates.
 * **[AI Agent Master Instructions](AI_AGENT_INSTRUCTIONS.md)**

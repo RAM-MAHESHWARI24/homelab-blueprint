@@ -212,6 +212,7 @@ Comprehensive technical documentation covering every homelab subsystem (see **[d
 | **[Gigabit LAN Diagnostics](docs/GIGABIT_LAN_DIAGNOSTICS.md)** | Ethernet auto-negotiation, PHY diagnostics, and Cat6 verification |
 | **[AI Agent Master Instructions](docs/AI_AGENT_INSTRUCTIONS.md)** | High-density architectural cheatsheet for AI coding agents |
 | **[AI Agent Operating Standards](AGENTS.md)** | Master engineering guidelines: coding standards, doc rules & test gates |
+| **[Standards & Maturity Model](docs/STANDARDS_AND_MATURITY_MODEL.md)** | Evaluation against industry specs (SemVer, CIS, 12-Factor, OpenAPI) & roadmap |
 | **[Setup Wizard Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)** | Early browser test validation and dry-run execution results |
 
 ---
