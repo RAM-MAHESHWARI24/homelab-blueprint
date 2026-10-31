@@ -140,6 +140,17 @@ python testing/test_lifecycle_handoff.py
 
 ## 5. Git Discipline & Commit Standards
 
+### 5.1. Dual-Branch Release Architecture (`main` vs `develop`)
+* **`main` (Stable Public Release):**
+  * Production-ready, release-tagged branch.
+  * What end-users clone or run via `curl -sSL .../bootstrap.sh`.
+  * Must **always** be 100% stable, fully tested, and releasable. Direct experimental commits are prohibited.
+* **`develop` (Active Integration & Staging):**
+  * Primary working branch for ongoing development, agent tasks, and feature staging.
+  * All topic branches (`feat/...`, `fix/...`, `docs/...`) branch off and merge into `develop`.
+  * Merged into `main` only when cutting verified releases or milestone tags.
+
+### 5.2. Conventional Commits & Clean Tree
 * Follow the **Conventional Commits** specification:
   * `feat(...)`: New feature, endpoint, or hardware capability
   * `fix(...)`: Bugfix or error resolution
@@ -149,3 +160,4 @@ python testing/test_lifecycle_handoff.py
   * `chore(...)`: Maintenance, dependency updates, or git configuration
 * Keep commits **atomic**: do not combine unrelated refactors with bug fixes.
 * Ensure working tree is clean and `git status` reports zero unintended untracked files before concluding.
+

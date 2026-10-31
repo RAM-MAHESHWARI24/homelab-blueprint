@@ -442,9 +442,9 @@ name: Homelab Blueprint CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   lint-and-security:
