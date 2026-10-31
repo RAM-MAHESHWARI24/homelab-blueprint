@@ -204,13 +204,17 @@ Comprehensive technical documentation covering every homelab subsystem:
 
 ---
 
-## 💻 Recommended Hardware Profiles
+## 💻 Universal Hardware Support & Dynamic Probing
 
-This blueprint is tuned for maximum energy efficiency on repurposed hardware:
+The Homelab Blueprint is engineered to be **hardware-agnostic**: it runs out-of-the-box on **any hardware** and dynamically detects its host environment to optimize power, storage, and media transcoding:
 
-* **Tier 1 (Ultra Low Power / Legacy):** Intel 4th-Gen Haswell (e.g. i3-4005U / i5-4200U), 8GB DDR3 RAM, 240GB SSD + 1TB HDD. Idle draw: **~8W daytime, 1.2W sleep**.
-* **Tier 2 (Modern Mini-PC):** Intel Alder Lake-N (N100 / N200 / N305), 16GB DDR5 RAM, NVMe SSD + USB3/SATA DAS. Idle draw: **~6W daytime, 1.0W sleep**.
-* **Tier 3 (Small Form Factor):** Intel 8th-12th Gen Core i3/i5 SFF PC, 16-32GB RAM, NVMe + dual HDD mirror.
+* **Automatic Hardware Detection:** Both the Day 0 Setup Wizard (`port 8000`) and the Day 1 Control Hub (`port 7575`) dynamically probe host CPU model, core/thread count, physical memory headroom, active network interfaces, and storage block devices (`/dev/nvme*`, `/dev/sd*`, `/dev/vd*`).
+* **Adaptive Playback Mode:** On legacy or transcode-constrained CPUs (Haswell, Celeron, Atom, N100), the system automatically enforces **Direct Play** (<1.5% CPU vs 100% transcode lock). On modern Intel/AMD/NVIDIA systems, GPU acceleration (`/dev/dri/renderD128`, NVENC) is unlocked.
+* **Tested Hardware Profiles:**
+  * **Tier 1 (Tested Minimum Baseline):** Repurposed laptop / Intel 4th-Gen Haswell (e.g. i3-4005U / i5-4200U), 8GB DDR3 RAM, 240GB SSD + 1TB HDD. Idle draw: **~8W daytime, 1.2W sleep**.
+  * **Tier 2 (Modern Mini-PC):** Intel Alder Lake-N (N100 / N200 / N305), 16GB DDR5 RAM, NVMe SSD + USB3/SATA DAS. Idle draw: **~6W daytime, 1.0W sleep**.
+  * **Tier 3 (Small Form Factor / Tower):** Intel 8th-14th Gen Core i3/i5/i7 or AMD Ryzen SFF PC, 16-64GB RAM, NVMe + multi-HDD pool.
+  * **Tier 4 (ARM64 SBCs & VMs):** Raspberry Pi 5 / Rock 5B, Proxmox VE, ESXi, or Hyper-V virtual appliances.
 
 ---
 

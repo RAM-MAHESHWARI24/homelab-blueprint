@@ -26,6 +26,8 @@ services:
     volumes:
       - ${CONFIG_DIR:-./config}/jellyfin:/config
       - ${DATA_DIR:-/mnt/hdd/data}:/data
+#   devices:
+#     - /dev/dri:/dev/dri # Optional: Uncomment to enable Intel QuickSync / VAAPI GPU transcoding on modern CPUs
     restart: unless-stopped
 
   seerr:

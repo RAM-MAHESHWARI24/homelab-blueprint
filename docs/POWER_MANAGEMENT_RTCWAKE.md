@@ -28,3 +28,18 @@ When the system resumes from S3:
 2. Waits 5 seconds for daemon sockets to bind.
 3. **Prowlarr Reset:** Calls `/api/v1/indexer/testall` to reset any backoff penalty timers accumulated during sleep.
 4. **Sonarr/Radarr Sync:** Triggers `CheckHealth` and `RssSync` commands to immediately pick up any new releases uploaded overnight.
+
+## 5. Dry-Run Testing & CI Simulation Mode
+To test suspension deferral, override parsing, and duration calculation in CI or regression harnesses without invoking hardware Real-Time Clock sleep:
+```bash
+/usr/local/sbin/server-suspend.sh --dry-run
+# or
+DRY_RUN=1 /usr/local/sbin/server-suspend.sh
+```
+
+In test environments, all default file paths can be redirected to isolated sandbox paths via environment variables:
+* `SERVER_SUSPEND_LOG`: Destination log file (default: `/var/log/server-suspend.log`)
+* `SERVER_SUSPEND_SKIP`: Inhibition flag (default: `/run/server-suspend.skip`)
+* `SERVER_SUSPEND_OVERRIDE`: Temporary override config (default: `/run/server-suspend.override`)
+* `SERVER_SUSPEND_CONF`: Permanent schedule config (default: `/etc/server-suspend.conf`)
+

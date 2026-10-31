@@ -241,6 +241,7 @@ multipass delete homelab-low-spec --purge
 | **`TC-SYS-03`** | Sleep Guard Skip Flag | Touch `/run/server-suspend.skip` and invoke `/usr/local/sbin/server-suspend.sh`. | Suspend routine detects flag, deletes it, and exits safely without sleeping. | System remains online; exit code 0. |
 | **`TC-SYS-04`** | Active Job Deferral | Trigger `/usr/local/sbin/server-suspend.sh` while `immich_backup_gdrive.sh` is running. | Suspend routine detects active backup and defers sleep. | Sleep aborted; warning logged to `/var/log/server-suspend.log`. |
 | **`TC-SYS-05`** | CleanYourTV Quiescent Idle | Run `python3 tv_updater.py` when all target TVs are already up to date. | Detects all target versions match `state.json`. Exits immediately. | Runtime **< 15ms**; zero ADB network packets transmitted. |
+| **`TC-SYS-06`** | Daemon Dry-Run Simulation Mode | Run `server-suspend.sh --dry-run` or with `DRY_RUN=1`. | Verifies calculation of sleep duration and logging without invoking hardware `rtcwake`. | Exit code 0; `[DRY_RUN]` logged; `rtcwake` skipped. |
 
 ---
 
@@ -462,12 +463,14 @@ jobs:
 
       - name: ShellCheck Static Analysis
         run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck bootstrap.sh setup.sh
-          shellcheck system/maintenance/watchtower-run.sh
-          shellcheck system/power/immich-ml-control.sh
-          shellcheck system/power/server-suspend.sh
-          shellcheck apps/tv-updater/setup_cron.sh
+          shellcheck --severity=warning \
+            bootstrap.sh \
+            setup.sh \
+            system/maintenance/watchtower-run.sh \
+            system/power/immich-ml-control.sh \
+            system/power/server-suspend.sh \
+            apps/tv-updater/setup_cron.sh \
+            apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example
 
   setup-wizard-test-matrix:
     name: Setup Wizard Matrix Test
@@ -490,6 +493,10 @@ jobs:
       - name: Execute Setup Wizard Verification Test Suite
         run: |
           python setup/test_setup.py
+
+      - name: Execute E2E Pipeline Regression Suite
+        run: |
+          python testing/test_e2e_regression.py
 
   docker-compose-validation:
     name: Docker Compose & Multi-Arch Verification
@@ -544,6 +551,7 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [ ] **TC-DOCK-03:** `tmdb-interceptor.js` intercepts blocked TMDB requests.
 - [ ] **TC-SYS-01:** Control Hub starts via systemd and stays `< 25MB RAM`.
 - [ ] **TC-SYS-03:** Sleep Guard honors `/run/server-suspend.skip` flag.
+- [ ] **TC-SYS-06:** Sleep Guard dry-run verifies duration logic without hardware `rtcwake`.
 - [ ] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
 
 ### E2E Media Ingestion & Hardlinks

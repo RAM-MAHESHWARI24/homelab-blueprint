@@ -76,11 +76,15 @@ Administrators can now inspect, live-test, and update their entire homelab topol
 - **Safety Guarantee:** Applies with `netplan try --timeout 45`. If connection drops or network configuration fails, Netplan automatically rolls back to the backup network configuration within 45 seconds, protecting remote SSH sessions from getting severed.
 
 ### 🤖 5. AI Copilot Diagnostics & Compact Prompt Exporter
-- Probes CPU architecture, thread count, and low-power Haswell class.
+- Probes CPU model, architecture, thread count, and low-power / Direct Play profile.
 - Probes RAM headroom and `/dev/dri/renderD128` hardware acceleration status.
 - Generates a **token-optimized diagnostic prompt (~300 tokens)** tailored for ChatGPT, Claude, and Antigravity:
-  - Includes hardware specs, mount paths, network settings, and key blueprint architectural rules.
+  - Includes real-time hardware specs, mount paths, network settings, and key blueprint architectural rules.
   - Features 1-click **"📋 Copy AI Prompt"** with visual clipboard confirmation.
+
+### 📊 6. Universal Hardware Telemetry Display
+- **Dynamic Vitals Card:** Automatically populates host CPU model, core/thread count, physical memory headroom, and root/storage partition sizes dynamically without hardcoded machine assumptions.
+- **Dynamic Block Device Throughput:** Dynamically identifies active root and storage block devices (`nvme*`, `sd*`, `vd*`, `mmcblk*`) and renders read/write I/O telemetry in real time.
 
 ---
 

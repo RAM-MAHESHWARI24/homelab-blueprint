@@ -4,6 +4,7 @@ Probes CPU/GPU, RAM, Host User IDs, Docker status, Disks, and Network.
 """
 
 import os
+import sys
 import platform
 import shutil
 import subprocess
@@ -18,21 +19,45 @@ from .port_manager import get_default_ports
 
 def probe_cpu_info() -> Dict[str, Any]:
     """Detects CPU model, core/thread count, architecture, and Haswell/Direct Play class"""
-    model_name = platform.processor() or "Unknown CPU"
+    model_name = ""
     cores = os.cpu_count() or 2
     arch = platform.machine()
     is_low_power = False
 
+    # 1. Linux /proc/cpuinfo
     proc_cpuinfo = Path("/proc/cpuinfo")
     if proc_cpuinfo.exists():
         try:
-            with open(proc_cpuinfo, "r") as f:
+            with open(proc_cpuinfo, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
                     if line.startswith("model name"):
-                        model_name = line.split(":", 1)[1].strip()
-                        break
+                        m = line.split(":", 1)[1].strip()
+                        if m:
+                            model_name = m
+                            break
         except Exception:
             pass
+
+    # 2. Windows registry fallback for clean processor brand string
+    if not model_name and sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+            model_name = winreg.QueryValueEx(key, "ProcessorNameString")[0].strip()
+        except Exception:
+            pass
+
+    # 3. macOS sysctl fallback
+    if not model_name and sys.platform == "darwin":
+        try:
+            res = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0:
+                model_name = res.stdout.strip()
+        except Exception:
+            pass
+
+    if not model_name:
+        model_name = platform.processor() or f"{arch} Host Processor"
 
     # Detect older low-power architectures (e.g. Haswell, Broadwell, Celeron, Atom)
     model_lower = model_name.lower()
@@ -42,6 +67,7 @@ def probe_cpu_info() -> Dict[str, Any]:
     return {
         "model": model_name,
         "threads": cores,
+        "cores": cores,
         "architecture": arch,
         "is_low_power": is_low_power,
         "recommended_playback": "Direct Play (CPU Protection)" if is_low_power else "Intel QuickSync / Hardware Transcode",
@@ -49,7 +75,7 @@ def probe_cpu_info() -> Dict[str, Any]:
 
 
 def probe_ram_info() -> Dict[str, Any]:
-    """Detects total memory and available memory in GiB"""
+    """Detects total memory and available memory in GiB across Linux, Windows, or macOS"""
     total_gib = 8.0
     free_gib = 4.0
 
@@ -68,6 +94,28 @@ def probe_ram_info() -> Dict[str, Any]:
                     total_gib = round(mem["MemTotal"] / (1024 * 1024), 2)
                 if "MemAvailable" in mem:
                     free_gib = round(mem["MemAvailable"] / (1024 * 1024), 2)
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ('dwLength', ctypes.c_ulong),
+                    ('dwMemoryLoad', ctypes.c_ulong),
+                    ('ullTotalPhys', ctypes.c_ulonglong),
+                    ('ullAvailPhys', ctypes.c_ulonglong),
+                    ('ullTotalPageFile', ctypes.c_ulonglong),
+                    ('ullAvailPageFile', ctypes.c_ulonglong),
+                    ('ullTotalVirtual', ctypes.c_ulonglong),
+                    ('ullAvailVirtual', ctypes.c_ulonglong),
+                    ('ullAvailExtendedVirtual', ctypes.c_ulonglong)
+                ]
+            s = MEMORYSTATUSEX()
+            s.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(s))
+            total_gib = round(s.ullTotalPhys / (1024**3), 2)
+            free_gib = round(s.ullAvailPhys / (1024**3), 2)
         except Exception:
             pass
 

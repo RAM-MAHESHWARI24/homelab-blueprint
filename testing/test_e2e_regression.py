@@ -336,5 +336,49 @@ class TestSystemPowerAndHostDaemons(unittest.TestCase):
         self.assertIn("[DRY_RUN] Dry run enabled", log_content)
 
 
+class TestUniversalHardwareDetection(unittest.TestCase):
+    """Module 10: Dynamic Hardware Probing & Custom Hardware Adaptability"""
+
+    def test_cpu_and_ram_dynamic_probing(self):
+        """TC-HW-01: Prober accurately queries CPU model, thread count, architecture, and RAM headroom"""
+        from setup.config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
+
+        cpu = probe_cpu_info()
+        self.assertIsInstance(cpu["model"], str)
+        self.assertTrue(len(cpu["model"]) > 0, "CPU model name must not be empty")
+        self.assertGreaterEqual(cpu["threads"], 1, "Host must have at least 1 CPU thread")
+        self.assertIn("is_low_power", cpu)
+        self.assertIn("recommended_playback", cpu)
+
+        ram = probe_ram_info()
+        self.assertGreater(ram["total_gib"], 0.0, "Total RAM must be greater than 0 GiB")
+        self.assertGreater(ram["free_gib"], 0.0, "Free RAM must be greater than 0 GiB")
+
+        hw = probe_hardware_acceleration()
+        self.assertIn("has_vaapi_dri", hw)
+        self.assertIn("recommended_mode", hw)
+
+    def test_control_hub_hardware_telemetry(self):
+        """TC-HW-02: Control Hub telemetry sampler resolves dynamic CPU specs and block devices"""
+        sys.path.insert(0, str(REPO_ROOT / "apps" / "control-hub"))
+        from core.telemetry_sampler import (
+            get_cpu_hardware_specs,
+            detect_storage_devices,
+            detect_active_nic
+        )
+
+        cpu_specs = get_cpu_hardware_specs()
+        self.assertTrue(len(cpu_specs["model"]) > 0)
+        self.assertGreaterEqual(cpu_specs["cores"], 1)
+
+        root_dev, data_dev, data_mount = detect_storage_devices()
+        self.assertTrue(len(root_dev) > 0)
+        self.assertTrue(len(data_dev) > 0)
+        self.assertTrue(len(data_mount) > 0)
+
+        nic = detect_active_nic("eth0")
+        self.assertTrue(len(nic) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
