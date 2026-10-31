@@ -71,6 +71,7 @@ All media ingestion containers (`qbittorrent`, `sonarr`, `radarr`, `bazarr`) sha
 * **Disk I/O:** Exactly 0 MB written.
 * **Storage Footprint:** Exactly 0 additional bytes used.
 * **Latency:** <50 milliseconds.
+* **Architecture Decision:** See [ADR-0001: Single ext4 Mount for Atomic 0-I/O Hardlinks](docs/adr/0001-single-mount-atomic-hardlinks.md).
 
 ### 3. Automated RTC S3 Sleep & Self-Healing
 To prolong hardware lifespan and minimize electrical draw:
@@ -78,6 +79,20 @@ To prolong hardware lifespan and minimize electrical draw:
 * System wakes automatically via hardware motherboard RTC alarm at **06:00 AM**.
 * Active backup detection (`immich_backup_gdrive.sh`, `rclone`, `pg_dumpall`) automatically defers sleep until completion.
 * Post-resume self-healing verifies network connectivity, resets Prowlarr backoff penalties, and triggers Arr library syncs.
+* **Architecture Decision:** See [ADR-0003: ACPI S3 Suspend-to-RAM with RTC Wake](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md).
 
-### 4. ISP SNI DPI Bypass (Zero-Cost DNS Proxy)
+### 4. Zero-Dependency Onboarding Bootstrap
+The onboarding wizard runs on pure Python 3 standard library with zero external packages or pip installs:
+* **Architecture Decision:** See [ADR-0002: Zero-Dependency Setup Wizard](docs/adr/0002-zero-dependency-setup-wizard.md).
+
+### 5. ISP SNI DPI Bypass (Zero-Cost DNS Proxy)
 Many regional Internet Service Providers block The Movie Database (TMDB) at the SNI/DNS level, preventing Jellyfin and Seerr from fetching movie posters and metadata. The architecture embeds `tmdb-interceptor.js`, intercepting blocked outbound calls in-memory and transparently rewriting them to clean Cloudflare DNS and mirrors without requiring commercial VPN subscriptions.
+
+---
+
+## 4. Documentation & Decision Index
+
+* 📚 **[Master Documentation Hub & Runbook Portal](docs/README.md)**
+* 🏛️ **[Architecture Decision Records (ADRs)](docs/adr/README.md)**
+* ⚙️ **[Host System Daemons & Cron Services](system/README.md)**
+* 🧪 **[Master Verification & Testing Plan](testing/README.md)**

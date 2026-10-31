@@ -54,6 +54,10 @@ jobs:
         run: |
           pip install -r apps/control-hub/requirements.txt
 
+      - name: Validate Documentation Integrity & Links
+        run: |
+          python testing/test_docs_integrity.py
+
       - name: Execute Setup Wizard Verification Test Suite
         run: |
           python setup/test_setup.py

@@ -22,7 +22,13 @@ homelab-blueprint/
 ├── bootstrap.sh                        # 1-Line zero-dependency Ubuntu server installer
 ├── setup.sh                            # Local repository setup and wizard launcher
 ├── .env.example                        # Unified server configuration template
-├── docs/                               # Engineering runbooks & visual test reports
+├── docs/                               # Engineering runbooks, ADRs & visual test reports
+│   ├── README.md                       # Master documentation hub & Diátaxis navigation portal
+│   ├── adr/                            # Architecture Decision Records (ADRs)
+│   │   ├── README.md                   # ADR index, status taxonomy, and contribution template
+│   │   ├── 0001-single-mount-atomic-hardlinks.md
+│   │   ├── 0002-zero-dependency-setup-wizard.md
+│   │   └── 0003-acpi-s3-sleep-guard-power-automation.md
 │   ├── STORAGE_AND_HARDLINKS.md        # Single ext4 mount atomic hardlink guide (0 disk I/O)
 │   ├── POWER_MANAGEMENT_RTCWAKE.md     # S3 suspend (1.2W) & post-wake self-healing runbook
 │   ├── NETWORKING_TAILSCALE_SAMBA.md   # Tailscale subnet routing & Samba dual shares
@@ -46,6 +52,7 @@ homelab-blueprint/
 ├── testing/                            # Master quality assurance, VM sandboxes & CI/CD
 │   └── README.md                       # Full testing plan, hardware matrix, and DoD
 ├── system/                             # Host OS automation & configurations
+│   ├── README.md                       # Host daemons, sleep automation & cron architecture
 │   ├── cron.d/                         # Template cron definitions (suspend, backup, updates)
 │   ├── systemd/                        # Systemd unit files (Control Hub background daemon)
 │   ├── power/                          # Suspend, RTC wake, and ML container schedule scripts
@@ -159,7 +166,7 @@ Clicking **🤖 AI Copilot** in the header opens a dedicated drawer for operator
 * 1-Click **"📋 Copy AI Prompt"** exports a dense, token-optimized context prompt (~300 tokens) ready to paste into ChatGPT, Claude, Cursor, or Antigravity.
 * Direct links to offline markdown engineering runbooks for zero-overhead troubleshooting.
 
-![AI Copilot Drawer](docs/assets/control-hub/hub_ai_copilot_drawer.png)
+![AI Copilot Drawer](docs/assets/control-hub/hub_ai_copilot_diagnostics.png)
 
 ---
 
@@ -182,12 +189,15 @@ python3 setup/test_setup.py
 
 ---
 
-## 📚 Deep Dive Engineering Runbooks
+## 📚 Master Documentation Hub & Engineering Runbooks
 
-Comprehensive technical documentation covering every homelab subsystem:
+Comprehensive technical documentation covering every homelab subsystem (see **[docs/README.md](docs/README.md)** for full Diátaxis navigation):
 
 | Document | Description |
 | :--- | :--- |
+| **[Master Documentation Hub](docs/README.md)** | Central documentation portal, Diátaxis role-based paths & runbook index |
+| **[Architecture Decision Records (ADRs)](docs/adr/README.md)** | Immutable historical log of core architectural choices and trade-offs |
+| **[Host Daemons, Sleep & Cron](system/README.md)** | Host-level systemd service, ACPI S3 suspend script & cron automation |
 | **[Master Verification & Test Report](docs/HOMELAB_VERIFICATION_AND_TEST_REPORT.md)** | Full end-to-end verification report with 13 visual proofs & risk analysis |
 | **[Control Hub Configuration Center](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)** | Deep dive into the live dashboard configuration drawer & AI Copilot |
 | **[Storage Architecture & 0-I/O Hardlinks](docs/STORAGE_AND_HARDLINKS.md)** | Single ext4 mount atomic hardlink guide (0 disk space, 0 I/O load) |

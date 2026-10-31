@@ -494,6 +494,10 @@ jobs:
         run: |
           pip install -r apps/control-hub/requirements.txt
 
+      - name: Validate Documentation Integrity & Links
+        run: |
+          python testing/test_docs_integrity.py
+
       - name: Execute Setup Wizard Verification Test Suite
         run: |
           python setup/test_setup.py
@@ -561,6 +565,12 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [ ] **TC-SYS-03:** Sleep Guard honors `/run/server-suspend.skip` flag.
 - [ ] **TC-SYS-06:** Sleep Guard dry-run verifies duration logic without hardware `rtcwake`.
 - [ ] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
+
+### Documentation Architecture & Link Integrity (`testing/test_docs_integrity.py`)
+- [x] **TC-DOC-01:** Colocated component `README.md` presence across all domains and apps.
+- [x] **TC-DOC-02:** Zero broken internal cross-references, scripts, or image asset links.
+- [x] **TC-DOC-03:** Comprehensive runbook cataloging in `docs/README.md` (no orphaned documentation).
+- [x] **TC-DOC-04:** Architecture Decision Records (ADRs) format, taxonomy, and index integrity.
 
 ### Full Lifecycle & Wizard-to-Hub Handoff (`testing/test_lifecycle_handoff.py`)
 - [x] **TC-FLOW-01:** Setup Wizard initialization, zero-dependency environment probe, and port safety audit.
