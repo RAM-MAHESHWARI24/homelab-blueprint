@@ -18,6 +18,7 @@ Instead of juggling multiple scattered repositories, conflicting `.env` files, a
 ```
 homelab-blueprint/
 ├── README.md                           # Master homelab overview & quickstart
+├── AGENTS.md                           # AI Coding Agent Master Operating Standards & Rules
 ├── ARCHITECTURE.md                     # Deep technical architecture (storage, CPU, memory, power)
 ├── bootstrap.sh                        # 1-Line zero-dependency Ubuntu server installer
 ├── setup.sh                            # Local repository setup and wizard launcher
@@ -210,6 +211,7 @@ Comprehensive technical documentation covering every homelab subsystem (see **[d
 | **[Low-Power CPU & Direct Play](docs/HASWELL_DIRECT_PLAY_GUIDE.md)** | Haswell i3 / low-power CPU optimization & direct play enforcement |
 | **[Gigabit LAN Diagnostics](docs/GIGABIT_LAN_DIAGNOSTICS.md)** | Ethernet auto-negotiation, PHY diagnostics, and Cat6 verification |
 | **[AI Agent Master Instructions](docs/AI_AGENT_INSTRUCTIONS.md)** | High-density architectural cheatsheet for AI coding agents |
+| **[AI Agent Operating Standards](AGENTS.md)** | Master engineering guidelines: coding standards, doc rules & test gates |
 | **[Setup Wizard Test Results](docs/SETUP_WIZARD_TEST_RESULTS.md)** | Early browser test validation and dry-run execution results |
 
 ---

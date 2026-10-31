@@ -110,6 +110,8 @@ Find the most efficient entry point based on your current task:
 
 ### 4. AI Pairing & Automated Testing
 
+* **[AI Coding Agent Master Operating Standards](../AGENTS.md)**
+  * *Why it matters:* Foundational rules for AI coding assistants on how to code, how to document, architectural invariants, and mandatory verification gates.
 * **[AI Agent Master Instructions](AI_AGENT_INSTRUCTIONS.md)**
   * *Why it matters:* High-density architectural cheatsheet tailored for LLMs and autonomous coding assistants (token-optimized, zero fluff).
 * **[Master Testing Plan & Test Harness](../testing/README.md)**
@@ -133,6 +135,7 @@ Every primary module in this monorepo includes a dedicated, colocated `README.md
 
 ```
 ├── README.md                                # Root Project Overview & Portal
+├── AGENTS.md                                # AI Coding Agent Operating Standards & Rules
 ├── ARCHITECTURE.md                          # Full Monorepo Architecture & Hardware Tiers
 ├── setup/README.md                          # Phase 1 Zero-Dependency Setup Wizard
 ├── apps/

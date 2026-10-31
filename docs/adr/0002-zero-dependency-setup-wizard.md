@@ -42,7 +42,7 @@ The **Phase 1 Setup Wizard (`setup/`)** and core configuration libraries must be
 * Web UI assets (HTML/CSS/JS) must be bundled locally without external CDN dependencies.
 
 ## References
-* [Setup Wizard Implementation](../../setup/setup_server.py)
+* [Setup Wizard Implementation](../../setup/server.py)
 * [Setup Architecture Guide](../../setup/README.md)
 * [Lifecycle Test TC-FLOW-01](../../testing/test_lifecycle_handoff.py)
 
