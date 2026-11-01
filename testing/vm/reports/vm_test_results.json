@@ -2,50 +2,50 @@
   "total": 7,
   "passed": 7,
   "failed": 0,
-  "duration_seconds": 179.53,
+  "duration_seconds": 11.57,
   "verdict": "PASS",
   "tests": [
     {
       "name": "Storage_Loopback_Mount",
       "success": true,
-      "message": "4GB ext4 loopback mounted at /data",
-      "duration": 0.053
+      "message": "/data mounted",
+      "duration": 0.004
     },
     {
       "name": "Headless_Deployment",
       "success": true,
       "message": "Unattended deploy completed",
-      "duration": 178.399
+      "duration": 10.642
     },
     {
       "name": "Mock_Torznab_Startup",
       "success": true,
       "message": "Online on port 9999",
-      "duration": 0.615
+      "duration": 0.57
     },
     {
       "name": "Mock_Torznab_Protocol",
       "success": true,
       "message": "Caps, search feed, and .torrent verified",
-      "duration": 0.046
+      "duration": 0.04
     },
     {
       "name": "Media_Download",
       "success": true,
       "message": "Downloaded 2004475 bytes to /data/torrents",
-      "duration": 0.031
+      "duration": 0.02
     },
     {
       "name": "Inode_Identity_Invariant",
       "success": true,
-      "message": "st_ino=16 identical, st_nlink=2 (0 I/O copy verified)",
-      "duration": 0.032
+      "message": "st_ino=1313 identical, st_nlink=2 (0 I/O copy verified)",
+      "duration": 0.02
     },
     {
       "name": "Backup_Archive_Integrity",
       "success": true,
-      "message": "gzip -t passed cleanly (1755866 bytes)",
-      "duration": 0.374
+      "message": "gzip -t passed cleanly (1760750 bytes)",
+      "duration": 0.295
     }
   ]
 }
