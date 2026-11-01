@@ -1,29 +1,18 @@
-# State & Cache (NEVER COMMIT PHOTO PATHS)
-.faces_export_cache.json
-*.cache.json
-
-# Environment & Credentials
-.env
-.env.local
-*.secret
-*.key
-
-# Backups & SQL dumps
-*.sql
-*.sql.gz
-*.tar.gz
-backups/
-
-# Logs
-*.log
-logs/
-
-# Python artifacts
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
-venv/
-.venv/
+*$py.class
+*.so
+.pytest_cache/
 
-# OS Junk
-.DS_Store
-Thumbs.db
+# Local cache & credentials
+.faces_export_cache.json
+.env
+*.log
+
+# Database dumps and test storage
+backups/
+*.sql
+*.sql.gz
+/data/
+/tmp/
