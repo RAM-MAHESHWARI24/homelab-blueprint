@@ -1,2 +1,9 @@
-# Ensure shell scripts always have LF line endings across all platforms
+# Ensure consistent LF line endings across Linux host and Windows SMB clients
+* text=auto eol=lf
 *.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
