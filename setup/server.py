@@ -266,5 +266,62 @@ def run_server():
         httpd.server_close()
 
 
+def run_headless(config_path: str, dry_run: bool = False) -> int:
+    """Executes non-interactive deployment from a JSON configuration file."""
+    path = Path(config_path).resolve()
+    if not path.is_file():
+        safe_print(f"❌ Error: Config file not found at '{path}'")
+        return 1
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        safe_print(f"❌ Error parsing JSON config file: {e}")
+        return 1
+
+    if dry_run:
+        config["dry_run"] = True
+
+    # Auto-generate secure secrets if omitted in fixture
+    default_secrets = generate_all_secrets()
+    for sec_k, sec_v in default_secrets.items():
+        if not config.get(sec_k):
+            config[sec_k] = sec_v
+
+    safe_print(f"📦 Loaded configuration from: {path}")
+    safe_print(f"🚀 Launching Homelab provisioning pipeline (dry_run={config.get('dry_run', False)})...")
+
+    result = deploy_homelab_stack(str(REPO_ROOT), config)
+
+    safe_print("\n" + "=" * 60)
+    safe_print("           DEPLOYMENT EXECUTION LOGS")
+    safe_print("=" * 60)
+    for log_line in result.get("logs", []):
+        safe_print(f"  {log_line}")
+
+    if result.get("success"):
+        safe_print("\n✅ Headless deployment completed successfully!")
+        return 0
+    else:
+        safe_print("\n❌ Headless deployment encountered errors:")
+        for err in result.get("errors", []):
+            safe_print(f"  - {err}")
+        return 1
+
+
 if __name__ == "__main__":
-    run_server()
+    import argparse
+    parser = argparse.ArgumentParser(description="Homelab Blueprint Setup Wizard & API Daemon")
+    parser.add_argument("--headless", action="store_true", help="Run unattended headless deployment")
+    parser.add_argument("--config", type=str, default="", help="Path to JSON configuration fixture")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate deployment without modifying system")
+    args = parser.parse_args()
+
+    if args.headless:
+        if not args.config:
+            safe_print("❌ Error: --headless requires --config <path_to_config.json>")
+            sys.exit(1)
+        sys.exit(run_headless(args.config, dry_run=args.dry_run))
+    else:
+        run_server()

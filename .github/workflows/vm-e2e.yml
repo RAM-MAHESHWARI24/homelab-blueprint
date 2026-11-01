@@ -1,0 +1,52 @@
+name: Virtual Machine End-to-End (E2E) Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_image:
+        description: 'Ubuntu Release Image'
+        required: true
+        default: '24.04'
+        type: choice
+        options:
+          - '24.04'
+          - '22.04'
+      keep_vm_on_failure:
+        description: 'Retain VM if tests fail (for self-hosted runner debugging)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  vm-e2e-matrix:
+    name: Multipass Hardware-in-the-Loop E2E
+    runs-on: self-hosted
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Blueprint
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify Multipass Hypervisor Availability
+        run: |
+          multipass version
+          multipass get local.driver
+
+      - name: Execute Full VM Lifecycle Test Suite
+        run: |
+          python testing/vm/orchestrator.py --run-all
+
+      - name: Upload Test Results Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-test-reports
+          path: |
+            testing/vm/reports/*.json
+            testing/vm/reports/*.xml
+          if-no-files-found: warn

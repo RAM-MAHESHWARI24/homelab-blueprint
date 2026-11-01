@@ -1,0 +1,26 @@
+{
+  "host_user": "ubuntu",
+  "puid": 1000,
+  "pgid": 1000,
+  "server_ip": "127.0.0.1",
+  "timezone": "UTC",
+  "ssd_root": "/",
+  "hdd_data": "/data",
+  "hdd_memories": "/data/memories",
+  "config_dir": "/opt/homelab-blueprint/apps/mediaserver/config",
+  "photo_upload_dir": "/data/immich/upload",
+  "photo_db_dir": "/data/immich/postgres",
+  "enable_static_ip": false,
+  "active_nic": "eth0",
+  "link_speed_mbps": 1000,
+  "qbittorrent_user": "admin",
+  "qbittorrent_pass": "adminadmin",
+  "qbittorrent_port": 8080,
+  "radarr_api_key": "e2e_test_radarr_api_key_32bytes",
+  "sonarr_api_key": "e2e_test_sonarr_api_key_32bytes",
+  "prowlarr_api_key": "e2e_test_prowlarr_api_key_32b",
+  "control_hub_port": 7575,
+  "gdrive_remote": "gdrive:",
+  "enabled_services": ["media", "photos", "control_hub"]
+}
+

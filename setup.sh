@@ -14,10 +14,11 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
     echo "Homelab Blueprint Setup & Management CLI"
     echo ""
     echo "Usage:"
-    echo "  ./setup.sh              Launch zero-dependency web setup daemon (requires root)"
-    echo "  ./setup.sh --doctor     Run pre-flight host diagnostic prober (doctor)"
-    echo "  ./setup.sh --migrate    Auto-upgrade and migrate .env configuration files"
-    echo "  ./setup.sh --help       Show this help message"
+    echo "  ./setup.sh                                  Launch zero-dependency web setup daemon (requires root)"
+    echo "  ./setup.sh --headless --config <file.json>  Run unattended headless setup (requires root)"
+    echo "  ./setup.sh --doctor                         Run pre-flight host diagnostic prober (doctor)"
+    echo "  ./setup.sh --migrate                        Auto-upgrade and migrate .env configuration files"
+    echo "  ./setup.sh --help                           Show this help message"
     echo ""
     echo "Flags for --migrate:"
     echo "  --check                 Check status only, non-zero exit code if outdated"
@@ -75,6 +76,11 @@ if ! id -u homelab &>/dev/null; then
     useradd -r -s /usr/sbin/nologin -G docker homelab 2>/dev/null || true
 fi
 
-# 4. Launch the zero-dependency Python Setup Daemon
+# 4. Launch the zero-dependency Python Setup Daemon or Headless Runner
+if [[ "${1:-}" == "--headless" || "${1:-}" == "-hl" ]]; then
+    echo "🚀 Executing unattended headless deployment..."
+    exec python3 "$SCRIPT_DIR/setup/server.py" "$@"
+fi
+
 echo "🚀 Starting Web GUI daemon..."
 exec python3 "$SCRIPT_DIR/setup/server.py"
