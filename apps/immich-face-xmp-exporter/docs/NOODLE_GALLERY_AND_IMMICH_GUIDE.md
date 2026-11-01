@@ -153,7 +153,7 @@ $$\text{RegionAreaW} = \frac{|x_2 - x_1|}{W}, \quad \text{RegionAreaH} = \frac{|
 
 Spawning a new `exiftool` sub-process for every individual image in a library of 50,000 photos takes hours due to Perl interpreter startup overhead (~80ms per invocation $\approx$ 1 hour for 45,000 photos).
 
-Our implementation in [`export_faces_to_xmp.py`](../apps/immich-face-xmp-exporter/export_faces_to_xmp.py) streams commands using **Batch Mode (`-@`)**:
+Our implementation in [`export_faces_to_xmp.py`](../export_faces_to_xmp.py) streams commands using **Batch Mode (`-@`)**:
 1. All tag write arguments are compiled into a temporary buffer in memory:
    ```text
    -overwrite_original
@@ -178,7 +178,7 @@ Our implementation in [`export_faces_to_xmp.py`](../apps/immich-face-xmp-exporte
 
 ## 5. Automated Disaster Recovery & Google Drive Cloud Mirroring
 
-Our production backup pipeline ([`scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)) follows the **3-2-1 backup principle**:
+Our production backup pipeline ([`scripts/immich_backup_gdrive.sh.example`](../scripts/immich_backup_gdrive.sh.example)) follows the **3-2-1 backup principle**:
 
 1. **Step 1: Portable Metadata Invariant**: Runs `export_faces_to_xmp.py` to ensure all latest database changes are written to sidecars before taking the snapshot.
 2. **Step 2: Consistent Database Dump**: Executes `docker exec immich_postgres pg_dumpall -U postgres | gzip` creating a compressed SQL snapshot (~20 MB for typical family libraries).
@@ -201,7 +201,7 @@ On energy-efficient homelab processors (Intel Celeron N4000/N100, Core i3 Haswel
 * The ONNX runtime inside `gallery-machine-learning` consumes ~1.5 GB of RAM when idle and pegs all CPU cores at 100% when active.
 * Continuous background ML inference interferes with Jellyfin direct-play streams and spikes power draw from 11W to 34W.
 
-### Power Throttle Implementation ([`immich-ml-control.sh`](../apps/immich-face-xmp-exporter/scripts/immich-ml-control.sh)):
+### Power Throttle Implementation ([`immich-ml-control.sh`](../scripts/immich-ml-control.sh)):
 1. In `docker-compose.yml`, `gallery-machine-learning` is set to `restart: "no"`.
 2. A cron job starts the container at 02:00 AM (`immich-ml-control.sh start`).
 3. Newly uploaded mobile photos are indexed, faces clustered, and vector search updated.
