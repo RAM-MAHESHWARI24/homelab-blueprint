@@ -179,7 +179,7 @@ WebUI\\ServerDomains=*
         seerr_conf_dir.mkdir(parents=True, exist_ok=True)
         seerr_dst = seerr_conf_dir / "tmdb-interceptor.js"
         seerr_src = REPO_ROOT / "apps" / "mediaserver" / "config" / "seerr" / "tmdb-interceptor.js"
-        if seerr_src.exists() and not seerr_dst.exists():
+        if seerr_src.exists():
             shutil.copy2(seerr_src, seerr_dst)
             log("Injected Seerr tmdb-interceptor.js into config directory")
 
