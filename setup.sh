@@ -76,7 +76,12 @@ if ! id -u homelab &>/dev/null; then
     useradd -r -s /usr/sbin/nologin -G docker homelab 2>/dev/null || true
 fi
 
-# 4. Launch the zero-dependency Python Setup Daemon or Headless Runner
+# 4. Activate repository git hooks
+if [ -d "$SCRIPT_DIR/.git" ] && [ -d "$SCRIPT_DIR/.githooks" ]; then
+    git -C "$SCRIPT_DIR" config core.hooksPath .githooks 2>/dev/null || true
+fi
+
+# 5. Launch the zero-dependency Python Setup Daemon or Headless Runner
 if [[ "${1:-}" == "--headless" || "${1:-}" == "-hl" ]]; then
     echo "🚀 Executing unattended headless deployment..."
     exec python3 "$SCRIPT_DIR/setup/server.py" "$@"
