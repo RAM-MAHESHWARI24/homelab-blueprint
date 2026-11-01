@@ -65,6 +65,10 @@ Find the most efficient entry point based on your current task:
 │    "I want 4K transcode & 0-I/O"  │ 2. docs/HASWELL_DIRECT_PLAY_GUIDE.md                   │
 │                                   │ 3. apps/mediaserver/README.md                          │
 ├───────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 📸 Photo Archivist & AI Explorer  │ 1. docs/NOODLE_GALLERY_AND_IMMICH_GUIDE.md             │
+│    "I want mobile backup, portable│ 2. apps/noodle-gallery/README.md                       │
+│     face tags & cloud disaster DR"│ 3. https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools│
+├───────────────────────────────────┼────────────────────────────────────────────────────────┤
 │ 🤖 AI Coding Assistant / Engineer │ 1. docs/AI_AGENT_INSTRUCTIONS.md                       │
 │    "I want dense system context   │ 2. docs/adr/README.md                                  │
 │     and test specifications"      │ 3. testing/README.md                                   │
@@ -108,7 +112,16 @@ Find the most efficient entry point based on your current task:
 * **[Early Setup Wizard Test Results](SETUP_WIZARD_TEST_RESULTS.md)**
   * *Why it matters:* Historical validation log of the zero-dependency onboarding wizard browser interactions and dry-run execution results.
 
-### 4. AI Pairing, Standards & Automated Testing
+### 4. Photo Cloud, Facial AI & Metadata Synchronization
+
+* **[Noodle Gallery & Immich Architecture Runbook](NOODLE_GALLERY_AND_IMMICH_GUIDE.md)**
+  * *Why it matters:* Production engineering guide for Noodle Gallery and Immich, VectorChord acceleration, Metadata Working Group (`mwg-rs`) face bounding box normalization, batch ExifTool mechanics, and Google Drive cloud mirroring.
+* **[Noodle Gallery Component Stack](../apps/noodle-gallery/README.md)**
+  * *Why it matters:* Turn-key Docker Compose deployment guide, hardware transcoding overlays, and storage topography for the photo gallery stack.
+* **[Noodle Gallery Tools Standalone Repo](https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools)**
+  * *Why it matters:* Dedicated open-source repository containing the standalone Face-to-XMP Exporter, Shared Space Face Sync, and automated cloud backup scripts for existing Immich deployments.
+
+### 5. AI Pairing, Standards & Automated Testing
 
 * **[Industry Standards & Engineering Maturity Model](STANDARDS_AND_MATURITY_MODEL.md)**
   * *Why it matters:* Audit of industry standards (SemVer, CIS, 12-Factor, SLSA, OpenAPI), our current implementation, and actionable roadmap for public packaging.

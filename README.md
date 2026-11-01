@@ -33,6 +33,7 @@ homelab-blueprint/
 │   │   ├── 0002-zero-dependency-setup-wizard.md
 │   │   └── 0003-acpi-s3-sleep-guard-power-automation.md
 │   ├── STORAGE_AND_HARDLINKS.md        # Single ext4 mount atomic hardlink guide (0 disk I/O)
+│   ├── NOODLE_GALLERY_AND_IMMICH_GUIDE.md # Noodle Gallery, VectorChord, MWG-rs face export & cloud backup
 │   ├── POWER_MANAGEMENT_RTCWAKE.md     # S3 suspend (1.2W) & post-wake self-healing runbook
 │   ├── NETWORKING_TAILSCALE_SAMBA.md   # Tailscale subnet routing & Samba dual shares
 │   ├── NETPLAN_STATIC_IP_QUIRKS.md     # Safe Netplan rollback & SSH disconnection prevention
