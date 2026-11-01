@@ -11,7 +11,8 @@
    * [Foundation, Storage & Networking](#1-foundation-storage--networking)
    * [Hardware Acceleration & Power Management](#2-hardware-acceleration--power-management)
    * [Day-to-Day Operations & Control Hub](#3-day-to-day-operations--control-hub)
-   * [AI Pairing & Automated Testing](#4-ai-pairing--automated-testing)
+   * [Photo Cloud, Facial AI & Metadata Synchronization](#4-photo-cloud-facial-ai--metadata-synchronization)
+   * [AI Pairing, Standards & Automated Testing](#5-ai-pairing-standards--automated-testing)
 4. [Architecture Decision Records (ADRs)](#-architecture-decision-records-adrs)
 5. [Component README Directory Map](#-component-readme-directory-map)
 6. [Troubleshooting & Emergency Playbooks](#-troubleshooting--emergency-playbooks)
@@ -123,6 +124,8 @@ Find the most efficient entry point based on your current task:
 
 ### 5. AI Pairing, Standards & Automated Testing
 
+* **[Three-Tier Gatekeeping & Defect Prevention Architecture](THREE_TIER_PROTECTION_AND_GATEKEEPING_ARCHITECTURE.md)**
+  * *Why it matters:* Industry-standard 3-tier defense-in-depth model (Local Pre-Commit, Local Pre-Push, Remote Branch Protection & CI) enforcing zero syntax errors, credential protection, documentation integrity, and schema verification before code reaches production.
 * **[Industry Standards & Engineering Maturity Model](STANDARDS_AND_MATURITY_MODEL.md)**
   * *Why it matters:* Audit of industry standards (SemVer, CIS, 12-Factor, SLSA, OpenAPI), our current implementation, and actionable roadmap for public packaging.
 * **[AI Coding Agent Master Operating Standards](../AGENTS.md)**

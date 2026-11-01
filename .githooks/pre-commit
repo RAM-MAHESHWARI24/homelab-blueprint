@@ -8,3 +8,4 @@ else
     echo "Warning: Python not found in PATH, skipping pre-commit hook."
     exit 0
 fi
+
