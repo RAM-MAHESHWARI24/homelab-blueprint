@@ -9,9 +9,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Fast-path: Pre-Flight Doctor CLI does not require root
+# Fast-path CLI commands (do not require root)
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
+    echo "Homelab Blueprint Setup & Management CLI"
+    echo ""
+    echo "Usage:"
+    echo "  ./setup.sh              Launch zero-dependency web setup daemon (requires root)"
+    echo "  ./setup.sh --doctor     Run pre-flight host diagnostic prober (doctor)"
+    echo "  ./setup.sh --migrate    Auto-upgrade and migrate .env configuration files"
+    echo "  ./setup.sh --help       Show this help message"
+    echo ""
+    echo "Flags for --migrate:"
+    echo "  --check                 Check status only, non-zero exit code if outdated"
+    echo "  --dry-run               Simulate migrations without modifying files"
+    exit 0
+fi
+
 if [[ "${1:-}" == "--doctor" || "${1:-}" == "doctor" || "${1:-}" == "-d" ]]; then
     exec python3 "$SCRIPT_DIR/setup/doctor.py"
+fi
+
+if [[ "${1:-}" == "--migrate" || "${1:-}" == "migrate" || "${1:-}" == "-m" ]]; then
+    shift
+    exec python3 "$SCRIPT_DIR/setup/config_core/schema_migrator.py" "$@"
 fi
 
 # Ensure running with root/sudo for system-level configuration

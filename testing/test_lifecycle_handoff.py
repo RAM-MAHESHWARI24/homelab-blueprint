@@ -300,6 +300,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
         self.assertIn("sleep-guard-card", html, "Sleep Guard hero module must be present")
         self.assertIn("config-center-modal", html, "Settings configuration modal must be present")
         self.assertIn("ai-copilot-modal", html, "AI Copilot modal must be present")
+        res.close()
 
     # =========================================================================
     # Phase 1 -> Phase 2 Full Lifecycle Handoff Integration
@@ -347,6 +348,48 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
             self.assertEqual(refreshed_env.get("RADARR_API_KEY"), "HANDOFF_RADARR_TEST_KEY_12345")
         finally:
             shutil.rmtree(temp_env_dir, ignore_errors=True)
+
+    def test_09_control_hub_observability_and_openapi(self):
+        """TC-FLOW-09: Verify Control Hub liveness, readiness, health, and Swagger OpenAPI contracts"""
+        # 1. Healthcheck
+        res = self.hub_client.get("/api/health")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "ok")
+        self.assertEqual(data.get("service"), "control-hub")
+        self.assertEqual(data.get("version"), "1.0.1")
+        self.assertIn("uptime_seconds", data)
+
+        # 2. Kubernetes Liveness Probe
+        res = self.hub_client.get("/api/livez")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "live")
+
+        # 3. Kubernetes Readiness Probe
+        res = self.hub_client.get("/api/readyz")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "ready")
+        self.assertIn("checks", data)
+        self.assertEqual(data["checks"].get("telemetry"), "ok")
+
+        # 4. OpenAPI 3.1 Contract
+        res = self.hub_client.get("/api/openapi.yaml")
+        self.assertEqual(res.status_code, 200)
+        yaml_content = res.get_data(as_text=True)
+        res.close()
+        self.assertIn("openapi: 3.1.0", yaml_content)
+        self.assertIn("/api/system/vitals:", yaml_content)
+        self.assertIn("/api/sleep/status:", yaml_content)
+
+        # 5. Swagger UI Endpoint
+        res = self.hub_client.get("/api/docs")
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+        res.close()
+        self.assertIn("SwaggerUIBundle", html)
+        self.assertIn("/api/openapi.yaml", html)
 
 
 if __name__ == "__main__":

@@ -447,7 +447,79 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
         self.assertIn("5. Docker Engine & Container Orchestration:", proc.stdout)
         self.assertIn("6. Port Conflict & Socket Collision Scan:", proc.stdout)
         self.assertIn("7. Hardware Video Acceleration (Intel VAAPI/QSV):", proc.stdout)
+        self.assertIn("8. Configuration Environment & Schema Status (.env):", proc.stdout)
         self.assertIn("PRE-FLIGHT VERDICT:", proc.stdout)
+
+    def test_schema_migrator_auto_upgrade(self):
+        """TC-MIGRATOR-01: Verify schema migrator detects missing keys, creates backups, and injects defaults"""
+        from setup.config_core.schema_migrator import (
+            detect_schema_diff,
+            migrate_single_env,
+            run_migration_suite,
+        )
+
+        test_dir = Path(tempfile.mkdtemp(prefix="homelab_migrate_test_"))
+        try:
+            example_file = test_dir / ".env.example"
+            example_file.write_text(
+                "# Server config\n"
+                "HOST=0.0.0.0\n"
+                "# Port for daemon\n"
+                "PORT=7575\n"
+                "# New feature flag in v1.1\n"
+                "FEATURE_AI_SAMPLER=true\n",
+                encoding="utf-8"
+            )
+
+            # Live .env from v1.0 missing FEATURE_AI_SAMPLER
+            env_file = test_dir / ".env"
+            env_file.write_text(
+                "# Existing user configuration\n"
+                "HOST=127.0.0.1\n"
+                "PORT=8888\n"
+                "CUSTOM_USER_SECRET=super_secret\n",
+                encoding="utf-8"
+            )
+
+            # 1. Detect diff
+            diff = detect_schema_diff(env_file, example_file)
+            self.assertFalse(diff["is_up_to_date"])
+            self.assertIn("FEATURE_AI_SAMPLER", diff["missing_keys"])
+            self.assertEqual(diff["missing_keys"]["FEATURE_AI_SAMPLER"], "true")
+            self.assertIn("CUSTOM_USER_SECRET", diff["deprecated_keys"])
+
+            # 2. Dry run
+            dry_res = migrate_single_env(env_file, example_file, dry_run=True)
+            self.assertTrue(dry_res["success"])
+            self.assertTrue(dry_res["migrated"])
+            self.assertIn("FEATURE_AI_SAMPLER", dry_res["injected_keys"])
+            self.assertNotIn("FEATURE_AI_SAMPLER", env_file.read_text(encoding="utf-8"))
+
+            # 3. Live migration
+            mig_res = migrate_single_env(env_file, example_file, dry_run=False)
+            self.assertTrue(mig_res["success"])
+            self.assertTrue(mig_res["migrated"])
+            self.assertTrue(Path(mig_res["backup_path"]).exists())
+
+            # Verify backup content
+            backup_text = Path(mig_res["backup_path"]).read_text(encoding="utf-8")
+            self.assertNotIn("FEATURE_AI_SAMPLER", backup_text)
+            self.assertIn("CUSTOM_USER_SECRET=super_secret", backup_text)
+
+            # Verify migrated content
+            migrated_text = env_file.read_text(encoding="utf-8")
+            self.assertIn("FEATURE_AI_SAMPLER=true", migrated_text)
+            # Original user customized values and custom secrets MUST be preserved intact
+            self.assertIn("HOST=127.0.0.1", migrated_text)
+            self.assertIn("PORT=8888", migrated_text)
+            self.assertIn("CUSTOM_USER_SECRET=super_secret", migrated_text)
+
+            # 4. Check diff after migration
+            diff_after = detect_schema_diff(env_file, example_file)
+            self.assertTrue(diff_after["is_up_to_date"])
+            self.assertEqual(len(diff_after["missing_keys"]), 0)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ sys.path.insert(0, str(SETUP_DIR))
 from config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
 from config_core.port_manager import check_port, get_default_ports
 from config_core.storage_manager import test_atomic_hardlink, get_disk_partitions
+from config_core.schema_migrator import detect_schema_diff, find_all_environment_targets
 
 # Safe UTF-8 console output for cross-platform terminals (Windows cp1252 & Linux UTF-8)
 if hasattr(sys.stdout, "reconfigure"):
@@ -194,6 +195,27 @@ def run_doctor():
     else:
         print(f"   Render Node:  {YELLOW}[NOTICE]{RESET} Dedicated /dev/dri render node not detected.")
         print(f"                 (Direct Play streaming mode will be enforced for maximum CPU efficiency)")
+
+    # 8. Configuration Schema & Environment Upgrades (.env)
+    print(f"\n{BOLD}8. Configuration Environment & Schema Status (.env):{RESET}")
+    env_targets = find_all_environment_targets(REPO_ROOT)
+    env_outdated = 0
+    for env_file, example_file in env_targets:
+        rel = env_file.relative_to(REPO_ROOT) if env_file.is_relative_to(REPO_ROOT) else env_file
+        diff = detect_schema_diff(env_file, example_file)
+        if not env_file.exists():
+            print(f"   • {rel}: {YELLOW}[PENDING]{RESET} Not created yet (will seed from template)")
+        elif diff["is_up_to_date"]:
+            print(f"   • {rel}: {GREEN}[UP TO DATE]{RESET} ({len(diff['synced_keys'])} parameters synchronized)")
+        else:
+            env_outdated += 1
+            print(f"   • {rel}: {YELLOW}[OUTDATED]{RESET} Missing {len(diff['missing_keys'])} new parameter(s): {', '.join(diff['missing_keys'].keys())}")
+
+    if env_outdated > 0:
+        print(f"   Remedy:       Run './setup.sh --migrate' to safely auto-upgrade environment files.")
+        warnings_found += 1
+    else:
+        print(f"   Schema Sync:  {GREEN}[OK]{RESET} All active environments match current template versions.")
 
     # Final Summary Verdict
     print(f"\n{BOLD}{CYAN}============================================================{RESET}")

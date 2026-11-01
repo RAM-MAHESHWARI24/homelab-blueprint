@@ -156,19 +156,19 @@ This document establishes the **Target Maturity Model** for the Homelab Blueprin
 ## 🚀 Actionable Implementation Roadmap
 
 ```
-PHASE 1 (Immediate - Package Foundation):
-├── 1. Cut Git Release Tag: v1.0.0
-├── 2. Implement teardown.sh (clean uninstaller & rollback)
-└── 3. Update bootstrap.sh with release tag pinning & SHA-256 verification
+PHASE 1 (Immediate - Package Foundation) [100% COMPLETE]:
+├── [x] 1. Cut Git Release Tag: v1.0.0 & v1.0.1
+├── [x] 2. Implement teardown.sh (clean uninstaller & rollback with --dry-run & --purge-data)
+└── [x] 3. Update bootstrap.sh with release tag pinning & SHA-256 verification
 
-PHASE 2 (Security Hardening):
-├── 4. Restrict Control Hub systemd service to unprivileged user (homelab)
-├── 5. Add sudoers drop-in for rtcwake and systemctl
-└── 6. Integrate Trivy container vulnerability scanner in CI
+PHASE 2 (Security Hardening) [100% COMPLETE]:
+├── [x] 4. Restrict Control Hub systemd service to unprivileged user (homelab)
+├── [x] 5. Add sudoers drop-in for rtcwake and systemctl (system/systemd/homelab-sudoers.example)
+└── [x] 6. Integrate Trivy container & repo vulnerability scanner in CI (.github/workflows/ci.yml)
 
-PHASE 3 (Developer & Upgrade Experience):
-├── 7. Build setup/config_core/schema_migrator.py (.env auto-upgrade)
-├── 8. Publish apps/control-hub/docs/openapi.yaml & Swagger UI (:7575/api/docs)
-└── 9. Split /api/health into /api/livez and /api/readyz
+PHASE 3 (Developer & Upgrade Experience) [100% COMPLETE]:
+├── [x] 7. Build setup/config_core/schema_migrator.py (.env auto-upgrade & ./setup.sh --migrate)
+├── [x] 8. Publish apps/control-hub/docs/openapi.yaml & Swagger UI (:7575/api/docs)
+└── [x] 9. Split /api/health into /api/livez and /api/readyz
 ```
 
