@@ -117,3 +117,4 @@ The in-guest test runner (`testing/vm/test_vm_lifecycle.py`) verifies the follow
 Upon completion, test artifacts are retrieved from the VM to the host:
 * `testing/vm/reports/vm_test_results.json`: JSON summary with test counts, timings, and statuses.
 * `testing/vm/reports/vm_test_results.xml`: Standard JUnit XML report compatible with CI test dashboards.
+

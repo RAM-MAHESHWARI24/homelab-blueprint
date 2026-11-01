@@ -31,6 +31,7 @@ if hasattr(sys.stdout, "reconfigure"):
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 DUMMY_MEDIA_PATH = FIXTURES_DIR / "dummy_movie.mkv"
 TORRENT_NAME = "Big.Buck.Bunny.2008.1080p.WEBDL.AAC2.0.H.264-MOCK.mkv"
+TV_TORRENT_NAME = "Cosmos.Laundromat.S01E01.1080p.WEBDL.AAC2.0.H.264-MOCK.mkv"
 
 
 def bencode(val) -> bytes:
@@ -43,7 +44,8 @@ def bencode(val) -> bytes:
     elif isinstance(val, bytes):
         return f"{len(val)}:".encode("ascii") + val
     elif isinstance(val, list):
-        return b"l" + b"".join(bencode(x) for x in val) + b"e"
+        b = b"".join(bencode(x) for x in val)
+        return b"l" + b + b"e"
     elif isinstance(val, dict):
         return b"d" + b"".join(bencode(k) + bencode(val[k]) for k in sorted(val.keys())) + b"e"
     raise TypeError(f"Bencode unsupported type: {type(val)}")
@@ -57,7 +59,7 @@ def get_media_bytes() -> bytes:
     return DUMMY_MEDIA_PATH.read_bytes()
 
 
-def build_torrent_dict(host: str, port: int, media_bytes: bytes) -> dict:
+def build_torrent_dict(host: str, port: int, media_bytes: bytes, filename: str = TORRENT_NAME) -> dict:
     """Builds a complete BEP 19 compliant torrent dictionary with web seeding"""
     piece_length = 262144  # 256 KiB
     pieces = bytearray()
@@ -66,7 +68,7 @@ def build_torrent_dict(host: str, port: int, media_bytes: bytes) -> dict:
         pieces.extend(hashlib.sha1(chunk).digest())
 
     info_dict = {
-        "name": TORRENT_NAME,
+        "name": filename,
         "length": len(media_bytes),
         "piece length": piece_length,
         "pieces": bytes(pieces),
@@ -79,7 +81,7 @@ def build_torrent_dict(host: str, port: int, media_bytes: bytes) -> dict:
         "creation date": int(time.time()),
         "info": info_dict,
         # BEP 19: GetRight style Web Seed url-list
-        "url-list": f"http://{host}:{port}/media/{TORRENT_NAME}",
+        "url-list": f"http://{host}:{port}/media/{filename}",
     }
     return torrent
 
@@ -113,8 +115,12 @@ class MockTorznabHandler(BaseHTTPRequestHandler):
 
         media_bytes = get_media_bytes()
         media_size = len(media_bytes)
-        torrent_dict = build_torrent_dict(host, port, media_bytes)
-        info_hash = compute_info_hash(torrent_dict["info"])
+
+        movie_torrent = build_torrent_dict(host, port, media_bytes, TORRENT_NAME)
+        movie_hash = compute_info_hash(movie_torrent["info"])
+
+        tv_torrent = build_torrent_dict(host, port, media_bytes, TV_TORRENT_NAME)
+        tv_hash = compute_info_hash(tv_torrent["info"])
 
         # 1. Health / Ready Probes
         if path in ("/health", "/readyz"):
@@ -134,12 +140,18 @@ class MockTorznabHandler(BaseHTTPRequestHandler):
   <server version="1.0" title="MockTorznab" />
   <searching>
     <search available="yes" supportedParams="q" />
+    <tv-search available="yes" supportedParams="q,season,ep,imdbid,tvdbid,rid" />
     <movie-search available="yes" supportedParams="q,imdbid,tmdbid" />
   </searching>
   <categories>
     <category id="2000" name="Movies">
       <subcat id="2040" name="Movies/HD" />
       <subcat id="2045" name="Movies/UHD" />
+    </category>
+    <category id="5000" name="TV">
+      <subcat id="5030" name="TV/SD" />
+      <subcat id="5040" name="TV/HD" />
+      <subcat id="5045" name="TV/UHD" />
     </category>
   </categories>
 </caps>"""
@@ -152,31 +164,63 @@ class MockTorznabHandler(BaseHTTPRequestHandler):
                 return
 
             else:
-                # Default search / movie response
-                torrent_download_url = f"http://{host}:{port}/download/big_buck_bunny.torrent"
-                rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-  <channel>
-    <title>MockTorznab</title>
-    <description>Homelab Blueprint Offline Mock Indexer</description>
-    <item>
+                movie_item = f"""    <item>
       <title>Big.Buck.Bunny.2008.1080p.WEBDL.AAC2.0.H.264-MOCK</title>
       <guid>mock-bbb-2008-1080p</guid>
-      <link>{torrent_download_url}</link>
+      <link>http://{host}:{port}/download/big_buck_bunny.torrent</link>
       <comments>http://{host}:{port}/details/mock-bbb</comments>
       <pubDate>Sun, 01 Nov 2026 12:00:00 +0000</pubDate>
       <size>{media_size}</size>
-      <enclosure url="{torrent_download_url}" length="{media_size}" type="application/x-bittorrent" />
+      <enclosure url="http://{host}:{port}/download/big_buck_bunny.torrent" length="{media_size}" type="application/x-bittorrent" />
       <torznab:attr name="category" value="2000" />
       <torznab:attr name="category" value="2040" />
       <torznab:attr name="imdbid" value="10378" />
       <torznab:attr name="tmdbid" value="10378" />
       <torznab:attr name="seeders" value="100" />
       <torznab:attr name="peers" value="105" />
-      <torznab:attr name="infohash" value="{info_hash}" />
+      <torznab:attr name="infohash" value="{movie_hash}" />
       <torznab:attr name="downloadvolumefactor" value="0" />
       <torznab:attr name="uploadvolumefactor" value="1" />
-    </item>
+    </item>"""
+
+                tv_item = f"""    <item>
+      <title>Cosmos.Laundromat.S01E01.1080p.WEBDL.AAC2.0.H.264-MOCK</title>
+      <guid>mock-cosmos-s01e01-1080p</guid>
+      <link>http://{host}:{port}/download/cosmos_laundromat.torrent</link>
+      <comments>http://{host}:{port}/details/mock-cosmos</comments>
+      <pubDate>Sun, 01 Nov 2026 12:00:00 +0000</pubDate>
+      <size>{media_size}</size>
+      <enclosure url="http://{host}:{port}/download/cosmos_laundromat.torrent" length="{media_size}" type="application/x-bittorrent" />
+      <torznab:attr name="category" value="5000" />
+      <torznab:attr name="category" value="5040" />
+      <torznab:attr name="season" value="1" />
+      <torznab:attr name="episode" value="1" />
+      <torznab:attr name="seeders" value="100" />
+      <torznab:attr name="peers" value="105" />
+      <torznab:attr name="infohash" value="{tv_hash}" />
+      <torznab:attr name="downloadvolumefactor" value="0" />
+      <torznab:attr name="uploadvolumefactor" value="1" />
+    </item>"""
+
+                cats = query.get("cat", [""])[0].split(",") if "cat" in query else []
+                items = []
+
+                if t_mode == "tvsearch" or any(c.startswith("5") for c in cats):
+                    items.append(tv_item)
+                elif t_mode == "movie" or any(c.startswith("2") for c in cats):
+                    items.append(movie_item)
+                else:
+                    # Generic search: return both
+                    items.append(movie_item)
+                    items.append(tv_item)
+
+                items_xml = "\n".join(items)
+                rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+  <channel>
+    <title>MockTorznab</title>
+    <description>Homelab Blueprint Offline Mock Indexer</description>
+{items_xml}
   </channel>
 </rss>"""
                 body = rss_xml.encode("utf-8")
@@ -189,10 +233,17 @@ class MockTorznabHandler(BaseHTTPRequestHandler):
 
         # 3. Torrent File Download
         if path.startswith("/download"):
-            torrent_payload = bencode(torrent_dict)
+            if "cosmos" in path.lower() or "tv" in path.lower():
+                torrent_to_send = tv_torrent
+                send_name = TV_TORRENT_NAME
+            else:
+                torrent_to_send = movie_torrent
+                send_name = TORRENT_NAME
+
+            torrent_payload = bencode(torrent_to_send)
             self.send_response(200)
             self.send_header("Content-Type", "application/x-bittorrent")
-            self.send_header("Content-Disposition", f'attachment; filename="{TORRENT_NAME}.torrent"')
+            self.send_header("Content-Disposition", f'attachment; filename="{send_name}.torrent"')
             self.send_header("Content-Length", str(len(torrent_payload)))
             self.end_headers()
             self.wfile.write(torrent_payload)
