@@ -118,6 +118,10 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* High-density architectural cheatsheet tailored for LLMs and autonomous coding assistants (token-optimized, zero fluff).
 * **[Master Testing Plan & Test Harness](../testing/README.md)**
   * *Why it matters:* End-to-end regression specifications, cross-platform hardware emulation guidelines, and GitHub Actions CI matrix documentation.
+* **[Automated VM E2E Testing Architecture & Plan](VM_E2E_TESTING_PLAN.md)**
+  * *Why it matters:* Complete specification for isolated Hardware-in-the-Loop ephemeral VM testing, unattended bootstrap, and offline Torznab mock simulation.
+* **[VM E2E Pipeline Verification & Simulation Report](VM_E2E_TESTING_REPORT.md)**
+  * *Why it matters:* Definitive test report verifying live 6-container media ingestion, atomic zero-I/O hardlink proof (st_ino identity), image caching, and multi-tier hardware benchmarking.
 
 ---
 
