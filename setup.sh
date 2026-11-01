@@ -6,6 +6,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Fast-path: Pre-Flight Doctor CLI does not require root
+if [[ "${1:-}" == "--doctor" || "${1:-}" == "doctor" || "${1:-}" == "-d" ]]; then
+    exec python3 "$SCRIPT_DIR/setup/doctor.py"
+fi
+
 # Ensure running with root/sudo for system-level configuration
 if [ "$EUID" -ne 0 ]; then
     echo "⚠️ Homelab Setup Wizard requires root privileges to configure Netplan, Storage, and Docker."

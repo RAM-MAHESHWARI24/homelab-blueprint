@@ -29,11 +29,14 @@ The **Homelab Setup Wizard** is designed with strict engineering constraints:
 
 From the homelab repository root:
 ```bash
-# Standard launch
-python3 setup/server.py
+# 1. Pre-flight host readiness diagnostic (Homelab Doctor)
+./setup.sh --doctor
 
-# Or via the automated setup script
+# 2. Standard launch (starts onboarding Web GUI on port 8000)
 sudo ./setup.sh
+
+# Or directly via Python
+python3 setup/server.py
 ```
 
 Terminal output:

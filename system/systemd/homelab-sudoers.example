@@ -14,3 +14,4 @@ homelab ALL=(ALL) NOPASSWD: /bin/rm -f /run/server-suspend.override
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop server-suspend-override.timer
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service
 homelab ALL=(ALL) NOPASSWD: /usr/sbin/rtcwake *
+

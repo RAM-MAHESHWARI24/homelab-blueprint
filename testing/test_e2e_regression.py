@@ -417,6 +417,38 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
         self.assertIn("/usr/sbin/rtcwake", sudoers_text)
         self.assertIn("control-hub.service", sudoers_text)
 
+    def test_preflight_doctor_cli(self):
+        """TC-DOCTOR-01: Verify Homelab Doctor executes comprehensive pre-flight host sweep"""
+        doctor_path = REPO_ROOT / "setup" / "doctor.py"
+        self.assertTrue(doctor_path.exists(), "setup/doctor.py must exist")
+
+        # Test internal prober functions
+        sys.path.insert(0, str(REPO_ROOT / "setup"))
+        from doctor import check_docker_engine
+        docker_res = check_docker_engine()
+        self.assertIn("installed", docker_res)
+        self.assertIn("running", docker_res)
+        self.assertIn("compose_v2", docker_res)
+
+        # Execute doctor script via subprocess
+        proc = subprocess.run(
+            [sys.executable, str(doctor_path)],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15
+        )
+        # Should execute all 7 probe sections without unhandled exceptions
+        self.assertIn("Homelab Blueprint - Pre-Flight Diagnostic Doctor", proc.stdout)
+        self.assertIn("1. Host Platform & Operating System:", proc.stdout)
+        self.assertIn("2. Processor & Media Transcoding Capability:", proc.stdout)
+        self.assertIn("3. Physical RAM & Swap Headroom:", proc.stdout)
+        self.assertIn("4. Storage Hierarchy & Atomic Hardlink Verification:", proc.stdout)
+        self.assertIn("5. Docker Engine & Container Orchestration:", proc.stdout)
+        self.assertIn("6. Port Conflict & Socket Collision Scan:", proc.stdout)
+        self.assertIn("7. Hardware Video Acceleration (Intel VAAPI/QSV):", proc.stdout)
+        self.assertIn("PRE-FLIGHT VERDICT:", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
