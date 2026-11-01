@@ -124,11 +124,11 @@ curl -sSL https://raw.githubusercontent.com/RAM-MAHESHWARI24/homelab-blueprint/m
 
 ### Option B: Standard Git Clone
 ```bash
-git clone https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git /opt/homelab-blueprint
+sudo git clone -b develop https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git /opt/homelab-blueprint
 cd /opt/homelab-blueprint
 
 # Optional: Run pre-flight host diagnostic sweep
-./setup.sh --doctor
+sudo ./setup.sh --doctor
 
 # Launch the onboarding wizard
 sudo ./setup.sh

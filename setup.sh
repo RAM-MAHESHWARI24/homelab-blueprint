@@ -26,6 +26,13 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
     exit 0
 fi
 
+# Ensure running with root/sudo for system-level configuration & accurate hardware probes
+if [ "$EUID" -ne 0 ]; then
+    echo "⚠️ Homelab Setup Wizard requires root privileges to configure Netplan, Storage, and Docker."
+    echo "   Re-launching with sudo..."
+    exec sudo bash "$0" "$@"
+fi
+
 if [[ "${1:-}" == "--doctor" || "${1:-}" == "doctor" || "${1:-}" == "-d" ]]; then
     exec python3 "$SCRIPT_DIR/setup/doctor.py"
 fi
@@ -33,13 +40,6 @@ fi
 if [[ "${1:-}" == "--migrate" || "${1:-}" == "migrate" || "${1:-}" == "-m" ]]; then
     shift
     exec python3 "$SCRIPT_DIR/setup/config_core/schema_migrator.py" "$@"
-fi
-
-# Ensure running with root/sudo for system-level configuration
-if [ "$EUID" -ne 0 ]; then
-    echo "⚠️ Homelab Setup Wizard requires root privileges to configure Netplan, Storage, and Docker."
-    echo "   Re-launching with sudo..."
-    exec sudo bash "$0" "$@"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
