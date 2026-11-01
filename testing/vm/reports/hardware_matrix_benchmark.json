@@ -1,0 +1,230 @@
+[
+  {
+    "tier": {
+      "id": "tier_1_budget",
+      "name": "Budget SBC / Thin Client",
+      "hardware_target": "Raspberry Pi 4 / Intel Celeron N4000 / Thin Client",
+      "cpus": "0",
+      "cpu_quota_us": 100000,
+      "memory_bytes": 1610612736,
+      "memory_label": "1.5 GiB",
+      "loopback_mb": 2000,
+      "disk_label": "2.0 GB ext4"
+    },
+    "success": true,
+    "wall_duration_s": 9.82,
+    "peak_memory_mb": 0.0,
+    "report": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "duration_seconds": 4.96,
+      "verdict": "PASS",
+      "tests": [
+        {
+          "name": "Storage_Loopback_Mount",
+          "success": true,
+          "message": "4GB ext4 loopback mounted at /data",
+          "duration": 3.962
+        },
+        {
+          "name": "Headless_Deployment",
+          "success": true,
+          "message": "Unattended deploy completed",
+          "duration": 0.307
+        },
+        {
+          "name": "Mock_Torznab_Startup",
+          "success": true,
+          "message": "Online on port 9999",
+          "duration": 0.552
+        },
+        {
+          "name": "Mock_Torznab_Protocol",
+          "success": true,
+          "message": "Caps, search feed, and .torrent verified",
+          "duration": 0.028
+        },
+        {
+          "name": "Media_Download",
+          "success": true,
+          "message": "Downloaded 5242877 bytes to /data/torrents",
+          "duration": 0.019
+        },
+        {
+          "name": "Inode_Identity_Invariant",
+          "success": true,
+          "message": "st_ino=16 identical, st_nlink=2 (0 I/O copy verified)",
+          "duration": 0.019
+        },
+        {
+          "name": "Backup_Archive_Integrity",
+          "success": true,
+          "message": "gzip -t passed cleanly (125722 bytes)",
+          "duration": 0.091
+        }
+      ]
+    },
+    "metrics": {
+      "Storage_Loopback_Mount": 3.962,
+      "Headless_Deployment": 0.307,
+      "Mock_Torznab_Startup": 0.552,
+      "Mock_Torznab_Protocol": 0.028,
+      "Media_Download": 0.019,
+      "Inode_Identity_Invariant": 0.019,
+      "Backup_Archive_Integrity": 0.091
+    }
+  },
+  {
+    "tier": {
+      "id": "tier_2_standard",
+      "name": "Standard Homelab Node",
+      "hardware_target": "Intel Core i5 / AMD Ryzen 5 / Intel N100 Mini PC",
+      "cpus": "0-1",
+      "cpu_quota_us": 200000,
+      "memory_bytes": 4294967296,
+      "memory_label": "4.0 GiB",
+      "loopback_mb": 4000,
+      "disk_label": "4.0 GB ext4"
+    },
+    "success": true,
+    "wall_duration_s": 1.39,
+    "peak_memory_mb": 0.0,
+    "report": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "duration_seconds": 1.08,
+      "verdict": "PASS",
+      "tests": [
+        {
+          "name": "Storage_Loopback_Mount",
+          "success": true,
+          "message": "/data mounted",
+          "duration": 0.003
+        },
+        {
+          "name": "Headless_Deployment",
+          "success": true,
+          "message": "Unattended deploy completed",
+          "duration": 0.371
+        },
+        {
+          "name": "Mock_Torznab_Startup",
+          "success": true,
+          "message": "Online on port 9999",
+          "duration": 0.545
+        },
+        {
+          "name": "Mock_Torznab_Protocol",
+          "success": true,
+          "message": "Caps, search feed, and .torrent verified",
+          "duration": 0.032
+        },
+        {
+          "name": "Media_Download",
+          "success": true,
+          "message": "Downloaded 5242877 bytes to /data/torrents",
+          "duration": 0.027
+        },
+        {
+          "name": "Inode_Identity_Invariant",
+          "success": true,
+          "message": "st_ino=16 identical, st_nlink=2 (0 I/O copy verified)",
+          "duration": 0.027
+        },
+        {
+          "name": "Backup_Archive_Integrity",
+          "success": true,
+          "message": "gzip -t passed cleanly (125722 bytes)",
+          "duration": 0.1
+        }
+      ]
+    },
+    "metrics": {
+      "Storage_Loopback_Mount": 0.003,
+      "Headless_Deployment": 0.371,
+      "Mock_Torznab_Startup": 0.545,
+      "Mock_Torznab_Protocol": 0.032,
+      "Media_Download": 0.027,
+      "Inode_Identity_Invariant": 0.027,
+      "Backup_Archive_Integrity": 0.1
+    }
+  },
+  {
+    "tier": {
+      "id": "tier_3_power",
+      "name": "Power Server / Workstation",
+      "hardware_target": "Intel Core i7/i9 / AMD Ryzen 7/9 / 32GB Xeon NAS",
+      "cpus": "0-3",
+      "cpu_quota_us": 400000,
+      "memory_bytes": 8589934592,
+      "memory_label": "8.0 GiB",
+      "loopback_mb": 8000,
+      "disk_label": "8.0 GB ext4"
+    },
+    "success": true,
+    "wall_duration_s": 1.35,
+    "peak_memory_mb": 0.0,
+    "report": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "duration_seconds": 1.03,
+      "verdict": "PASS",
+      "tests": [
+        {
+          "name": "Storage_Loopback_Mount",
+          "success": true,
+          "message": "/data mounted",
+          "duration": 0.003
+        },
+        {
+          "name": "Headless_Deployment",
+          "success": true,
+          "message": "Unattended deploy completed",
+          "duration": 0.24
+        },
+        {
+          "name": "Mock_Torznab_Startup",
+          "success": true,
+          "message": "Online on port 9999",
+          "duration": 0.601
+        },
+        {
+          "name": "Mock_Torznab_Protocol",
+          "success": true,
+          "message": "Caps, search feed, and .torrent verified",
+          "duration": 0.045
+        },
+        {
+          "name": "Media_Download",
+          "success": true,
+          "message": "Downloaded 5242877 bytes to /data/torrents",
+          "duration": 0.032
+        },
+        {
+          "name": "Inode_Identity_Invariant",
+          "success": true,
+          "message": "st_ino=16 identical, st_nlink=2 (0 I/O copy verified)",
+          "duration": 0.032
+        },
+        {
+          "name": "Backup_Archive_Integrity",
+          "success": true,
+          "message": "gzip -t passed cleanly (125722 bytes)",
+          "duration": 0.105
+        }
+      ]
+    },
+    "metrics": {
+      "Storage_Loopback_Mount": 0.003,
+      "Headless_Deployment": 0.24,
+      "Mock_Torznab_Startup": 0.601,
+      "Mock_Torznab_Protocol": 0.045,
+      "Media_Download": 0.032,
+      "Inode_Identity_Invariant": 0.032,
+      "Backup_Archive_Integrity": 0.105
+    }
+  }
+]

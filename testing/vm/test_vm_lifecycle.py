@@ -71,6 +71,15 @@ class VMLifecycleRunner:
         data_dir = Path("/data")
         data_dir.mkdir(parents=True, exist_ok=True)
 
+        # Check if recreation was requested
+        recreate = os.getenv("RECREATE_STORAGE", "0") == "1"
+        if recreate:
+            self.log("  Recreating storage topology as requested...")
+            self.run_cmd(["umount", "-f", "/data"])
+            img_path = Path("/drive_media.img")
+            if img_path.exists():
+                img_path.unlink()
+
         # Check if /data is already a mountpoint
         res = self.run_cmd(["mountpoint", "-q", "/data"])
         if res.returncode == 0:
@@ -83,11 +92,12 @@ class VMLifecycleRunner:
             self.record_test("Storage_Loopback_Mount", True, "Fallback to local folder", time.time() - t0)
             return True
 
+        size_mb = int(os.getenv("LOOPBACK_SIZE_MB", "4000"))
         img_path = Path("/drive_media.img")
         try:
             if not img_path.exists():
-                self.log("  Allocating 4GB disk image file for /data...")
-                self.run_cmd(["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=4000"], check=True)
+                self.log(f"  Allocating {size_mb}MB disk image file for /data...")
+                self.run_cmd(["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", f"count={size_mb}"], check=True)
                 self.log("  Formatting ext4 filesystem...")
                 self.run_cmd(["mkfs.ext4", "-F", str(img_path)], check=True)
 
@@ -390,3 +400,4 @@ if __name__ == "__main__":
     runner = VMLifecycleRunner()
     success = runner.run_all()
     sys.exit(0 if success else 1)
+
