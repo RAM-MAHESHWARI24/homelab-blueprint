@@ -7,6 +7,7 @@ Uses ffmpeg if installed, or synthesizes a valid compliant EBML/Matroska contain
 
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +21,8 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 
-def generate_with_ffmpeg(output_path: Path, target_size_bytes: int = 5 * 1024 * 1024) -> bool:
-    """Attempts to generate a real 1080p MKV using ffmpeg"""
+def generate_with_ffmpeg(output_path: Path, target_size_bytes: int = 2 * 1024 * 1024) -> bool:
+    """Attempts to generate a real 1080p/720p MKV using ffmpeg with 120s runtime"""
     ffmpeg_bin = shutil.which("ffmpeg")
     if not ffmpeg_bin:
         return False
@@ -30,22 +31,18 @@ def generate_with_ffmpeg(output_path: Path, target_size_bytes: int = 5 * 1024 * 
         cmd = [
             ffmpeg_bin,
             "-y",
-            "-f", "lavfi", "-i", "testsrc=duration=3:size=1920x1080:rate=24",
-            "-f", "lavfi", "-i", "sine=frequency=1000:duration=3",
+            "-f", "lavfi", "-i", "testsrc=duration=120:size=640x360:rate=24",
+            "-f", "lavfi", "-i", "sine=frequency=1000:duration=120",
             "-c:v", "libx264",
             "-preset", "ultrafast",
-            "-crf", "28",
+            "-crf", "35",
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "32k",
+            "-t", "120",
             str(output_path)
         ]
         result = subprocess.run(cmd, capture_output=True, timeout=30)
         if result.returncode == 0 and output_path.exists():
-            # Pad file to target_size_bytes if needed
-            current_size = output_path.stat().st_size
-            if current_size < target_size_bytes:
-                with open(output_path, "ab") as f:
-                    f.write(b"\x00" * (target_size_bytes - current_size))
             return True
     except Exception:
         pass
@@ -116,6 +113,7 @@ def generate_synthesized_mkv(output_path: Path, target_size_bytes: int = 5 * 102
     # 2. Segment -> Info (0x1549A966)
     info_data = (
         _ebml_uint(b"\x2A\xD7\xB1", 1000000) +  # TimecodeScale = 1ms
+        _ebml_element(b"\x44\x89", struct.pack(">f", 120000.0)) + # Duration = 120s (120,000 ms)
         _ebml_string(b"\x4D\x80", "HomelabE2EMock") + # MuxingApp
         _ebml_string(b"\x57\x41", "HomelabMediaTest")  # WritingApp
     )

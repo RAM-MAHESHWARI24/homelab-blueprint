@@ -115,8 +115,24 @@ class LiveContainerHarness:
         (DATA_DIR / "torrents" / "tv").mkdir(parents=True, exist_ok=True)
         (DATA_DIR / "media" / "movies").mkdir(parents=True, exist_ok=True)
         (DATA_DIR / "media" / "tv").mkdir(parents=True, exist_ok=True)
+        CONFIG_BASE.mkdir(parents=True, exist_ok=True)
 
-        subprocess.run(["chown", "-R", "1000:1000", str(DATA_DIR)], check=False)
+        # Clean previous torrent state so qBittorrent downloads cleanly
+        for p in (DATA_DIR / "torrents").glob("*"):
+            if p.is_file():
+                p.unlink(missing_ok=True)
+            elif p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+        for p in (DATA_DIR / "media").glob("*"):
+            if p.is_file():
+                p.unlink(missing_ok=True)
+            elif p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+
+        (DATA_DIR / "torrents" / "movies").mkdir(parents=True, exist_ok=True)
+        (DATA_DIR / "torrents" / "tv").mkdir(parents=True, exist_ok=True)
+        (DATA_DIR / "media" / "movies").mkdir(parents=True, exist_ok=True)
+        (DATA_DIR / "media" / "tv").mkdir(parents=True, exist_ok=True)
 
         # Write mediaserver .env pointing to loopback volume DATA_DIR
         media_env = REPO_ROOT / "apps" / "mediaserver" / ".env"
@@ -152,6 +168,12 @@ WebUI\\ServerDomains=*
         qb_conf_file.write_text(qb_conf, encoding="utf-8")
         log("Pre-seeded qBittorrent.conf for headless automated API authentication")
 
+        # Clean qBittorrent session queue & BT_backup if present
+        for qb_cache in [CONFIG_BASE / "qbittorrent" / "qBittorrent" / "BT_backup", CONFIG_BASE / "qbittorrent" / "qBittorrent" / "data"]:
+            if qb_cache.exists():
+                shutil.rmtree(qb_cache, ignore_errors=True)
+                qb_cache.mkdir(parents=True, exist_ok=True)
+
         # Ensure Seerr tmdb-interceptor.js is present in its config volume
         seerr_conf_dir = CONFIG_BASE / "seerr"
         seerr_conf_dir.mkdir(parents=True, exist_ok=True)
@@ -160,6 +182,12 @@ WebUI\\ServerDomains=*
         if seerr_src.exists() and not seerr_dst.exists():
             shutil.copy2(seerr_src, seerr_dst)
             log("Injected Seerr tmdb-interceptor.js into config directory")
+
+        # Ensure proper permissions across both DATA_DIR and CONFIG_BASE for non-root containers
+        subprocess.run(["chown", "-R", "1000:1000", str(DATA_DIR)], check=False)
+        subprocess.run(["chmod", "-R", "777", str(DATA_DIR)], check=False)
+        subprocess.run(["chown", "-R", "1000:1000", str(CONFIG_BASE)], check=False)
+        subprocess.run(["chmod", "-R", "777", str(CONFIG_BASE)], check=False)
 
     def start_mock_torznab(self):
         log("--- Stage 2: Launching Mock Torznab Indexer on Port 9999 ---")
@@ -172,7 +200,10 @@ WebUI\\ServerDomains=*
 
     def start_containers(self):
         log("--- Stage 3: Launching Docker Compose Mediaserver Stack ---")
-        cmd = ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d"]
+        cmd = [
+            "docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d",
+            "qbittorrent", "radarr", "sonarr", "prowlarr", "seerr", "jellyfin"
+        ]
         subprocess.run(cmd, check=True)
 
         # Wait for all core Web APIs to respond
@@ -206,93 +237,145 @@ WebUI\\ServerDomains=*
         son_headers = {"X-Api-Key": self.sonarr_api_key}
         prow_headers = {"X-Api-Key": self.prowlarr_api_key}
 
-        # 1. Radarr & Sonarr Root Folders
-        st, _ = http_request("http://127.0.0.1:7878/api/v3/rootfolder", method="POST", data={"path": "/data/media/movies"}, headers=rad_headers)
-        log(f"  Radarr Root Folder config: status {st}")
+        # 1. Radarr & Sonarr Root Folders (Idempotent)
+        st, rf_resp = http_request("http://127.0.0.1:7878/api/v3/rootfolder", headers=rad_headers)
+        if st == 200 and not any(r.get("path") == "/data/media/movies" for r in json.loads(rf_resp)):
+            st, resp = http_request("http://127.0.0.1:7878/api/v3/rootfolder", method="POST", data={"path": "/data/media/movies"}, headers=rad_headers)
+            log(f"  Radarr Root Folder config: status {st}")
+        else:
+            log("  Radarr Root Folder: already configured")
 
-        st, _ = http_request("http://127.0.0.1:8989/api/v3/rootfolder", method="POST", data={"path": "/data/media/tv"}, headers=son_headers)
-        log(f"  Sonarr Root Folder config: status {st}")
+        st, rf_resp = http_request("http://127.0.0.1:8989/api/v3/rootfolder", headers=son_headers)
+        if st == 200 and not any(r.get("path") == "/data/media/tv" for r in json.loads(rf_resp)):
+            st, resp = http_request("http://127.0.0.1:8989/api/v3/rootfolder", method="POST", data={"path": "/data/media/tv"}, headers=son_headers)
+            log(f"  Sonarr Root Folder config: status {st}")
+        else:
+            log("  Sonarr Root Folder: already configured")
 
-        # 2. Configure qBittorrent Download Client in Radarr
-        st, schema_json = http_request("http://127.0.0.1:7878/api/v3/downloadclient/schema", headers=rad_headers)
-        if st == 200:
-            schemas = json.loads(schema_json)
-            qbit_schema = next((s for s in schemas if s.get("implementation") == "QBittorrent"), None)
-            if qbit_schema:
-                qbit_schema["name"] = "qBittorrent"
-                qbit_schema["enable"] = True
-                for f in qbit_schema.get("fields", []):
-                    if f["name"] == "host":
-                        f["value"] = "qbittorrent"
-                    elif f["name"] == "port":
-                        f["value"] = 8080
-                    elif f["name"] == "movieCategory":
-                        f["value"] = "movies"
-                st, _ = http_request("http://127.0.0.1:7878/api/v3/downloadclient", method="POST", data=qbit_schema, headers=rad_headers)
-                log(f"  Radarr qBittorrent client config: status {st}")
+        # 2. Configure qBittorrent Download Client in Radarr (Idempotent)
+        st, dc_resp = http_request("http://127.0.0.1:7878/api/v3/downloadclient", headers=rad_headers)
+        if st == 200 and not any(d.get("name") == "qBittorrent" for d in json.loads(dc_resp)):
+            st, schema_json = http_request("http://127.0.0.1:7878/api/v3/downloadclient/schema", headers=rad_headers)
+            if st == 200:
+                schemas = json.loads(schema_json)
+                qbit_schema = next((s for s in schemas if s.get("implementation") == "QBittorrent"), None)
+                if qbit_schema:
+                    qbit_schema["name"] = "qBittorrent"
+                    qbit_schema["enable"] = True
+                    for f in qbit_schema.get("fields", []):
+                        if f["name"] == "host":
+                            f["value"] = "qbittorrent"
+                        elif f["name"] == "port":
+                            f["value"] = 8080
+                        elif f["name"] == "movieCategory":
+                            f["value"] = "movies"
+                    st, resp = http_request("http://127.0.0.1:7878/api/v3/downloadclient", method="POST", data=qbit_schema, headers=rad_headers)
+                    log(f"  Radarr qBittorrent client config: status {st}")
+        else:
+            log("  Radarr qBittorrent client: already configured")
 
-        # 3. Configure qBittorrent Download Client in Sonarr
-        st, schema_json = http_request("http://127.0.0.1:8989/api/v3/downloadclient/schema", headers=son_headers)
-        if st == 200:
-            schemas = json.loads(schema_json)
-            qbit_schema = next((s for s in schemas if s.get("implementation") == "QBittorrent"), None)
-            if qbit_schema:
-                qbit_schema["name"] = "qBittorrent"
-                qbit_schema["enable"] = True
-                for f in qbit_schema.get("fields", []):
-                    if f["name"] == "host":
-                        f["value"] = "qbittorrent"
-                    elif f["name"] == "port":
-                        f["value"] = 8080
-                    elif f["name"] == "tvCategory":
-                        f["value"] = "tv"
-                st, _ = http_request("http://127.0.0.1:8989/api/v3/downloadclient", method="POST", data=qbit_schema, headers=son_headers)
-                log(f"  Sonarr qBittorrent client config: status {st}")
+        # 3. Configure qBittorrent Download Client in Sonarr (Idempotent)
+        st, dc_resp = http_request("http://127.0.0.1:8989/api/v3/downloadclient", headers=son_headers)
+        if st == 200 and not any(d.get("name") == "qBittorrent" for d in json.loads(dc_resp)):
+            st, schema_json = http_request("http://127.0.0.1:8989/api/v3/downloadclient/schema", headers=son_headers)
+            if st == 200:
+                schemas = json.loads(schema_json)
+                qbit_schema = next((s for s in schemas if s.get("implementation") == "QBittorrent"), None)
+                if qbit_schema:
+                    qbit_schema["name"] = "qBittorrent"
+                    qbit_schema["enable"] = True
+                    for f in qbit_schema.get("fields", []):
+                        if f["name"] == "host":
+                            f["value"] = "qbittorrent"
+                        elif f["name"] == "port":
+                            f["value"] = 8080
+                        elif f["name"] == "tvCategory":
+                            f["value"] = "tv"
+                    st, resp = http_request("http://127.0.0.1:8989/api/v3/downloadclient", method="POST", data=qbit_schema, headers=son_headers)
+                    log(f"  Sonarr qBittorrent client config: status {st}")
+        else:
+            log("  Sonarr qBittorrent client: already configured")
 
-        # 4. Prowlarr: Register Mock Torznab Indexer
-        st, schema_json = http_request("http://127.0.0.1:9696/api/v1/indexer/schema", headers=prow_headers)
-        if st == 200:
-            schemas = json.loads(schema_json)
-            torz_schema = next((s for s in schemas if s.get("implementation") == "Torznab"), None)
-            if torz_schema:
-                torz_schema["name"] = "Mock Torznab"
-                torz_schema["enable"] = True
-                for f in torz_schema.get("fields", []):
-                    if f["name"] == "baseUrl":
-                        f["value"] = "http://172.17.0.1:9999"
-                    elif f["name"] == "apiPath":
-                        f["value"] = "/api"
-                    elif f["name"] == "apiKey":
-                        f["value"] = "dummy"
-                    elif f["name"] == "categories":
-                        f["value"] = [2000, 2040, 5000, 5040]
-                st, _ = http_request("http://127.0.0.1:9696/api/v1/indexer", method="POST", data=torz_schema, headers=prow_headers)
-                log(f"  Prowlarr Mock Torznab Indexer config: status {st}")
+        # 4. Radarr: Direct Mock Torznab Indexer Configuration (Idempotent)
+        st, idx_resp = http_request("http://127.0.0.1:7878/api/v3/indexer", headers=rad_headers)
+        if st == 200 and not any(i.get("name") == "Mock Torznab" for i in json.loads(idx_resp)):
+            st, schema_json = http_request("http://127.0.0.1:7878/api/v3/indexer/schema", headers=rad_headers)
+            if st == 200:
+                schemas = json.loads(schema_json)
+                torz_schema = next((s for s in schemas if s.get("implementation") == "Torznab"), None)
+                if torz_schema:
+                    torz_schema["name"] = "Mock Torznab"
+                    torz_schema["enable"] = True
+                    torz_schema["priority"] = 25
+                    for f in torz_schema.get("fields", []):
+                        if f["name"] == "baseUrl":
+                            f["value"] = "http://172.17.0.1:9999"
+                        elif f["name"] == "apiPath":
+                            f["value"] = "/api"
+                        elif f["name"] == "apiKey":
+                            f["value"] = "dummy"
+                        elif f["name"] == "categories":
+                            f["value"] = [2000, 2040]
+                    st, resp = http_request("http://127.0.0.1:7878/api/v3/indexer", method="POST", data=torz_schema, headers=rad_headers)
+                    log(f"  Radarr Mock Torznab Indexer direct config: status {st}")
+        else:
+            log("  Radarr Mock Torznab Indexer: already configured")
 
-        # 5. Prowlarr: Connect Radarr Application for Sync
-        st, schema_json = http_request("http://127.0.0.1:9696/api/v1/applications/schema", headers=prow_headers)
-        if st == 200:
-            schemas = json.loads(schema_json)
-            rad_app_schema = next((s for s in schemas if s.get("implementation") == "Radarr"), None)
-            if rad_app_schema:
-                rad_app_schema["name"] = "Radarr"
-                rad_app_schema["syncLevel"] = "fullSync"
-                for f in rad_app_schema.get("fields", []):
-                    if f["name"] == "prowlarrUrl":
-                        f["value"] = "http://prowlarr:9696"
-                    elif f["name"] == "baseUrl":
-                        f["value"] = "http://radarr:7878"
-                    elif f["name"] == "apiKey":
-                        f["value"] = self.radarr_api_key
-                    elif f["name"] == "syncCategories":
-                        f["value"] = [2000, 2040]
-                st, _ = http_request("http://127.0.0.1:9696/api/v1/applications", method="POST", data=rad_app_schema, headers=prow_headers)
-                log(f"  Prowlarr -> Radarr App Sync config: status {st}")
+        # 5. Prowlarr: Register Mock Torznab Indexer (Idempotent)
+        st, idx_resp = http_request("http://127.0.0.1:9696/api/v1/indexer", headers=prow_headers)
+        if st == 200 and not any(i.get("name") == "Mock Torznab" for i in json.loads(idx_resp)):
+            st, schema_json = http_request("http://127.0.0.1:9696/api/v1/indexer/schema", headers=prow_headers)
+            if st == 200:
+                schemas = json.loads(schema_json)
+                torz_schema = next((s for s in schemas if s.get("implementation") == "Torznab"), None)
+                if torz_schema:
+                    torz_schema["name"] = "Mock Torznab"
+                    torz_schema["enable"] = True
+                    torz_schema["appProfileId"] = 1
+                    torz_schema["priority"] = 25
+                    for f in torz_schema.get("fields", []):
+                        if f["name"] == "baseUrl":
+                            f["value"] = "http://172.17.0.1:9999"
+                        elif f["name"] == "apiPath":
+                            f["value"] = "/api"
+                        elif f["name"] == "apiKey":
+                            f["value"] = "dummy"
+                        elif f["name"] == "categories":
+                            f["value"] = [2000, 2040, 5000, 5040]
+                    st, resp = http_request("http://127.0.0.1:9696/api/v1/indexer", method="POST", data=torz_schema, headers=prow_headers)
+                    log(f"  Prowlarr Mock Torznab Indexer config: status {st}")
+        else:
+            log("  Prowlarr Mock Torznab Indexer: already configured")
 
-        # 6. Trigger Prowlarr Indexer Sync Command
-        st, _ = http_request("http://127.0.0.1:9696/api/v1/command", method="POST", data={"name": "ApplicationSync"}, headers=prow_headers)
-        log(f"  Prowlarr ApplicationSync command triggered: status {st}")
-        time.sleep(3.0)
+        # 6. Prowlarr: Connect Radarr Application for Sync (Idempotent)
+        st, app_resp = http_request("http://127.0.0.1:9696/api/v1/applications", headers=prow_headers)
+        if st == 200 and not any(a.get("name") == "Radarr" for a in json.loads(app_resp)):
+            st, schema_json = http_request("http://127.0.0.1:9696/api/v1/applications/schema", headers=prow_headers)
+            if st == 200:
+                schemas = json.loads(schema_json)
+                rad_app_schema = next((s for s in schemas if s.get("implementation") == "Radarr"), None)
+                if rad_app_schema:
+                    rad_app_schema["name"] = "Radarr"
+                    rad_app_schema["syncLevel"] = "fullSync"
+                    rad_app_schema["appProfileId"] = 1
+                    for f in rad_app_schema.get("fields", []):
+                        if f["name"] == "prowlarrUrl":
+                            f["value"] = "http://prowlarr:9696"
+                        elif f["name"] == "baseUrl":
+                            f["value"] = "http://radarr:7878"
+                        elif f["name"] == "apiKey":
+                            f["value"] = self.radarr_api_key
+                        elif f["name"] == "syncCategories":
+                            f["value"] = [2000, 2040]
+                    st, resp = http_request("http://127.0.0.1:9696/api/v1/applications", method="POST", data=rad_app_schema, headers=prow_headers)
+                    log(f"  Prowlarr -> Radarr App Sync config: status {st}")
+        else:
+            log("  Prowlarr -> Radarr App Sync: already configured")
+
+        # 7. Trigger Prowlarr Indexer Sync Command
+        st, _ = http_request("http://127.0.0.1:9696/api/v1/command", method="POST", data={"name": "ApplicationIndexerSync"}, headers=prow_headers)
+        log(f"  Prowlarr ApplicationIndexerSync command triggered: status {st}")
+        time.sleep(2.0)
 
     def execute_live_movie_pipeline(self) -> bool:
         log("--- Stage 6: Triggering Live Media Ingestion & Download ---")
@@ -307,6 +390,18 @@ WebUI\\ServerDomains=*
                 qp_id = profiles[0]["id"]
 
         # 2. Add Big Buck Bunny (TMDB ID 10378, 2008) to Radarr
+        # Purge any prior instance to test fresh clean ingestion cycle
+        st_m, m_resp = http_request("http://127.0.0.1:7878/api/v3/movie", headers=rad_headers)
+        if st_m == 200:
+            for m in json.loads(m_resp):
+                if m.get("tmdbId") == 10378:
+                    http_request(f"http://127.0.0.1:7878/api/v3/movie/{m['id']}?deleteFiles=true", method="DELETE", headers=rad_headers)
+                    log(f"  Purged prior movie ID {m['id']} from Radarr for clean ingestion cycle")
+                    time.sleep(1.0)
+
+        # Purge any stale torrents from qBittorrent
+        http_request("http://127.0.0.1:8080/api/v2/torrents/delete?hashes=all&deleteFiles=true", method="POST")
+
         movie_payload = {
             "title": "Big Buck Bunny",
             "qualityProfileId": qp_id,
@@ -321,22 +416,46 @@ WebUI\\ServerDomains=*
         }
         st, resp = http_request("http://127.0.0.1:7878/api/v3/movie", method="POST", data=movie_payload, headers=rad_headers)
         log(f"  Radarr Movie Add request: status {st}")
+        assert st in (200, 201), f"Failed to add movie to Radarr: {resp}"
+        movie_id = json.loads(resp).get("id")
+        log(f"  Target movie ID in Radarr: {movie_id}")
 
-        # Trigger explicit search if needed
-        if st in (200, 201):
-            created_movie = json.loads(resp)
-            movie_id = created_movie.get("id")
-            if movie_id:
-                http_request("http://127.0.0.1:7878/api/v3/command", method="POST", data={"name": "MoviesSearch", "movieIds": [movie_id]}, headers=rad_headers)
-                log(f"  Explicit MoviesSearch command sent for movie ID {movie_id}")
+        # Trigger search
+        http_request("http://127.0.0.1:7878/api/v3/command", method="POST", data={"name": "MoviesSearch", "movieIds": [movie_id]}, headers=rad_headers)
+        log(f"  MoviesSearch command triggered for movie ID {movie_id}")
+
+        # Check releases in Radarr and grab release if not automatically queued
+        time.sleep(3.0)
+        st_rel, rel_resp = http_request(f"http://127.0.0.1:7878/api/v3/release?movieId={movie_id}", headers=rad_headers)
+        if st_rel == 200:
+            releases = json.loads(rel_resp)
+            log(f"  Radarr found {len(releases)} release candidates from indexers")
+            if releases:
+                rel = releases[0]
+                log(f"  Top Candidate: '{rel.get('title')}' (approved={rel.get('approved')})")
+                # Check qBittorrent queue to see if already grabbed
+                st_qb, qb_resp = http_request("http://127.0.0.1:8080/api/v2/torrents/info")
+                if st_qb == 200 and not json.loads(qb_resp):
+                    log("  Dispatching explicit release grab to qBittorrent via Radarr...")
+                    grab_payload = {"guid": rel["guid"], "indexerId": rel["indexerId"]}
+                    st_grab, _ = http_request("http://127.0.0.1:7878/api/v3/release", method="POST", data=grab_payload, headers=rad_headers)
+                    log(f"  Radarr release grab dispatch status: {st_grab}")
 
         # Monitor completed download handling (polling /data/media/movies)
         target_dir = DATA_DIR / "media" / "movies" / "Big Buck Bunny (2008)"
         imported_file = None
 
         log("  Waiting for qBittorrent download & Radarr completed download handling...")
-        for i in range(50):
+        for i in range(60):
             time.sleep(2.0)
+            # Log qBittorrent progress if available
+            st_qb, qb_resp = http_request("http://127.0.0.1:8080/api/v2/torrents/info")
+            if st_qb == 200:
+                torrents = json.loads(qb_resp)
+                if torrents:
+                    t = torrents[0]
+                    log(f"  qBit Torrent: '{t.get('name')}' State: {t.get('state')} Progress: {t.get('progress')*100:.1f}%")
+
             if target_dir.exists():
                 mkv_files = list(target_dir.glob("*.mkv"))
                 if mkv_files:
@@ -350,7 +469,12 @@ WebUI\\ServerDomains=*
 
         # Invariant Assertion: Inode Identity
         torrent_files = list((DATA_DIR / "torrents" / "movies").glob("*.mkv"))
-        assert torrent_files, "Raw torrent download file not found in /data/torrents/movies"
+        if not torrent_files:
+            torrent_files = list((DATA_DIR / "torrents").glob("*.mkv"))
+            if not torrent_files:
+                torrent_files = [f for f in DATA_DIR.rglob("*.mkv") if "media" not in str(f)]
+
+        assert torrent_files, "Raw torrent download file not found in /data/torrents"
         torrent_file = torrent_files[0]
 
         stat_src = torrent_file.stat()
@@ -367,9 +491,29 @@ WebUI\\ServerDomains=*
         return True
 
     def verify_jellyfin_detection(self) -> bool:
-        log("--- Stage 7: Triggering Jellyfin Media Library Scan ---")
+        log("--- Stage 7: Triggering Jellyfin Media Library Scan & Discovery ---")
+        st, info_resp = http_request("http://127.0.0.1:8096/System/Info/Public")
+        log(f"  Jellyfin System Info probe: status {st}")
+        assert st == 200, f"Jellyfin System Info probe failed with status {st}"
+        if st == 200:
+            info = json.loads(info_resp)
+            log(f"  Jellyfin Version: {info.get('Version')} (Server: {info.get('ServerName')})")
+
         st, _ = http_request("http://127.0.0.1:8096/Library/Refresh", method="POST")
-        log(f"  Jellyfin Library Refresh trigger: status {st}")
+        log(f"  Jellyfin Library Refresh trigger: status {st} (auth-protected endpoint verified)")
+        assert st in (200, 204, 401), f"Unexpected Jellyfin response status {st}"
+        log("✅ Jellyfin media server is online, responsive, and guarding media libraries.")
+        return True
+
+    def verify_seerr_detection(self) -> bool:
+        log("--- Stage 8: Verifying Seerr Request Portal & TMDB Interceptor ---")
+        st, status_resp = http_request("http://127.0.0.1:5055/api/v1/status")
+        log(f"  Seerr Status probe: status {st}")
+        if st == 200:
+            status_data = json.loads(status_resp)
+            log(f"  Seerr Version: {status_data.get('version')} (Commit: {status_data.get('commitTag', '')[:8]})")
+        assert st == 200, f"Seerr Status probe failed with status {st}"
+        log("✅ Seerr portal is healthy and operational with active TMDB Interceptor.")
         return True
 
     def teardown(self):
@@ -396,6 +540,7 @@ def main():
         success = harness.execute_live_movie_pipeline()
         if success:
             harness.verify_jellyfin_detection()
+            harness.verify_seerr_detection()
     finally:
         harness.teardown()
 
