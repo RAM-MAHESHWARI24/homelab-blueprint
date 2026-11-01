@@ -213,6 +213,29 @@ class VMOrchestrator:
             total_duration = time.time() - self.start_time
             self.log(f"🏁 Container Pipeline run finished in {total_duration:.2f}s. Verdict: {'PASS' if success else 'FAIL'}")
 
+    def run_photo_pipeline(self) -> bool:
+        self.log("============================================================")
+        self.log(f"   IMMICH PHOTO, FACIAL ML & CLOUD BACKUP TEST ({self.active_engine.upper()})")
+        self.log("============================================================")
+        success = False
+        try:
+            if self.active_engine == "wsl":
+                if not self._stage_wsl():
+                    return False
+                self.log("▶ Launching Immich photo pipeline inside guest VM...")
+                res = subprocess.run(["wsl", "-d", "Ubuntu-24.04", "-u", "root", "--", "python3", "/opt/homelab-blueprint/testing/vm/test_immich_photo_pipeline.py"])
+                success = (res.returncode == 0)
+            else:
+                if not self._stage_multipass():
+                    return False
+                self.log("▶ Launching Immich photo pipeline inside guest VM...")
+                res = subprocess.run([self.multipass_bin, "exec", self.vm_name, "--", "sudo", "python3", "/opt/homelab-blueprint/testing/vm/test_immich_photo_pipeline.py"])
+                success = (res.returncode == 0)
+            return success
+        finally:
+            total_duration = time.time() - self.start_time
+            self.log(f"🏁 Photo Pipeline run finished in {total_duration:.2f}s. Verdict: {'PASS' if success else 'FAIL'}")
+
     # =========================================================================
     # Main Workflow
     # =========================================================================
@@ -255,6 +278,7 @@ def main():
     parser = argparse.ArgumentParser(description="Homelab Blueprint VM E2E Orchestrator (Windows Host)")
     parser.add_argument("--run-all", action="store_true", help="Execute complete VM provisioning, testing, and teardown")
     parser.add_argument("--run-pipeline", action="store_true", help="Execute live 6-container media pipeline integration test")
+    parser.add_argument("--run-photo", action="store_true", help="Execute live 4-person Immich face detection, sidecar export & GDrive sync test")
     parser.add_argument("--engine", choices=["auto", "wsl", "multipass"], default="auto", help="Hypervisor virtualization engine (default: auto)")
     parser.add_argument("--keep-vm", action="store_true", help="Do not purge VM state after testing")
     parser.add_argument("--vm-name", default=DEFAULT_VM_NAME, help=f"Name of the VM (default: {DEFAULT_VM_NAME})")
@@ -276,6 +300,9 @@ def main():
 
     if args.run_pipeline:
         success = orchestrator.run_pipeline()
+        sys.exit(0 if success else 1)
+    elif args.run_photo:
+        success = orchestrator.run_photo_pipeline()
         sys.exit(0 if success else 1)
     elif args.run_all:
         rep_dir = Path(args.reports_dir).resolve() if args.reports_dir else None

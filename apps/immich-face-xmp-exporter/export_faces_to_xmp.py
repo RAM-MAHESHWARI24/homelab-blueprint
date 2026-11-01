@@ -25,6 +25,36 @@ CACHE_FILE = Path(os.getenv("FACES_CACHE_FILE", Path(__file__).resolve().parent 
 DB_CONTAINER = os.getenv("IMMICH_POSTGRES_CONTAINER", "immich_postgres")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_NAME = os.getenv("DB_NAME", "immich")
+PATH_MAP_FROM = os.getenv("PATH_MAP_FROM", "")
+PATH_MAP_TO = os.getenv("PATH_MAP_TO", "")
+
+
+def resolve_asset_path(original_path_str):
+    """Resolves container-internal paths into host/guest accessible file paths."""
+    p = Path(original_path_str)
+    if p.exists():
+        return p
+
+    # Explicit environment variable mapping
+    if PATH_MAP_FROM and PATH_MAP_TO and original_path_str.startswith(PATH_MAP_FROM):
+        candidate = Path(original_path_str.replace(PATH_MAP_FROM, PATH_MAP_TO, 1))
+        if candidate.exists():
+            return candidate
+
+    # Common Docker mount heuristics for Immich
+    heuristics = [
+        ("/data/upload", "/data/immich/upload/upload"),
+        ("/data", "/data/immich/upload"),
+        ("/mnt/media", "/data/memories"),
+        ("/mnt/hdd/Memories", "/data/memories")
+    ]
+    for prefix_from, prefix_to in heuristics:
+        if original_path_str.startswith(prefix_from):
+            candidate = Path(original_path_str.replace(prefix_from, prefix_to, 1))
+            if candidate.exists():
+                return candidate
+
+    return p
 
 
 def load_cache():
@@ -105,13 +135,14 @@ def get_sidecar_path(original_path):
 
 
 def build_exiftool_args_for_asset(asset):
-    original_path = asset["original_path"]
+    raw_path = asset["original_path"]
     faces = asset["faces"]
 
-    if not os.path.exists(original_path):
+    resolved_path = resolve_asset_path(raw_path)
+    if not resolved_path.exists():
         return None, None
 
-    sidecar = get_sidecar_path(original_path)
+    sidecar = get_sidecar_path(resolved_path)
 
     ref_w = asset["width"] or faces[0]["img_w"]
     ref_h = asset["height"] or faces[0]["img_h"]

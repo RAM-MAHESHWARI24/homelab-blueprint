@@ -12,6 +12,7 @@
 | **Initial Pre-Verification** | WSL2 Ubuntu 24.04 micro-VM *(Hyper-V disabled)* | 8 / 8 Gates | **PASS (100%)** | 86.70s |
 | **Canonical Multipass Hyper-V VM** | Standalone VM `homelab-test` (`172.21.188.196`) | 8 / 8 Gates | **PASS (100%)** | 18.52s (Cached) |
 | **Complete System Lifecycle Suite** | Standalone VM `homelab-test` (`172.21.188.196`) | 7 / 7 Gates | **PASS (100%)** | 11.57s |
+| **Immich Photo & Face ML Suite** | Standalone VM `homelab-test` (`172.21.188.196`) | 6 / 6 Stages | **PASS (100%)** | 9.42s |
 | **Docker Image Caching** | Local VM VHDX (`homelab-test`) | 12 Images Cached | **100% Offline** | 0s Pull Latency |
 | **Atomic Inode Hardlink Invariant** | Dedicated Loopback ext4 (`/data`) | `st_ino=1005` Identity | **PASS** | 0 Extra I/O |
 
@@ -34,6 +35,11 @@
 | `[Errno 13] Permission denied: '/opt/homelab-blueprint/.hl_src_probe_...'` | `setup.sh --doctor` was placed before root elevation check in `setup.sh`. When non-root user `ubuntu` executed it, test file probes failed. | Moved `if [ "$EUID" -ne 0 ]; then exec sudo bash "$0" "$@"` to line 1 of `setup.sh`, ensuring root privilege escalation before any flag processing. Updated `README.md` to instruct `sudo ./setup.sh --doctor`. |
 | Missing Docker & Python tooling on clean Ubuntu 24.04 | Vanilla cloud images do not pre-install container engines or build utilities. | Installed `docker.io` (`v29.1.3`), `docker-compose-v2` (`v2.40.3`), `jq`, `python3-venv`, and `ffmpeg` (`v6.1.1`) inside `homelab-test`. |
 | `HTTPError: 400 Unable to connect to qBittorrent` | qBittorrent v4.6.1+ / v5.x rejects `0.0.0.0/0` subnet whitelist and generates random temporary session passwords if PBKDF2 hash is missing. | Pre-seeded `WebUI\Password_PBKDF2` hash for `adminadmin`, configured RFC 1918 CIDRs (`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1/32`), and updated Radarr/Sonarr download client configurations with authentication credentials. |
+| `PostgresError: password authentication failed for user "postgres"` | `immich_server` was in a restart crash loop because `apps/noodle-gallery/.env` password was out of sync with initialized database role. | Reset database role password via `ALTER USER postgres WITH PASSWORD ...` to match `.env`. |
+| `getaddrinfo ENOTFOUND immich-machine-learning` | `apps/noodle-gallery/docker-compose.yml` named ML service `gallery-machine-learning` while Immich defaults to `immich-machine-learning`. | Added network aliases `immich-machine-learning` and `immich_machine_learning` to `gallery-machine-learning` service. |
+| Missing `exiftool` and `rclone` in VM | Pristine Ubuntu 24.04 image lacks sidecar metadata editing and cloud sync utilities. | Installed `libimage-exiftool-perl` and `rclone` in the guest VM. |
+| Container namespace path mismatch in Face Exporter | Immich PostgreSQL records container-internal paths (`/data/upload/...`), which failed `os.path.exists()` on host runner. | Added intelligent path mapping (`resolve_asset_path`) with heuristic fallback in `export_faces_to_xmp.py`. |
+| `exiftool -RegionName` comma vs newline parsing | Batch ExifTool outputs comma-separated values on a single line, causing array matching assertion failure. | Replaced newline-only splitting with comma-aware token splitting in test assertions. |
 
 ---
 
@@ -176,9 +182,40 @@ Executed directly inside `homelab-test` (`172.21.188.196`):
 
 ---
 
-## 7. Verification Artifacts & Test Logs
+## 7. Immich Photo, Facial ML & Cloud Mirror Suite (`test_immich_photo_pipeline.py`)
+
+Executed directly inside `homelab-test` (`172.21.188.196`):
+
+```
+=================================================================
+       PHOTO & CLOUD MIRROR TEST SUITE SUMMARY: PASS
+=================================================================
+  Asset Ingested:        four_people_sample.jpg (1156 x 839, 255 KB)
+  Initial Pre-Tags:      2 Faces (John Lennon, Paul McCartney)
+  ML Detected:           4 Faces (InsightFace buffalo_l)
+  Interactive Tagged:    2 Additional Faces (George Harrison, Ringo Starr)
+  MWG XMP Generated:     100% Invariant Match (All 4 Names Present)
+  Postgres Dump Check:   PASS (19.9 MB, gzip -t verified)
+  Simulated GDrive Sync: PASS (rclone copy DB + sync Media with trash)
+  Total Duration:        9.42s
+=================================================================
+```
+
+| Stage / Invariant | Status | Evidence / Result |
+| :--- | :---: | :--- |
+| **Stage 1: REST API Authentication** | **PASS** | Immich `v3.3.5` API session established via Bearer token |
+| **Stage 2: Multipart Asset & Sidecar Ingest** | **PASS** | Ingested `four_people_sample.jpg` with initial XMP sidecar |
+| **Stage 3: ML Face Detection** | **PASS** | InsightFace `buffalo_l` detected 4 distinct bounding boxes |
+| **Stage 4: API Face Tagging** | **PASS** | Assigned remaining 2 faces to George Harrison & Ringo Starr |
+| **Stage 5: Face-to-XMP Export** | **PASS** | Batch ExifTool wrote standard `mwg-rs` regions (`-RegionName`) |
+| **Stage 6: Disaster Recovery & GDrive Mirror** | **PASS** | `pg_dumpall | gzip` (19.9MB) and media synced to `/tmp/mock_gdrive/` |
+
+---
+
+## 8. Verification Artifacts & Test Logs
 
 - **JSON Summary**: [`testing/vm/reports/vm_test_results.json`](file:///z:/opt/homelab-blueprint/testing/vm/reports/vm_test_results.json)
 - **JUnit XML**: [`testing/vm/reports/vm_test_results.xml`](file:///z:/opt/homelab-blueprint/testing/vm/reports/vm_test_results.xml)
-- **Integration Test Script**: [`testing/vm/test_full_container_pipeline.py`](file:///z:/opt/homelab-blueprint/testing/vm/test_full_container_pipeline.py)
+- **Media Pipeline Test**: [`testing/vm/test_full_container_pipeline.py`](file:///z:/opt/homelab-blueprint/testing/vm/test_full_container_pipeline.py)
+- **Photo & Backup Pipeline Test**: [`testing/vm/test_immich_photo_pipeline.py`](file:///z:/opt/homelab-blueprint/testing/vm/test_immich_photo_pipeline.py)
 - **VM Lifecycle Script**: [`testing/vm/test_vm_lifecycle.py`](file:///z:/opt/homelab-blueprint/testing/vm/test_vm_lifecycle.py)

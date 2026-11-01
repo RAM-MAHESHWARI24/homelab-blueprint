@@ -40,6 +40,11 @@ services:
     image: ghcr.io/open-noodle/gallery-ml:${NOODLE_VERSION:-release}
     # Standard upstream Immich image alternative:
     # image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    networks:
+      default:
+        aliases:
+          - immich-machine-learning
+          - immich_machine_learning
     volumes:
       - model-cache:/cache
       - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro

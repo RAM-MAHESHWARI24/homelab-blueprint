@@ -27,7 +27,13 @@ Validates the entire Seerr -> Radarr/Sonarr -> Prowlarr -> Mock Torznab -> qBitt
 python testing/vm/orchestrator.py --run-pipeline
 ```
 
-### 2. Run Complete VM Lifecycle & Assertion Suite
+### 2. Run Immich Photo, Facial Recognition & Cloud Mirror Suite
+Validates 4-person photo ingestion, ML face detection, API tagging, MWG XMP sidecar export, PostgreSQL dump, and simulated Google Drive sync via rclone:
+```powershell
+python testing/vm/orchestrator.py --run-photo
+```
+
+### 3. Run Complete VM Lifecycle & Assertion Suite
 Executes storage topology mounting, unattended headless bootstrap, mock protocol checks, hardlink verification, and disaster recovery archive tests:
 ```powershell
 python testing/vm/orchestrator.py --run-all

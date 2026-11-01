@@ -48,13 +48,14 @@ python3 export_faces_to_xmp.py --dry-run
 python3 export_faces_to_xmp.py
 ```
 
-### 3. Command Line Options
-| Flag | Description |
+### 3. Command Line Options & Environment Variables
+| Option / Variable | Description |
 | :--- | :--- |
 | `--dry-run` | Inspect actions without writing `.xmp` sidecars |
 | `--limit N` | Export only the first `N` assets (great for testing) |
 | `--filter PATH` | Export only assets matching a subpath |
 | `--force` | Bypass `.faces_export_cache.json` and rewrite all sidecars |
+| `PATH_MAP_FROM` / `PATH_MAP_TO` | Translate container-internal paths (e.g., `/data/upload`) to host file paths (e.g., `/data/immich/upload/upload`). Also includes automatic heuristics for standard Docker volumes. |
 
 ---
 
