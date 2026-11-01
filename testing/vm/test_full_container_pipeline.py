@@ -159,11 +159,13 @@ Cookies=@Invalid()
 Connection\\PortRangeMin=6881
 Downloads\\SavePath=/data/torrents/
 WebUI\\Address=0.0.0.0
-WebUI\\AuthSubnetWhitelist=0.0.0.0/0
+WebUI\\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1/32
 WebUI\\AuthSubnetWhitelistEnabled=true
 WebUI\\LocalHostAuth=false
+WebUI\\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
 WebUI\\Port=8080
 WebUI\\ServerDomains=*
+WebUI\\Username=admin
 """
         qb_conf_file.write_text(qb_conf, encoding="utf-8")
         log("Pre-seeded qBittorrent.conf for headless automated API authentication")
@@ -269,6 +271,10 @@ WebUI\\ServerDomains=*
                             f["value"] = "qbittorrent"
                         elif f["name"] == "port":
                             f["value"] = 8080
+                        elif f["name"] == "username":
+                            f["value"] = "admin"
+                        elif f["name"] == "password":
+                            f["value"] = "adminadmin"
                         elif f["name"] == "movieCategory":
                             f["value"] = "movies"
                     st, resp = http_request("http://127.0.0.1:7878/api/v3/downloadclient", method="POST", data=qbit_schema, headers=rad_headers)
@@ -291,6 +297,10 @@ WebUI\\ServerDomains=*
                             f["value"] = "qbittorrent"
                         elif f["name"] == "port":
                             f["value"] = 8080
+                        elif f["name"] == "username":
+                            f["value"] = "admin"
+                        elif f["name"] == "password":
+                            f["value"] = "adminadmin"
                         elif f["name"] == "tvCategory":
                             f["value"] = "tv"
                     st, resp = http_request("http://127.0.0.1:8989/api/v3/downloadclient", method="POST", data=qbit_schema, headers=son_headers)
