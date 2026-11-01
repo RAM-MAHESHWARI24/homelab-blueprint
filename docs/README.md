@@ -162,5 +162,8 @@ Every primary module in this monorepo includes a dedicated, colocated `README.md
 | **Permission Denied creating files in Docker** | `id` (verify PUID/PGID matches `1000:1000`) | [Docker Permissions Guide](DOCKER_PERMISSIONS_PUID_PGID.md) |
 | **Server didn't sleep or woke unexpectedly** | `journalctl -u control-hub` & inspect sleep logs | [Power Management Guide](POWER_MANAGEMENT_RTCWAKE.md) |
 | **Port conflict on server startup** | Run live port prober in Control Hub `:7575` | [Port Bindings Guide](PORT_BINDINGS_AND_CONFLICTS.md) |
+| **System pre-flight or Docker failure** | `./setup.sh --doctor` (8-dimension probe) | [Setup Wizard Guide](../setup/README.md) |
+| **Outdated `.env` after updating repo** | `./setup.sh --migrate` (automated upgrade) | [Maturity Model](STANDARDS_AND_MATURITY_MODEL.md) |
+| **Clean stack reset or uninstallation** | `./teardown.sh --dry-run` (safe teardown) | [Root Guide](../README.md) |
 | **Network speeds capped at 100 Mbps** | `ethtool <nic>` (check Speed & Duplex) | [Gigabit LAN Diagnostics](GIGABIT_LAN_DIAGNOSTICS.md) |
 

@@ -466,6 +466,8 @@ jobs:
           shellcheck --severity=warning \
             bootstrap.sh \
             setup.sh \
+            teardown.sh \
+            apps/control-hub/run.sh \
             system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \
@@ -497,6 +499,10 @@ jobs:
       - name: Validate Documentation Integrity & Links
         run: |
           python testing/test_docs_integrity.py
+
+      - name: Validate Configuration Schema Integrity
+        run: |
+          python setup/config_core/schema_migrator.py --check
 
       - name: Execute Setup Wizard Verification Test Suite
         run: |
@@ -531,6 +537,13 @@ jobs:
           docker compose config --quiet
           echo "✅ apps/noodle-gallery docker-compose.yml is valid."
 
+      - name: Validate Control Hub Standalone Compose Syntax
+        run: |
+          cd apps/control-hub
+          cp .env.example .env
+          docker compose config --quiet
+          echo "✅ apps/control-hub docker-compose.yml is valid."
+
       - name: Set up QEMU for Cross-Platform Simulation (ARM64)
         uses: docker/setup-qemu-action@v3
         with:
@@ -538,11 +551,26 @@ jobs:
 
       - name: Verify Multi-Arch Image Availability
         run: |
-          # Test that images support both amd64 and arm64
           docker manifest inspect ghcr.io/seerr-team/seerr:latest | grep -E "amd64|arm64"
           docker manifest inspect ghcr.io/thephaseless/byparr:latest | grep -E "amd64|arm64"
           docker manifest inspect lscr.io/linuxserver/jellyfin:latest | grep -E "amd64|arm64"
           echo "✅ Multi-arch container images verified."
+
+  security-vulnerability-scan:
+    name: Trivy Security & Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Repository & Dependency Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          format: 'table'
 ```
 
 ---
@@ -554,6 +582,9 @@ Use this checklist during manual releases or automated pipeline reviews:
 ### Foundation & System Setup
 - [ ] **TC-BOOT-01:** `bootstrap.sh` executes zero-touch on fresh Ubuntu.
 - [ ] **TC-BOOT-02:** `./setup.sh` auto-elevates with `sudo`.
+- [x] **TC-DOCTOR-01:** Pre-flight diagnostic prober (`./setup.sh --doctor`) validates all 8 host & docker dimensions.
+- [x] **TC-UNINSTALL-01:** Safe uninstaller (`./teardown.sh`) cleanly removes stacks and systemd services with `--dry-run` and safe data retention.
+- [x] **TC-MIGRATOR-01:** Automated schema migrator (`./setup.sh --migrate`) syncs and upgrades `.env` schemas with timestamped backups.
 - [ ] **TC-STOR-01:** `os.link` passes with `latency < 5ms` on ext4 single-mount.
 - [ ] **TC-STOR-02:** Cross-device link properly raises `EXDEV` and returns warning.
 - [ ] **TC-NET-01:** `netplan generate` returns exit code 0 for proposed YAML.
@@ -564,7 +595,8 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [ ] **TC-SYS-01:** Control Hub starts via systemd and stays `< 25MB RAM`.
 - [ ] **TC-SYS-03:** Sleep Guard honors `/run/server-suspend.skip` flag.
 - [ ] **TC-SYS-06:** Sleep Guard dry-run verifies duration logic without hardware `rtcwake`.
-- [ ] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
+- [x] **TC-SEC-03:** Gitleaks scan reports 0 credentials in Git history.
+- [x] **TC-SEC-04:** Trivy vulnerability scanner reports 0 critical security issues.
 
 ### Documentation Architecture & Link Integrity (`testing/test_docs_integrity.py`)
 - [x] **TC-DOC-01:** Colocated component `README.md` presence across all domains and apps.
@@ -581,6 +613,8 @@ Use this checklist during manual releases or automated pipeline reviews:
 - [x] **TC-FLOW-06:** Control Hub hardware telemetry & widget endpoints (System Vitals, Dynamic Block Device I/O, Dual Speedometers, Sleep Guard).
 - [x] **TC-FLOW-07:** Control Hub static cyber-HUD dashboard and dynamic DOM widget hierarchy rendering.
 - [x] **TC-FLOW-08:** Configuration Center live port reachability matrix and AI Copilot markdown assistant streaming.
+- [x] **TC-FLOW-09:** Control Hub OpenAPI 3.1 specification contract & Kubernetes-standard `/api/livez`, `/api/readyz`, `/api/health` probes.
+- [x] **TC-HUB-STANDALONE-01:** Standalone Control Hub autonomy, decoupled packaging, and independent test matrix execution.
 
 ### E2E Media Ingestion & Hardlinks
 - [ ] **TC-MEDIA-E2E-01:** Prowlarr indexers tested and Byparr FlareSolverr proxy verified active.
