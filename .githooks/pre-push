@@ -1,0 +1,10 @@
+#!/bin/sh
+# Git pre-push hook invoker
+if command -v python3 >/dev/null 2>&1; then
+    exec python3 .githooks/pre_push.py "$@"
+elif command -v python >/dev/null 2>&1; then
+    exec python .githooks/pre_push.py "$@"
+else
+    echo "Warning: Python not found in PATH, skipping pre-push hook."
+    exit 0
+fi

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Git pre-commit hook invoker
+if command -v python3 >/dev/null 2>&1; then
+    exec python3 .githooks/pre_commit.py "$@"
+elif command -v python >/dev/null 2>&1; then
+    exec python .githooks/pre_commit.py "$@"
+else
+    echo "Warning: Python not found in PATH, skipping pre-commit hook."
+    exit 0
+fi
