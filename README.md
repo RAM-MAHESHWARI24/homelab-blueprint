@@ -2,12 +2,13 @@
 
 > A production-tested, ultra-low-power homelab monorepo featuring **instant 0-I/O atomic media hardlinks**, **automated RTC-wake power management (1.2W S3 sleep)**, **ISP SNI DPI bypasses**, **silent Android TV maintenance**, **non-vendor-locked photo metadata tools**, and a **custom <25MB RAM dark glassmorphism dashboard with integrated AI Copilot**.
 
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-26.04%20LTS-orange.svg)](https://ubuntu.com/)
+[![CI](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/actions/workflows/ci.yml/badge.svg)](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/Release-v1.1.0-brightgreen.svg)](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/releases)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04-orange.svg)](https://ubuntu.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Monorepo](https://img.shields.io/badge/Monorepo-All--in--One-success.svg)](#repository-layout)
 [![Hardlinks](https://img.shields.io/badge/Hardlinks-Instant%200%20I%2FO-brightgreen.svg)](docs/STORAGE_AND_HARDLINKS.md)
 [![Control Hub RAM](https://img.shields.io/badge/Control%20Hub%20RAM-%3C25MB-success.svg)](apps/control-hub/)
-[![Automated Tests](https://img.shields.io/badge/Tests-100%25%20Passing-blue.svg)](setup/test_setup.py)
+[![OpenAPI 3.1](https://img.shields.io/badge/OpenAPI-3.1-6BA539.svg)](apps/control-hub/docs/openapi.yaml)
 
 ---
 
@@ -152,6 +153,11 @@ sudo ./setup.sh
 ## 🖥️ Phase 2: Day-to-Day Node Management in Control Hub (Port 7575)
 
 Once provisioned, your server is managed around the clock via **Control Hub** at `http://<your-server-ip>:7575`.
+
+> [!TIP]
+> **Already have an existing homelab (TrueNAS, Unraid, Proxmox, or Docker)?**  
+> You can clone and run Control Hub completely independently from our dedicated standalone repository:  
+> 🚀 **[github.com/RAM-MAHESHWARI24/control-hub](https://github.com/RAM-MAHESHWARI24/control-hub)**
 
 ![Control Hub Header](docs/assets/control-hub/hub_header_settings_ai.png)
 
