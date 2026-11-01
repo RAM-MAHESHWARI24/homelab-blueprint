@@ -52,10 +52,13 @@ def bencode(val) -> bytes:
 
 
 def get_media_bytes() -> bytes:
-    """Loads dummy media bytes, generating file on-the-fly if missing"""
-    if not DUMMY_MEDIA_PATH.exists():
-        from generate_dummy_mkv import generate_synthesized_mkv
-        generate_synthesized_mkv(DUMMY_MEDIA_PATH)
+    """Loads dummy media bytes, generating file on-the-fly if missing or stale"""
+    if not DUMMY_MEDIA_PATH.exists() or DUMMY_MEDIA_PATH.stat().st_size > 4 * 1024 * 1024:
+        if str(FIXTURES_DIR) not in sys.path:
+            sys.path.insert(0, str(FIXTURES_DIR))
+        from generate_dummy_mkv import generate_with_ffmpeg, generate_synthesized_mkv
+        if not generate_with_ffmpeg(DUMMY_MEDIA_PATH):
+            generate_synthesized_mkv(DUMMY_MEDIA_PATH)
     return DUMMY_MEDIA_PATH.read_bytes()
 
 

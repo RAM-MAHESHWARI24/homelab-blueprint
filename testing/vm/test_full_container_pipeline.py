@@ -455,6 +455,8 @@ WebUI\\ServerDomains=*
                 if torrents:
                     t = torrents[0]
                     log(f"  qBit Torrent: '{t.get('name')}' State: {t.get('state')} Progress: {t.get('progress')*100:.1f}%")
+                    if t.get("progress") == 1.0 and i % 3 == 0:
+                        http_request("http://127.0.0.1:7878/api/v3/command", method="POST", data={"name": "DownloadedMoviesScan"}, headers=rad_headers)
 
             if target_dir.exists():
                 mkv_files = list(target_dir.glob("*.mkv"))
