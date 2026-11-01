@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="HomelabVM_E2E" tests="7" failures="0" time="1.39">
-  <testsuite name="VM_Lifecycle_Suite" tests="7" failures="0" time="1.39">
-    <testcase name="Storage_Loopback_Mount" time="0.071">
+<testsuites name="HomelabVM_E2E" tests="7" failures="0" time="179.53">
+  <testsuite name="VM_Lifecycle_Suite" tests="7" failures="0" time="179.53">
+    <testcase name="Storage_Loopback_Mount" time="0.053">
     </testcase>
-    <testcase name="Headless_Deployment" time="0.586">
+    <testcase name="Headless_Deployment" time="178.399">
     </testcase>
-    <testcase name="Mock_Torznab_Startup" time="0.566">
+    <testcase name="Mock_Torznab_Startup" time="0.615">
     </testcase>
-    <testcase name="Mock_Torznab_Protocol" time="0.036">
+    <testcase name="Mock_Torznab_Protocol" time="0.046">
     </testcase>
     <testcase name="Media_Download" time="0.031">
     </testcase>
     <testcase name="Inode_Identity_Invariant" time="0.032">
     </testcase>
-    <testcase name="Backup_Archive_Integrity" time="0.096">
+    <testcase name="Backup_Archive_Integrity" time="0.374">
     </testcase>
   </testsuite>
 </testsuites>
