@@ -27,6 +27,7 @@ jobs:
             bootstrap.sh \
             setup.sh \
             teardown.sh \
+            apps/control-hub/run.sh \
             system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \
@@ -91,6 +92,13 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
           echo "✅ apps/noodle-gallery docker-compose.yml is valid."
+
+      - name: Validate Control Hub Standalone Compose Syntax
+        run: |
+          cd apps/control-hub
+          cp .env.example .env
+          docker compose config --quiet
+          echo "✅ apps/control-hub docker-compose.yml is valid."
 
       - name: Set up QEMU for Cross-Platform Simulation (ARM64)
         uses: docker/setup-qemu-action@v3
