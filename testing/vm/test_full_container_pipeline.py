@@ -179,9 +179,11 @@ WebUI\\ServerDomains=*
         seerr_conf_dir.mkdir(parents=True, exist_ok=True)
         seerr_dst = seerr_conf_dir / "tmdb-interceptor.js"
         seerr_src = REPO_ROOT / "apps" / "mediaserver" / "config" / "seerr" / "tmdb-interceptor.js"
-        if seerr_src.exists():
+        if seerr_src.exists() and seerr_src.resolve() != seerr_dst.resolve():
             shutil.copy2(seerr_src, seerr_dst)
             log("Injected Seerr tmdb-interceptor.js into config directory")
+        elif seerr_dst.exists():
+            log("Verified Seerr tmdb-interceptor.js is present in config directory")
 
         # Ensure proper permissions across both DATA_DIR and CONFIG_BASE for non-root containers
         subprocess.run(["chown", "-R", "1000:1000", str(DATA_DIR)], check=False)
