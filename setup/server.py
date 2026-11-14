@@ -9,7 +9,10 @@ every privileged endpoint requires the one-time token printed at startup:
 
 The page stores the token in sessionStorage and sends it as
 `Authorization: Bearer <token>`. Static assets and /api/health are public.
-After a successful non-dry-run deployment the server exits on its own.
+After a successful non-dry-run deployment the server exits on its own. If the
+deployment left a static-IP change pending, it stays up (it listens on every
+address, so it answers on the new IP) until the change is confirmed or the
+revert window has passed.
 """
 
 import json
@@ -64,6 +67,8 @@ HOST = os.getenv("SETUP_HOST", "0.0.0.0")
 STATIC_DIR = BASE_DIR / "static"
 MAX_BODY_BYTES = 256 * 1024
 EXIT_AFTER_DEPLOY_SEC = int(os.getenv("SETUP_EXIT_DELAY", "15"))
+# Extra time the wizard stays up after an unconfirmed static-IP revert window ends.
+NETPLAN_EXIT_GRACE_SEC = 60
 
 # Token for this wizard run. SETUP_TOKEN lets tests and automation pin it.
 SETUP_TOKEN = os.getenv("SETUP_TOKEN") or generate_token()
@@ -76,6 +81,8 @@ class SetupApiHandler(BaseHTTPRequestHandler):
     server_version = "HomelabSetupWizard/2.0"
     # Overridable for tests (class attribute so threads share it)
     token = SETUP_TOKEN
+    # Set once a real deployment succeeded; a later netplan confirm then ends the wizard.
+    deployed = False
 
     # ------------------------------------------------------------ helpers
     def log_message(self, fmt, *args):  # quieter default logging
@@ -185,17 +192,41 @@ class SetupApiHandler(BaseHTTPRequestHandler):
             self.send_json({"valid": True, "preview_yaml": yaml_preview})
 
         elif path == "/api/netplan/confirm":
-            self.send_json(confirm_netplan_change())
+            # Exit timers are armed before the response is sent, so a client that sees
+            # the response can rely on the wizard's shutdown already being scheduled.
+            result = confirm_netplan_change()
+            if result.get("success") and SetupApiHandler.deployed:
+                safe_print("\nStatic IP confirmed.")
+                self.schedule_exit(EXIT_AFTER_DEPLOY_SEC)
+            self.send_json(result)
 
         elif path == "/api/deploy":
             result = deploy_homelab_stack(str(REPO_ROOT), body)
+            if result.get("success") and not result.get("dry_run"):
+                SetupApiHandler.deployed = True
+                netplan = result.get("netplan_result") or {}
+                if netplan.get("pending"):
+                    # The browser confirms from the new address, so stay up until then. If nobody
+                    # confirms, the timer reverts the network and the wizard exits after a grace period.
+                    window = int(netplan.get("timeout_sec") or 120)
+                    safe_print(f"\nDeployment finished. Static IP pending confirmation (reverts in {window}s).")
+                    self.schedule_exit(window + NETPLAN_EXIT_GRACE_SEC)
+                else:
+                    safe_print("\nDeployment finished.")
+                    self.schedule_exit(EXIT_AFTER_DEPLOY_SEC)
             self.send_json(result)
-            if result.get("success") and not result.get("dry_run") and EXIT_AFTER_DEPLOY_SEC > 0:
-                safe_print(f"\nDeployment finished. Setup wizard will exit in {EXIT_AFTER_DEPLOY_SEC}s.")
-                threading.Timer(EXIT_AFTER_DEPLOY_SEC, self.server.shutdown).start()
 
         else:
             self.send_json({"error": f"Unknown endpoint: {path}"}, 404)
+
+    def schedule_exit(self, delay_sec: int) -> None:
+        """Stops the wizard after `delay_sec` (0 or less disables auto-exit, e.g. in tests)."""
+        if delay_sec <= 0 or EXIT_AFTER_DEPLOY_SEC <= 0:
+            return
+        safe_print(f"Setup wizard will exit in {delay_sec}s.")
+        timer = threading.Timer(delay_sec, self.server.shutdown)
+        timer.daemon = True
+        timer.start()
 
     # ------------------------------------------------------------- static
     def serve_static(self, req_path: str) -> None:

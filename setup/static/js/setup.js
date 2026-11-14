@@ -42,10 +42,96 @@ async function api(path, options = {}) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (new URLSearchParams(window.location.search).get("netplan_confirm") === "1") {
+    showNetplanConfirmPage();
+    return;
+  }
   initTabs();
   fetchSystemSnapshot();
   bindActionEvents();
 });
+
+// ---------------------------------------------------------------------------
+// Static-IP confirmation, served from the NEW address after a deploy changed it.
+// Same-origin, so it uses the normal token-protected API. Opened as
+// /?token=...&netplan_confirm=1#next=<dashboard url>
+// ---------------------------------------------------------------------------
+function safeNextUrl() {
+  try {
+    const raw = new URLSearchParams(window.location.hash.slice(1)).get("next") || "";
+    const next = new URL(raw);
+    // Only follow plain http(s) links to this same host (the dashboard on another port).
+    if ((next.protocol === "http:" || next.protocol === "https:") && next.hostname === window.location.hostname) {
+      return next.href;
+    }
+  } catch (_) { /* missing or malformed */ }
+  return "";
+}
+
+async function showNetplanConfirmPage() {
+  const nextUrl = safeNextUrl();
+  const panel = document.createElement("div");
+  panel.style.cssText = "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg-dark)";
+  panel.innerHTML = `
+    <div class="launch-card" style="display:block;cursor:default;max-width:520px;width:100%;border-color:var(--amber)">
+      <h4 style="margin-top:0">Confirm the new static IP (${window.location.hostname})</h4>
+      <p id="netplan-page-status" style="margin:0 0 .8rem">Checking the pending network change...</p>
+      <button type="button" class="btn-primary" id="btn-netplan-keep" disabled>Keep this IP</button>
+      <span style="margin-left:.8rem;font-family:var(--font-mono);font-size:.8rem">reverts in <span id="netplan-page-countdown">-</span>s if not confirmed</span>
+    </div>`;
+  document.body.appendChild(panel);
+
+  const status = document.getElementById("netplan-page-status");
+  const btn = document.getElementById("btn-netplan-keep");
+  const countdown = document.getElementById("netplan-page-countdown");
+
+  let state = {};
+  try {
+    state = await (await api("/api/netplan/status")).json();
+  } catch (err) {
+    status.innerText = `Could not read the pending change: ${err.message}`;
+    return;
+  }
+  if (!state.pending) {
+    status.innerText = "No static-IP change is pending: it was already confirmed, or the revert window passed and the previous address was restored.";
+    btn.style.display = "none";
+    countdown.parentElement.style.display = "none";
+    return;
+  }
+
+  let remaining = Number(state.remaining_sec) || 0;
+  countdown.innerText = remaining;
+  const tick = setInterval(() => {
+    remaining -= 1;
+    countdown.innerText = Math.max(remaining, 0);
+    if (remaining <= 0) {
+      clearInterval(tick);
+      btn.disabled = true;
+      status.innerText = "The revert window has passed. The previous network configuration is being restored.";
+    }
+  }, 1000);
+
+  status.innerText = "This page reached the server on its new address. Click below to make the change permanent.";
+  btn.disabled = false;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const data = await (await api("/api/netplan/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+      if (data.success) {
+        clearInterval(tick);
+        countdown.parentElement.style.display = "none";
+        status.innerText = nextUrl ? "Static IP confirmed. Opening the dashboard..." : "Static IP confirmed. You can close this page.";
+        if (nextUrl) setTimeout(() => { window.location.href = nextUrl; }, 1500);
+      } else {
+        status.innerText = `Confirmation failed: ${data.message || "unknown error"}`;
+        btn.disabled = false;
+      }
+    } catch (err) {
+      status.innerText = `Could not confirm: ${err.message}`;
+      btn.disabled = false;
+    }
+  };
+}
 
 // Tab & Mode Navigation
 function initTabs() {
@@ -423,17 +509,23 @@ function renderSuccessLaunch(result) {
   const netplan = result.netplan_result || {};
 
   // A static IP change is pending: the server now answers on the NEW address and will
-  // revert automatically unless we confirm within the window.
+  // revert automatically unless confirmed within the window. The wizard sends no CORS
+  // headers, so this page (old address) cannot call the API on the new address. Instead:
+  // probe with a no-cors request (resolves only if the host answers), then move the
+  // browser to the wizard on the new address, which confirms same-origin.
   if (netplan.pending) {
     const newIp = String(netplan.ip || "").split("/")[0];
     const newBase = `${window.location.protocol}//${newIp}:${window.location.port || 80}`;
+    const nextUrl = dashboardUrl.replace(window.location.hostname, newIp);
+    const confirmUrl = `${newBase}/?token=${encodeURIComponent(setupToken)}&netplan_confirm=1#next=${encodeURIComponent(nextUrl)}`;
     const confirmBox = document.createElement("div");
     confirmBox.className = "launch-card";
     confirmBox.style.cssText = "margin-top:1rem;display:block;cursor:default;border-color:var(--amber)";
     confirmBox.innerHTML = `
       <h4 style="margin-top:0">Confirm the new static IP (${newIp})</h4>
+      <p style="margin:0 0 .6rem">Save the credentials above first: the next step opens the wizard on the new address.</p>
       <p id="netplan-confirm-status" style="margin:0 0 .8rem">Checking that the server is reachable on ${newIp}...</p>
-      <button type="button" class="btn-primary" id="btn-netplan-confirm" disabled>Keep this IP</button>
+      <button type="button" class="btn-primary" id="btn-netplan-confirm" disabled>Continue on ${newIp}</button>
       <span style="margin-left:.8rem;font-family:var(--font-mono);font-size:.8rem">reverts in <span id="netplan-countdown">${netplan.timeout_sec || 120}</span>s if not confirmed</span>`;
     grid.parentNode.insertBefore(confirmBox, grid.nextSibling);
     if (countSpan) countSpan.parentElement.style.display = "none";
@@ -450,36 +542,18 @@ function renderSuccessLaunch(result) {
     const btn = document.getElementById("btn-netplan-confirm");
     const probe = async () => {
       try {
-        const r = await fetch(`${newBase}/api/health`, { mode: "cors", cache: "no-store" });
-        if (r.ok) {
-          status.innerText = `Server reachable on ${newIp}. Click "Keep this IP" to make it permanent.`;
-          btn.disabled = false;
-          return true;
-        }
+        // Opaque response: we cannot read it, but it only resolves if the new address answers.
+        await fetch(`${newBase}/api/health`, { mode: "no-cors", cache: "no-store" });
+        status.innerText = `Server reachable on ${newIp}. Continue there to keep this IP.`;
+        btn.disabled = false;
+        return true;
       } catch (_) { /* not reachable yet */ }
       return false;
     };
     const poll = setInterval(async () => { if (await probe()) clearInterval(poll); }, 3000);
     probe();
 
-    btn.onclick = async () => {
-      btn.disabled = true;
-      try {
-        const r = await fetch(`${newBase}/api/netplan/confirm`, { method: "POST", headers: { "Authorization": `Bearer ${setupToken}`, "Content-Type": "application/json" }, body: "{}" });
-        const data = await r.json();
-        if (data.success) {
-          status.innerText = "Static IP confirmed. Redirecting to the dashboard...";
-          clearInterval(tick);
-          setTimeout(() => { window.location.href = dashboardUrl.replace(window.location.hostname, newIp); }, 1500);
-        } else {
-          status.innerText = `Confirmation failed: ${data.message || "unknown error"}`;
-          btn.disabled = false;
-        }
-      } catch (err) {
-        status.innerText = `Could not confirm: ${err.message}`;
-        btn.disabled = false;
-      }
-    };
+    btn.onclick = () => { window.location.href = confirmUrl; };
     return;
   }
 

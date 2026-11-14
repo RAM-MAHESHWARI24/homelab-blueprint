@@ -37,6 +37,45 @@ def request(path: str, data=None, auth: bool = True, method: str = None):
         return res.status, (json.loads(raw.decode()) if res.headers.get("Content-Type", "").startswith("application/json") else raw.decode())
 
 
+def test_exit_waits_for_netplan_confirm():
+    """A real deploy with a pending static IP must keep the wizard up until confirm.
+
+    The deployer and the exit timer are stubbed: no host changes, no shutdown.
+    """
+    import setup.server as wizard
+
+    print("Testing wizard stays up while a static-IP change is pending...")
+    scheduled = []
+    original_deploy = wizard.deploy_homelab_stack
+    original_exit = SetupApiHandler.schedule_exit
+    original_confirm = wizard.confirm_netplan_change
+    try:
+        SetupApiHandler.schedule_exit = lambda self, delay: scheduled.append(delay)
+        wizard.confirm_netplan_change = lambda: {"success": True, "message": "confirmed (stub)"}
+
+        wizard.deploy_homelab_stack = lambda root, cfg: {
+            "success": True, "dry_run": False,
+            "netplan_result": {"success": True, "pending": True, "ip": "192.168.1.50/24", "timeout_sec": 120},
+        }
+        status, _ = request("/api/deploy", {"mode": "express"})
+        assert status == 200
+        assert scheduled == [120 + wizard.NETPLAN_EXIT_GRACE_SEC], f"pending IP: expected revert window + grace, got {scheduled}"
+
+        status, data = request("/api/netplan/confirm", {})
+        assert status == 200 and data["success"], data
+        assert scheduled[-1] == wizard.EXIT_AFTER_DEPLOY_SEC, f"confirm should schedule the normal exit, got {scheduled}"
+
+        scheduled.clear()
+        wizard.deploy_homelab_stack = lambda root, cfg: {"success": True, "dry_run": False, "netplan_result": {"success": True}}
+        request("/api/deploy", {"mode": "express"})
+        assert scheduled == [wizard.EXIT_AFTER_DEPLOY_SEC], f"no pending IP: expected normal exit, got {scheduled}"
+    finally:
+        wizard.deploy_homelab_stack = original_deploy
+        wizard.confirm_netplan_change = original_confirm
+        SetupApiHandler.schedule_exit = original_exit
+        SetupApiHandler.deployed = False
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -133,6 +172,8 @@ def run_tests():
         rendered = preview_env.read_text(encoding="utf-8")
         assert "QBITTORRENT_PASS=testpass123" in rendered
         assert "adminadmin" not in rendered
+
+        test_exit_waits_for_netplan_confirm()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:
