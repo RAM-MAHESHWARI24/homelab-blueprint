@@ -522,6 +522,18 @@ function renderSuccessLaunch(result) {
     grid.parentNode.insertBefore(box, grid.nextSibling);
   }
 
+  // The wizard exits after install; the always-on Control Hub holds the indexer picker.
+  if (!result.dry_run && result.access_catalog.some(s => s.name === "Seerr")) {
+    const next = document.createElement("div");
+    next.className = "launch-card";
+    next.style.cssText = "margin-top:1rem;display:block;cursor:default;border-color:var(--cyan)";
+    next.innerHTML = `
+      <h4 style="margin-top:0">Last step: pick your indexers</h4>
+      <p style="margin:0">Nothing is pre-selected. The Control Hub dashboard will ask you to choose indexers from
+      Prowlarr's own list (skip is allowed). Which indexers you add, and whether they are legal where you live, is up to you.</p>`;
+    grid.parentNode.insertBefore(next, grid.nextSibling);
+  }
+
   const countSpan = document.getElementById("redirect-countdown");
   const netplan = result.netplan_result || {};
 

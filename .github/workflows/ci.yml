@@ -193,6 +193,9 @@ jobs:
           sudo test -f /var/lib/homelab/installed.json
           sudo stat -c '%a %n' /etc/homelab/mediaserver.env | grep -q '^600 '
           sudo stat -c '%a %n' /etc/homelab/control-hub.token | grep -q '^640 '
+          # Prowlarr key for the Control Hub indexer picker: group-readable by the service user only
+          sudo test -f /etc/homelab/prowlarr.key
+          sudo stat -c '%a %G %n' /etc/homelab/prowlarr.key | grep -q '^640 homelab '
           sudo test -f /etc/systemd/system/control-hub.service
           sudo test -f /etc/sudoers.d/homelab-blueprint
           sudo visudo -cf /etc/sudoers.d/homelab-blueprint
@@ -231,6 +234,11 @@ jobs:
           curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Radarr"'
           curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Sonarr"'
           curl -fsS http://127.0.0.1:8096/System/Info/Public | grep -q '"StartupWizardCompleted":true'
+          # Indexer picker: Control Hub sees Prowlarr, nothing pre-selected, Prowlarr's own list is served
+          TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/status | tee /tmp/ix.json
+          grep -q '"installed":true' /tmp/ix.json && grep -q '"reachable":true' /tmp/ix.json && grep -q '"configured":0' /tmp/ix.json
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/available | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"] > 50, d; print("indexer definitions:", d["count"])'
           # qBittorrent accepts the generated password (read from the root-only env file)
           QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
           curl -fsS --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok'

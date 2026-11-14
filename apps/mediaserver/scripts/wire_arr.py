@@ -396,6 +396,97 @@ def wire_seerr(host: str, admin_user: str, admin_pass: str, radarr_key: str, son
     step("Seerr: initialisation", st in (200, 201), f"HTTP {st}", required=False)
 
 
+# ------------------------------------------------------------------------- indexers
+def prowlarr_indexer_schemas(prowlarr: Arr) -> List[Dict[str, Any]]:
+    """Prowlarr's own indexer definition list (ships with Prowlarr; nothing comes from this repo)."""
+    st, schemas = prowlarr.get("indexer/schema")
+    return schemas if st == 200 and isinstance(schemas, list) else []
+
+
+def prowlarr_indexers(prowlarr: Arr) -> List[Dict[str, Any]]:
+    st, existing = prowlarr.get("indexer")
+    return existing if st == 200 and isinstance(existing, list) else []
+
+
+def prowlarr_add_indexer(prowlarr: Arr, name: str, values: Optional[Dict[str, Any]] = None, force: bool = False) -> Tuple[bool, str]:
+    """Adds one indexer by its definition name, filling credential fields from `values`."""
+    schema = next((dict(s) for s in prowlarr_indexer_schemas(prowlarr) if s.get("name") == name), None)
+    if schema is None:
+        return False, "unknown indexer"
+    if any(i.get("name") == name for i in prowlarr_indexers(prowlarr)):
+        return True, "already configured"
+    schema.update({"name": name, "enable": True, "priority": schema.get("priority") or 25, "tags": schema.get("tags") or []})
+    schema.setdefault("appProfileId", 1)
+    set_fields(schema, values or {})
+    st, resp = prowlarr.post("indexer?forceSave=true" if force else "indexer", schema)
+    if st in (200, 201):
+        return True, "added"
+    return False, f"HTTP {st}: {str(resp)[:200]}"
+
+
+def write_key_file(path: Path, key: str, group: str = "") -> bool:
+    """Writes an API key 0640 root:<group> so an unprivileged daemon in <group> can read it."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(key + "\n", encoding="utf-8")
+        os.chmod(tmp, 0o640)
+        if group and hasattr(os, "chown"):
+            import grp
+
+            try:
+                os.chown(tmp, 0, grp.getgrnam(group).gr_gid)
+            except (KeyError, PermissionError):
+                pass
+        tmp.replace(path)
+        return step(f"Prowlarr: API key file {path}", True, f"0640 root:{group or 'root'}")
+    except OSError as e:
+        return step(f"Prowlarr: API key file {path}", False, str(e), required=False)
+
+
+def cmd_indexers(args) -> int:
+    key = args.api_key or ""
+    if not key and args.key_file:
+        try:
+            key = Path(args.key_file).read_text(encoding="utf-8").strip()
+        except OSError:
+            key = ""
+    if not key and args.config_dir:
+        key = read_api_key(Path(args.config_dir), "prowlarr", retries=1)
+    if not key:
+        print("error: no Prowlarr API key (--api-key, --key-file or --config-dir)", file=sys.stderr)
+        return 2
+    prowlarr = Arr("prowlarr", args.host, key, "v1")
+
+    if args.action == "list":
+        configured = {i.get("name") for i in prowlarr_indexers(prowlarr)}
+        rows = [{"name": s.get("name"), "protocol": s.get("protocol"), "privacy": s.get("privacy"),
+                 "language": s.get("language"), "configured": s.get("name") in configured}
+                for s in prowlarr_indexer_schemas(prowlarr) if s.get("name")]
+        rows.sort(key=lambda r: ((r["privacy"] != "public"), (r["name"] or "").lower()))
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        else:
+            for r in rows:
+                flag = "*" if r["configured"] else " "
+                print(f"{flag} {r['name']:<40} {r['protocol'] or '':<8} {r['privacy'] or '':<12} {r['language'] or ''}")
+        return 0
+
+    values: Dict[str, Any] = {}
+    for item in args.field or []:
+        if "=" in item:
+            k, v = item.split("=", 1)
+            values[k.strip()] = v
+    rc = 0
+    for name in args.names:
+        ok, detail = prowlarr_add_indexer(prowlarr, name, values, force=args.force)
+        step(f"Prowlarr: indexer {name}", ok, detail)
+        rc = rc if ok else 1
+    if args.names:
+        prowlarr.post("command", {"name": "ApplicationIndexerSync"})
+    return rc
+
+
 # ------------------------------------------------------------------------------ main
 def cmd_seed(args) -> int:
     seed_qbittorrent(Path(args.config_dir), args.qbit_user, args.qbit_pass, args.puid, args.pgid)
@@ -440,6 +531,10 @@ def cmd_wire(args) -> int:
     else:
         step("Jellyfin/Seerr: skipped (no --admin-pass)", True, required=False)
 
+    if args.key_file:
+        # Lets the Control Hub (an unprivileged daemon) offer the indexer picker without root.
+        write_key_file(Path(args.key_file), keys["prowlarr"], args.key_group)
+
     report["api_keys"] = keys
     return 0 if not report["errors"] else 1
 
@@ -467,8 +562,23 @@ def main() -> int:
     wire.add_argument("--byparr", action="store_true", help="Register Byparr as Prowlarr's FlareSolverr proxy")
     wire.add_argument("--skip-seerr", action="store_true")
     wire.add_argument("--retries", type=int, default=60, help="Reachability retries (3s apart)")
+    wire.add_argument("--key-file", default="", help="Also write Prowlarr's API key here (0640) for the Control Hub indexer picker")
+    wire.add_argument("--key-group", default="", help="Group owner of --key-file (e.g. homelab)")
+
+    ix = sub.add_parser("indexers", help="List Prowlarr's indexer definitions or add some by name")
+    ix.add_argument("action", choices=["list", "add"])
+    ix.add_argument("names", nargs="*", help="Indexer names to add (as shown by `indexers list`)")
+    ix.add_argument("--host", default="127.0.0.1")
+    ix.add_argument("--api-key", default=os.getenv("PROWLARR_API_KEY", ""))
+    ix.add_argument("--key-file", default="", help="Read the API key from this file")
+    ix.add_argument("--config-dir", default="", help="Or read it from <config-dir>/prowlarr/config.xml")
+    ix.add_argument("--field", action="append", help="Credential field for private trackers, e.g. --field username=me --field password=secret")
+    ix.add_argument("--force", action="store_true", help="Save even if Prowlarr's connection test fails")
+    ix.add_argument("--json", action="store_true")
 
     args = parser.parse_args()
+    if args.command == "indexers":
+        return cmd_indexers(args)
     if not args.qbit_pass:
         print("error: --qbit-pass (or QBITTORRENT_PASS) is required", file=sys.stderr)
         return 2

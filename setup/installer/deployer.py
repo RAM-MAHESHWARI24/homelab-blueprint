@@ -340,12 +340,17 @@ class Deployment:
             return
 
         self.log("Connecting the media apps to each other (root folders, download client, indexer sync, libraries)...")
+        prowlarr_key_file = self.etc_dir / "prowlarr.key"
         wire_args = ["--host", "127.0.0.1", "--admin-user", str(self.config.get("media_admin_user") or "admin"),
-                     "--admin-pass", str(self.config.get("media_admin_pass") or "")]
+                     "--admin-pass", str(self.config.get("media_admin_pass") or ""),
+                     "--key-file", str(prowlarr_key_file), "--key-group", SERVICE_USER]
         if self.config.get("enable_byparr"):
             wire_args.append("--byparr")
         if self._wire_script("wire", wire_args):
             self.log("Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.")
+            self.log("No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).")
+        if prowlarr_key_file.exists():
+            self.manifest.add_file(prowlarr_key_file)
 
     def module_photos(self) -> None:
         module_dir = self.root / "apps" / "noodle-gallery"
