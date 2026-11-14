@@ -13,7 +13,6 @@ Executes the complete real-world photo workflow:
   6. Asserts 100% integrity across XMP metadata, database dump, and cloud mirror parity.
 """
 
-import glob
 import json
 import os
 import shutil
@@ -301,7 +300,7 @@ class PhotoPipelineHarness:
         expected_names = {"John Lennon", "Paul McCartney", "George Harrison", "Ringo Starr"}
         missing = expected_names - set(names_in_xmp)
         assert not missing, f"Missing faces in XMP sidecar: {missing}"
-        log(f"✅ Invariant 1 Passed: All 4 faces verified in standard MWG XMP sidecar!")
+        log("✅ Invariant 1 Passed: All 4 faces verified in standard MWG XMP sidecar!")
 
         # Invariant 2: Assert Database dump integrity via gzip -t
         dump_files = list(BACKUP_DIR.glob("immich_db_*.sql.gz"))
@@ -315,7 +314,7 @@ class PhotoPipelineHarness:
         gdrive_media = list((MOCK_GDRIVE_DIR / "Memories").rglob("*.xmp"))
         assert gdrive_db, "Simulated Google Drive missing database dump!"
         assert gdrive_media, "Simulated Google Drive missing synced XMP sidecars!"
-        log(f"✅ Invariant 3 Passed: Simulated Google Drive mirror verified with 100% parity!")
+        log("✅ Invariant 3 Passed: Simulated Google Drive mirror verified with 100% parity!")
 
 
 def main():

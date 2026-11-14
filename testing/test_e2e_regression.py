@@ -12,8 +12,6 @@ Validates:
 
 import os
 import sys
-import json
-import time
 import shutil
 import hashlib
 import tempfile
@@ -25,8 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "apps" / "immich-face-xmp-exporter"))
 
-from setup.config_core.storage_manager import test_atomic_hardlink, verify_path_writable
-from export_faces_to_xmp import build_exiftool_args_for_asset, get_sidecar_path
+from setup.config_core.storage_manager import test_atomic_hardlink
+from export_faces_to_xmp import build_exiftool_args_for_asset
 
 
 class TestMediaIngestionAndHardlinks(unittest.TestCase):
@@ -455,7 +453,6 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
         from setup.config_core.schema_migrator import (
             detect_schema_diff,
             migrate_single_env,
-            run_migration_suite,
         )
 
         test_dir = Path(tempfile.mkdtemp(prefix="homelab_migrate_test_"))

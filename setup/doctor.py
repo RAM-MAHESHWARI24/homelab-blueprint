@@ -7,7 +7,6 @@ Validates CPU architecture, memory headroom, storage hardlinks, port collisions,
 
 import os
 import sys
-import socket
 import platform
 import subprocess
 from pathlib import Path
@@ -18,8 +17,8 @@ REPO_ROOT = SETUP_DIR.parent
 sys.path.insert(0, str(SETUP_DIR))
 
 from config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
-from config_core.port_manager import check_port, get_default_ports
-from config_core.storage_manager import test_atomic_hardlink, get_disk_partitions
+from config_core.port_manager import check_port
+from config_core.storage_manager import test_atomic_hardlink
 from config_core.schema_migrator import detect_schema_diff, find_all_environment_targets
 
 # Safe UTF-8 console output for cross-platform terminals (Windows cp1252 & Linux UTF-8)
@@ -140,13 +139,13 @@ def run_doctor():
     docker = check_docker_engine()
     if not docker["installed"]:
         print(f"   Docker:       {RED}[FAIL]{RESET} Docker Engine is not installed.")
-        print(f"   Remedy:       Run './setup.sh' to automatically install Docker Engine & Compose v2.")
+        print("   Remedy:       Run './setup.sh' to automatically install Docker Engine & Compose v2.")
         issues_found += 1
     else:
         print(f"   Docker:       {GREEN}[OK]{RESET} Docker {docker['version']}")
         if not docker["running"]:
             print(f"   Daemon:       {RED}[FAIL]{RESET} Docker service is stopped or socket permissions missing.")
-            print(f"   Remedy:       Run 'sudo systemctl start docker' or 'sudo usermod -aG docker $USER'.")
+            print("   Remedy:       Run 'sudo systemctl start docker' or 'sudo usermod -aG docker $USER'.")
             issues_found += 1
         else:
             print(f"   Daemon:       {GREEN}[OK]{RESET} Docker daemon active and responsive")
@@ -185,7 +184,7 @@ def run_doctor():
         print(f"   Port Scan:    {YELLOW}[NOTICE]{RESET} Found {len(port_collisions)} occupied port(s):")
         for s, p in port_collisions:
             print(f"                 - Port {p} ({s}) is currently in use.")
-        print(f"                 (If an existing service is already running on this port, you can customize it in Setup Wizard)")
+        print("                 (If an existing service is already running on this port, you can customize it in Setup Wizard)")
 
     # 7. GPU Render Node Acceleration
     print(f"\n{BOLD}7. Hardware Video Acceleration (Intel VAAPI/QSV):{RESET}")
@@ -194,7 +193,7 @@ def run_doctor():
         print(f"   Render Node:  {GREEN}[OK]{RESET} /dev/dri render node available. Hardware transcode ready.")
     else:
         print(f"   Render Node:  {YELLOW}[NOTICE]{RESET} Dedicated /dev/dri render node not detected.")
-        print(f"                 (Direct Play streaming mode will be enforced for maximum CPU efficiency)")
+        print("                 (Direct Play streaming mode will be enforced for maximum CPU efficiency)")
 
     # 8. Configuration Schema & Environment Upgrades (.env)
     print(f"\n{BOLD}8. Configuration Environment & Schema Status (.env):{RESET}")
@@ -212,7 +211,7 @@ def run_doctor():
             print(f"   • {rel}: {YELLOW}[OUTDATED]{RESET} Missing {len(diff['missing_keys'])} new parameter(s): {', '.join(diff['missing_keys'].keys())}")
 
     if env_outdated > 0:
-        print(f"   Remedy:       Run './setup.sh --migrate' to safely auto-upgrade environment files.")
+        print("   Remedy:       Run './setup.sh --migrate' to safely auto-upgrade environment files.")
         warnings_found += 1
     else:
         print(f"   Schema Sync:  {GREEN}[OK]{RESET} All active environments match current template versions.")

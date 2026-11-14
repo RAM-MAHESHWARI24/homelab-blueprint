@@ -23,7 +23,6 @@ Two-Tier State-Machine Architecture:
         Once all 3 TVs have all apps installed & updated, enters quiescent idle.
 """
 
-import os
 import re
 import sys
 import time
@@ -263,7 +262,7 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
         ips_to_scan = [ip for ip in ips_to_scan if ip not in already_checked]
 
         with ThreadPoolExecutor(max_workers=30) as executor:
-            active_ips = [ip for ip, open_port in zip(ips_to_scan, executor.map(is_port_open, ips_to_scan)) if open_port]
+            active_ips = [ip for ip, open_port in zip(ips_to_scan, executor.map(is_port_open, ips_to_scan), strict=False) if open_port]
 
         for ip in active_ips:
             model = get_device_model(ip, 5555)
@@ -693,7 +692,6 @@ def process_manual_incoming(online_tvs: list):
         info = get_apk_details(apk_path)
         pkg = info.get("package")
         code = info.get("version_code", -1)
-        name = info.get("version_name", "")
 
         if not pkg:
             logging.warning(f"Could not read package name from {apk_path.name}; skipping.")

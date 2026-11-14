@@ -7,7 +7,6 @@ WITHOUT overwriting any existing settings or sizes.
 
 import os
 import requests
-import json
 import sys
 
 # Configuration via environment variables

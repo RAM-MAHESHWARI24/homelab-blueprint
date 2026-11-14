@@ -1,0 +1,33 @@
+[tool.ruff]
+# Lint configuration for the whole monorepo. Formatting is not enforced;
+# this is about catching real defects (undefined names, unused imports,
+# bare excepts that hide bugs) before they reach a user's server.
+target-version = "py310"
+line-length = 140
+extend-exclude = [
+    "setup/dry_run_preview",
+    "**/venv",
+    "**/.venv",
+    "**/__pycache__",
+    "testing/vm/reports",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes: undefined names, unused imports, etc.
+    "B",    # bugbear: likely bugs and design problems
+    "PLE",  # pylint errors
+    "S102", # exec() use
+    "S307", # eval() use
+]
+ignore = [
+    "E501",  # line length: handled by reviewers, not the linter
+    "E402",  # module-level import not at top: sys.path shims are used deliberately
+    "B008",  # function call in default argument
+    "B904",  # raise ... from err: not worth churning existing code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["B011"]
+"testing/**" = ["B011"]

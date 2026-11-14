@@ -11,7 +11,7 @@ import os
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 # Ensure stdout handles UTF-8 on minimal Linux locales (C/POSIX) and Windows cp1252
 if hasattr(sys.stdout, "reconfigure"):
@@ -44,7 +44,6 @@ from setup.config_core import (
     check_ports_matrix,
     get_default_ports,
     generate_netplan_yaml,
-    safe_apply_netplan,
     deploy_homelab_stack
 )
 

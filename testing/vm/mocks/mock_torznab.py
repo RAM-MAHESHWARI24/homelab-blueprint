@@ -11,10 +11,7 @@ Runs using only the Python standard library.
 
 import hashlib
 import json
-import math
-import os
 import sys
-import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path

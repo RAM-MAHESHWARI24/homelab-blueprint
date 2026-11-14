@@ -19,7 +19,7 @@ import subprocess
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
