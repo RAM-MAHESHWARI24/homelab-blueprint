@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -55,7 +55,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate Media Stack Compose Syntax
         run: |
@@ -148,7 +148,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run Trivy Repository & Dependency Scanner
         uses: aquasecurity/trivy-action@master
@@ -163,12 +163,25 @@ jobs:
     name: Real Headless Install, Health Probes & Teardown (ubuntu-24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The Control Hub unit runs as the unprivileged `homelab` user with
+      # WorkingDirectory inside the checkout. The runner's home is 0750, so the
+      # service cannot start from $GITHUB_WORKSPACE; install from the production
+      # location instead (what bootstrap.sh does on a real server).
+      INSTALL_DIR: /opt/homelab-blueprint
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Copy checkout to the production install location
+        run: |
+          sudo mkdir -p "$INSTALL_DIR"
+          sudo cp -a "$GITHUB_WORKSPACE/." "$INSTALL_DIR/"
+          sudo chown -R root:root "$INSTALL_DIR"
 
       - name: Headless install (not a dry run)
         run: |
+          cd "$INSTALL_DIR"
           sudo ./setup.sh --headless --config testing/fixtures/ci_minimal.json
 
       - name: Installed artefacts exist with safe permissions
@@ -183,7 +196,9 @@ jobs:
           sudo test -f /etc/sudoers.d/homelab-blueprint
           sudo visudo -cf /etc/sudoers.d/homelab-blueprint
           sudo grep -q 'User=homelab' /etc/systemd/system/control-hub.service
-          sudo grep -q "$GITHUB_WORKSPACE" /etc/systemd/system/control-hub.service
+          sudo grep -q "$INSTALL_DIR" /etc/systemd/system/control-hub.service
+          # The install manifest must list the media stack so teardown can stop it
+          sudo grep -q '"module": "media"' /var/lib/homelab/installed.json
           ! sudo grep -q '{{' /etc/systemd/system/control-hub.service
 
       - name: Services are up
@@ -222,13 +237,31 @@ jobs:
       - name: Show logs on failure
         if: failure()
         run: |
+          echo "::group::control-hub.service journal"
           sudo journalctl -u control-hub.service --no-pager -n 100 || true
+          echo "::endgroup::"
+          echo "::group::install manifest"
           sudo cat /var/lib/homelab/installed.json || true
+          echo "::endgroup::"
           docker ps -a || true
-          cd apps/mediaserver && docker compose logs --tail 50 || true
+          # The env file is root-only (0600), so compose needs sudo to read it.
+          echo "::group::compose logs"
+          sudo docker compose --env-file /etc/homelab/mediaserver.env -f "$INSTALL_DIR/apps/mediaserver/docker-compose.yml" logs --tail 80 || true
+          echo "::endgroup::"
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            echo "::group::$c (state + health + last 60 log lines)"
+            docker inspect --format '{{.State.Status}} restarts={{.RestartCount}} exit={{.State.ExitCode}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' "$c" || true
+            docker inspect --format '{{if .State.Health}}{{range .State.Health.Log}}{{.Output}}{{end}}{{end}}' "$c" | tail -n 5 || true
+            sudo docker logs --tail 60 "$c" 2>&1 || true
+            echo "::endgroup::"
+          done
+          sudo ls -la /srv/homelab/appdata/mediaserver/ || true
 
       - name: Teardown removes everything it installed
+        # Runs after a failed install too: a half-installed stack must still be removable
+        if: always()
         run: |
+          cd "$INSTALL_DIR"
           sudo ./teardown.sh --yes
           ! sudo test -e /etc/homelab
           ! sudo test -e /var/lib/homelab

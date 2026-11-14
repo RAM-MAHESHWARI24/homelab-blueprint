@@ -145,9 +145,11 @@ services:
     image: ghcr.io/seerr-team/seerr:v3.4.1
     init: true
     restart: unless-stopped
+    # The Seerr image has no PUID/PGID support: it is built with `USER node` (uid 1000)
+    # and never chowns /app/config. Run it as the stack's user so the bind mount
+    # (created by the installer as PUID:PGID) is writable.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
       TZ: ${TZ:-UTC}
       PORT: "5055"
       LOG_LEVEL: info

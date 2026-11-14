@@ -70,6 +70,8 @@ DEFAULT_MODULES = ["media", "photos", "control_hub"]
 COMPOSE_PULL_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_PULL_TIMEOUT", "1800"))
 COMPOSE_UP_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_UP_TIMEOUT", "600"))
 HEALTH_WAIT_TIMEOUT = int(os.getenv("HOMELAB_HEALTH_WAIT_TIMEOUT", "240"))
+# Polls are 5 s apart; a container seen "restarting" this many times is in a crash loop.
+RESTART_LOOP_SIGHTINGS = 4
 
 
 class Deployment:
@@ -221,12 +223,15 @@ class Deployment:
             self.fail(module, f"docker compose up failed: {up['stderr'] or up['stdout']}")
             return False
 
+        # Record the stack as soon as it exists so teardown can remove it even if
+        # the health wait below fails.
+        self.manifest.add_compose(module, module_dir, env_file)
+
         healthy, detail = self._wait_healthy(base, module_dir)
         if not healthy:
             self.fail(module, f"containers did not become healthy: {detail}")
             return False
 
-        self.manifest.add_compose(module, module_dir, env_file)
         self.services_launched.append(module)
         self.log(f"{module} is up and healthy.")
         return True
@@ -234,6 +239,7 @@ class Deployment:
     def _wait_healthy(self, base: List[str], module_dir: Path) -> "tuple[bool, str]":
         deadline = time.time() + HEALTH_WAIT_TIMEOUT
         last = ""
+        restarting_seen: Dict[str, int] = {}
         while time.time() < deadline:
             ps = run_command(base + ["ps", "--format", "json"], cwd=str(module_dir), timeout=60)
             if not ps.ok:
@@ -262,6 +268,15 @@ class Deployment:
             if exited:
                 names = ", ".join(r.get("Name", r.get("Service", "?")) for r in exited)
                 return False, f"exited: {names}"
+            # A container with restart:unless-stopped that keeps crashing never shows as
+            # "exited"; it flips between restarting and running. Give up after a few
+            # sightings instead of waiting out the whole timeout.
+            for r in rows:
+                if r.get("State") == "restarting":
+                    name = r.get("Name", r.get("Service", "?"))
+                    restarting_seen[name] = restarting_seen.get(name, 0) + 1
+                    if restarting_seen[name] >= RESTART_LOOP_SIGHTINGS:
+                        return False, f"restart loop: {name} (exit code {r.get('ExitCode', '?')}); see `docker logs {name}`"
             last = ", ".join(f"{r.get('Name', r.get('Service', '?'))}={r.get('State')}/{r.get('Health') or 'n/a'}" for r in bad + starting)
             time.sleep(5)
         return False, f"timeout after {HEALTH_WAIT_TIMEOUT}s; last state: {last}"
@@ -374,6 +389,17 @@ class Deployment:
             self.fail("control_hub", f"could not create service user: {res['stderr']}")
             return
         run_command(["chown", "-R", f"{SERVICE_USER}:{SERVICE_USER}", str(ch_dir / "venv")], timeout=120)
+
+        # The unit runs as `homelab` with WorkingDirectory inside the checkout. A clone
+        # under a 0750 home directory fails with status=200/CHDIR; say so up front.
+        probe = run_command(["runuser", "-u", SERVICE_USER, "--", "test", "-x", str(ch_dir)], timeout=10)
+        if probe.ok is False and probe["returncode"] != -1:
+            self.fail(
+                "control_hub",
+                f"user '{SERVICE_USER}' cannot enter {ch_dir} (check parent directory permissions; "
+                f"install from /opt/homelab-blueprint or run: chmod o+x {self.root.parent})",
+            )
+            return
 
         if not token:
             self.fail("control_hub", "no Control Hub token was generated")
