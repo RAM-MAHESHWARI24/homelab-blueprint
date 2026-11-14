@@ -16,7 +16,9 @@ cd "$SCRIPT_DIR"
 PURGE_DATA=false
 NON_INTERACTIVE=false
 DRY_RUN=false
-MANIFEST_CLI="python3 $SCRIPT_DIR/setup/installer/manifest.py"
+manifest_list() {
+    python3 "$SCRIPT_DIR/setup/installer/manifest.py" list "$1" 2>/dev/null || true
+}
 STATE_DIR="${HOMELAB_STATE_DIR:-/var/lib/homelab}"
 ETC_DIR="${HOMELAB_ETC_DIR:-/etc/homelab}"
 APPDATA_DIR="${HOMELAB_APPDATA_DIR:-/srv/homelab/appdata}"
@@ -103,7 +105,7 @@ if command -v docker >/dev/null 2>&1; then
                     (cd "$dir" && docker compose down --remove-orphans 2>/dev/null) || true
                 fi
             fi
-        done < <($MANIFEST_CLI list compose 2>/dev/null || true)
+        done < <(manifest_list compose)
     else
         for dir in "$SCRIPT_DIR/apps/mediaserver" "$SCRIPT_DIR/apps/noodle-gallery"; do
             [ -f "$dir/docker-compose.yml" ] || continue
@@ -121,7 +123,7 @@ echo ""
 echo "[2/5] Stopping systemd units..."
 UNITS=()
 if [ "$HAVE_MANIFEST" = true ]; then
-    mapfile -t UNITS < <($MANIFEST_CLI list units 2>/dev/null || true)
+    mapfile -t UNITS < <(manifest_list units)
 fi
 [ ${#UNITS[@]} -eq 0 ] && UNITS=("control-hub.service")
 UNITS+=("homelab-netplan-revert.timer" "server-suspend-override.timer")
@@ -147,7 +149,7 @@ echo ""
 echo "[3/5] Removing installed files (cron, sudoers, helpers, env files)..."
 FILES=()
 if [ "$HAVE_MANIFEST" = true ]; then
-    mapfile -t FILES < <($MANIFEST_CLI list files 2>/dev/null || true)
+    mapfile -t FILES < <(manifest_list files)
 else
     FILES=(
         /etc/cron.d/server-suspend /etc/cron.d/immich-backup /etc/cron.d/immich-ml

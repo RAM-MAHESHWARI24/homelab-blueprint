@@ -99,19 +99,23 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
           echo "✅ apps/mediaserver docker-compose.yml is valid."
+          # Every image must be pinned to a version tag (Dependabot keeps them current)
+          ! grep -nE 'image:.*:(latest|release|main|develop)\s*$' docker-compose.yml
 
       - name: Validate Noodle Gallery Compose Syntax
         run: |
           cd apps/noodle-gallery
           cp .env.example .env
-          docker compose config --quiet
+          # Secrets are required (no defaults shipped); supply CI-only values
+          DB_PASSWORD=ci-only docker compose config --quiet
           echo "✅ apps/noodle-gallery docker-compose.yml is valid."
+          ! grep -nE 'image:.*:(latest|release|main|develop)\s*$' docker-compose.yml
 
       - name: Validate Control Hub Standalone Compose Syntax
         run: |
           cd apps/control-hub
           cp .env.example .env
-          docker compose config --quiet
+          CONTROL_HUB_TOKEN=ci-only QBITTORRENT_PASS=ci-only docker compose config --quiet
           echo "✅ apps/control-hub docker-compose.yml is valid."
 
       - name: Set up QEMU for Cross-Platform Simulation (ARM64)
@@ -124,7 +128,9 @@ jobs:
 
       - name: Verify Multi-Arch Image Availability
         run: |
-          for img in "ghcr.io/seerr-team/seerr:latest" "ghcr.io/thephaseless/byparr:latest" "lscr.io/linuxserver/jellyfin:latest"; do
+          # Verify the pinned tags from the compose files publish both architectures
+          mapfile -t IMAGES < <(grep -hoE 'image: *[^ ]+' apps/mediaserver/docker-compose.yml apps/noodle-gallery/docker-compose.yml | awk '{print $2}' | sort -u)
+          for img in "${IMAGES[@]}"; do
             echo "Verifying multi-arch availability for $img..."
             if docker buildx imagetools inspect "$img" 2>/dev/null | grep -E "amd64|arm64" >/dev/null; then
               echo "✅ Verified $img (via buildx imagetools)"
@@ -196,6 +202,22 @@ jobs:
           curl -fsS http://127.0.0.1:7878/ping
           curl -fsS http://127.0.0.1:8989/ping
           curl -fsS http://127.0.0.1:9696/ping
+
+      - name: Apps are wired together (fully configured, not just running)
+        run: |
+          RADARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/radarr/config.xml)"
+          SONARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/sonarr/config.xml)"
+          PROWLARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/prowlarr/config.xml)"
+          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/downloadclient | grep -q '"name":"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/rootfolder | grep -q '/data/media/movies'
+          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/downloadclient | grep -q '"name":"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/rootfolder | grep -q '/data/media/tv'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Radarr"'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Sonarr"'
+          curl -fsS http://127.0.0.1:8096/System/Info/Public | grep -q '"StartupWizardCompleted":true'
+          # qBittorrent accepts the generated password (read from the root-only env file)
+          QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
+          curl -fsS --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok'
 
       - name: Show logs on failure
         if: failure()

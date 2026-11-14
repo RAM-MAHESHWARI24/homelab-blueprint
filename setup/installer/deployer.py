@@ -138,6 +138,14 @@ class Deployment:
         if config_dir in ("./config", "config"):
             config_dir = default_appdata
         self.config["config_dir"] = config_dir
+
+        # Photo cloud appdata (database, thumbnails, transcodes) also lives outside the checkout.
+        photo_appdata = module_appdata_dir("noodle-gallery") if self.linux else self.root / "apps" / "noodle-gallery" / "data"
+        self.config.setdefault("photo_db_dir", str(photo_appdata / "postgres"))
+        self.config.setdefault("photo_thumbs_dir", str(photo_appdata / "thumbs"))
+        self.config.setdefault("photo_video_dir", str(photo_appdata / "encoded-video"))
+        self.config.setdefault("photo_upload_dir", f"{memories_dir.rstrip('/')}/uploads")
+
         puid = int(self.config.get("puid", 1000))
         pgid = int(self.config.get("pgid", 1000))
 
@@ -152,6 +160,13 @@ class Deployment:
             self.log(f"Created or verified {len(result['created_dirs'])} directories (owner {puid}:{pgid}).")
         else:
             self.fail("storage", f"Directory creation failed: {result['errors']}")
+
+        if "photos" in self.modules:
+            for key in ("photo_db_dir", "photo_thumbs_dir", "photo_video_dir", "photo_upload_dir"):
+                try:
+                    Path(self.config[key]).mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    self.fail("storage", f"could not create {self.config[key]}: {e}")
 
     # ---------------------------------------------------------------- step 2
     def step_environment(self) -> Dict[str, Any]:
@@ -183,14 +198,17 @@ class Deployment:
         return result
 
     # ---------------------------------------------------------------- step 3
-    def _compose(self, module: str, module_dir: Path, env_file: Path) -> bool:
+    def _compose(self, module: str, module_dir: Path, env_file: Path, extra_files: Optional[List[str]] = None) -> bool:
         """pull → up -d → wait for health. Returns True on success."""
         if self.dry_run:
-            self.log(f"Would run docker compose pull/up in '{module_dir.relative_to(self.root)}' with env '{env_file}'.")
+            self.log(f"Would run docker compose pull/up in '{module_dir.relative_to(self.root)}' with env '{env_file}'"
+                     + (f" and overrides {extra_files}" if extra_files else "") + ".")
             self.services_launched.append(f"{module} (dry-run)")
             return True
 
-        base = ["docker", "compose", "--env-file", str(env_file)]
+        base = ["docker", "compose", "--env-file", str(env_file), "-f", "docker-compose.yml"]
+        for extra in extra_files or []:
+            base += ["-f", extra]
         self.log(f"Pulling images for {module} (this can take a while on first install)...")
         pull = run_command(base + ["pull", "--quiet"], cwd=str(module_dir), timeout=COMPOSE_PULL_TIMEOUT)
         if not pull.ok:
@@ -248,9 +266,37 @@ class Deployment:
             time.sleep(5)
         return False, f"timeout after {HEALTH_WAIT_TIMEOUT}s; last state: {last}"
 
+    def _wire_script(self, subcommand: str, extra: List[str]) -> bool:
+        """Runs apps/mediaserver/scripts/wire_arr.py (stdlib) as a subprocess; keeps the module standalone."""
+        script = self.root / "apps" / "mediaserver" / "scripts" / "wire_arr.py"
+        if not script.exists():
+            self.fail("media", "scripts/wire_arr.py missing")
+            return False
+        cmd = [
+            "python3", str(script), subcommand,
+            "--config-dir", str(self.config["config_dir"]),
+            "--qbit-user", str(self.config.get("qbittorrent_user") or "admin"),
+            "--qbit-pass", str(self.config.get("qbittorrent_pass") or ""),
+            *extra,
+        ]
+        res = run_command(cmd, cwd=str(script.parent), timeout=900)
+        for line in (res["stdout"] or "").splitlines()[-40:]:
+            self.log(f"  wire: {line}")
+        if not res.ok:
+            self.fail("media", f"wire_arr.py {subcommand} failed: {res['stderr'][-400:] or 'see log'}")
+        return res.ok
+
     def module_media(self) -> None:
         module_dir = self.root / "apps" / "mediaserver"
-        if self.config.get("enable_tmdb_bypass") and not self.dry_run:
+        extra_files = ["docker-compose.dns.yml"] if self.config.get("dns_override") else []
+
+        if self.dry_run:
+            self.log("Would seed qBittorrent.conf with the chosen password, start the media stack and wire "
+                     "Radarr/Sonarr/Prowlarr/qBittorrent/Jellyfin/Seerr together.")
+            self._compose("media", module_dir, self.etc_dir / "mediaserver.env", extra_files)
+            return
+
+        if self.config.get("enable_tmdb_bypass"):
             src = module_dir / "config" / "seerr" / "tmdb-interceptor.js"
             dst = Path(self.config["config_dir"]) / "seerr" / "tmdb-interceptor.js"
             if src.exists() and not dst.exists():
@@ -260,7 +306,19 @@ class Deployment:
                     self.log("Installed TMDB interceptor into the Seerr config directory.")
                 except OSError as e:
                     self.fail("media", f"could not copy TMDB interceptor: {e}")
-        self._compose("media", module_dir, self.etc_dir / "mediaserver.env")
+
+        if not self._wire_script("seed", ["--puid", str(self.config.get("puid", 1000)), "--pgid", str(self.config.get("pgid", 1000))]):
+            return
+        if not self._compose("media", module_dir, self.etc_dir / "mediaserver.env", extra_files):
+            return
+
+        self.log("Connecting the media apps to each other (root folders, download client, indexer sync, libraries)...")
+        wire_args = ["--host", "127.0.0.1", "--admin-user", str(self.config.get("media_admin_user") or "admin"),
+                     "--admin-pass", str(self.config.get("media_admin_pass") or "")]
+        if self.config.get("enable_byparr"):
+            wire_args.append("--byparr")
+        if self._wire_script("wire", wire_args):
+            self.log("Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.")
 
     def module_photos(self) -> None:
         module_dir = self.root / "apps" / "noodle-gallery"
@@ -495,6 +553,8 @@ class Deployment:
                 "control_hub_token": self.config.get("control_hub_token", ""),
                 "qbittorrent_user": self.config.get("qbittorrent_user", "admin"),
                 "qbittorrent_pass": self.config.get("qbittorrent_pass", ""),
+                "media_admin_user": self.config.get("media_admin_user", "admin"),
+                "media_admin_pass": self.config.get("media_admin_pass", ""),
                 "postgres_password": self.config.get("postgres_password", ""),
             },
             "manifest": str(self.manifest.path),

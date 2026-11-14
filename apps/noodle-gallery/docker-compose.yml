@@ -1,13 +1,15 @@
 # ==============================================================================
-# Noodle Gallery (Open-Noodle) - Modular Production Compose Stack
+# Noodle Gallery (Open-Noodle, an Immich fork) - photo & video cloud stack
 # ==============================================================================
-# High-performance, low-power self-hosted photo & video cloud with AI facial
-# recognition, VectorChord similarity search, and full mobile app support.
-#
 # Quickstart:
 #   1. cp .env.example .env
-#   2. Edit .env with your storage paths and a secure DB_PASSWORD
+#   2. set storage paths and a DB_PASSWORD (required; nothing is shipped)
 #   3. docker compose up -d
+#
+# Images are pinned to version tags (Dependabot proposes updates). Server and
+# machine-learning images MUST stay on the same version.
+# Container names keep the upstream immich_* convention because the Immich
+# ecosystem (noodle-gallery-tools, backup and ML scheduler scripts) expects them.
 # ==============================================================================
 
 name: noodle-gallery
@@ -15,9 +17,8 @@ name: noodle-gallery
 services:
   gallery-server:
     container_name: immich_server
-    image: ghcr.io/open-noodle/gallery-server:${NOODLE_VERSION:-release}
-    # Standard upstream Immich image alternative:
-    # image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    image: ghcr.io/open-noodle/gallery-server:v4.56.7
+    # Upstream Immich alternative: ghcr.io/immich-app/immich-server:<version>
     volumes:
       - ${UPLOAD_LOCATION:-./data/uploads}:/data
       - ${THUMBS_LOCATION:-./data/thumbs}:/data/thumbs
@@ -26,20 +27,23 @@ services:
       - /etc/localtime:/etc/localtime:ro
     env_file:
       - .env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (no default is shipped)}
     ports:
       - "${GALLERY_PORT:-2283}:2283"
     depends_on:
-      - redis
-      - database
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       disable: false
 
   gallery-machine-learning:
     container_name: immich_machine_learning
-    image: ghcr.io/open-noodle/gallery-ml:${NOODLE_VERSION:-release}
-    # Standard upstream Immich image alternative:
-    # image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    image: ghcr.io/open-noodle/gallery-ml:v4.56.7
+    # Upstream Immich alternative: ghcr.io/immich-app/immich-machine-learning:<version>
     networks:
       default:
         aliases:
@@ -50,7 +54,10 @@ services:
       - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro
     env_file:
       - .env
-    restart: "no" # Throttled via system/power/immich-ml-control.sh during off-peak hours
+    # "no": on low-power hosts the optional ML schedule module (noodle-gallery-tools
+    # immich-ml-control.sh) starts and stops this container on a timer.
+    # Set ML_RESTART_POLICY=unless-stopped in .env to keep it always on.
+    restart: ${ML_RESTART_POLICY:-no}
     healthcheck:
       disable: false
 
@@ -59,13 +66,16 @@ services:
     image: docker.io/valkey/valkey:9@sha256:8e8d64b405ce18f41b8e5ee20aa4687a8ed0022d1298f2ce31cdcf3a76e09411
     healthcheck:
       test: redis-cli ping || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   database:
     container_name: immich_postgres
     image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (no default is shipped)}
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
       POSTGRES_INITDB_ARGS: '--data-checksums'
@@ -74,7 +84,11 @@ services:
     shm_size: 128mb
     restart: unless-stopped
     healthcheck:
-      disable: false
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE_NAME:-immich}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   model-cache:

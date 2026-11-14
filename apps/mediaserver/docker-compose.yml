@@ -1,82 +1,40 @@
+# ==============================================================================
+# Media pipeline: Jellyfin + Seerr + Radarr/Sonarr/Prowlarr/Bazarr + qBittorrent
+# ==============================================================================
+# Standalone quickstart:
+#   cp .env.example .env     (set DATA_DIR, CONFIG_DIR, PUID/PGID, TZ)
+#   docker compose up -d
+#   python3 scripts/wire_arr.py wire --config-dir ./config --qbit-pass '<pw>'
+#
+# Rules this file follows:
+#   * ONE host path (DATA_DIR) is mounted at /data in every container that moves
+#     files, so imports are instant hardlinks (see ADR-0001).
+#   * every image is pinned to a version tag; Dependabot proposes updates.
+#   * every service has a healthcheck; the installer waits for them.
+#   * nothing ISP- or region-specific is on by default: Byparr is behind the
+#     "byparr" profile, custom DNS lives in docker-compose.dns.yml, and the
+#     Seerr TMDB interceptor is enabled only via SEERR_NODE_OPTIONS.
+# ==============================================================================
+
 name: mediaserver
 
+x-common: &common
+  restart: unless-stopped
+  environment: &common-env
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+    TZ: ${TZ:-UTC}
+    UMASK: "002"
+
 services:
-  byparr:
-    container_name: byparr
-    image: ghcr.io/thephaseless/byparr:latest
-    environment:
-      - PORT=8191
-      - LOG_LEVEL=info
-      - TZ=${TZ:-Asia/Kolkata}
-    ports:
-      - "8191:8191"
-    restart: unless-stopped
-
-  jellyfin:
-    container_name: jellyfin
-    image: lscr.io/linuxserver/jellyfin:latest
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
-    ports:
-      - "8096:8096"
-      - "8920:8920"
-      - "7359:7359/udp"
-      - "1900:1900/udp"
-    volumes:
-      - ${CONFIG_DIR:-./config}/jellyfin:/config
-      - ${DATA_DIR:-/mnt/hdd/data}:/data
-#   devices:
-#     - /dev/dri:/dev/dri # Optional: Uncomment to enable Intel QuickSync / VAAPI GPU transcoding on modern CPUs
-    restart: unless-stopped
-
-  seerr:
-    container_name: seerr
-    image: ghcr.io/seerr-team/seerr:latest
-    init: true
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
-      - PORT=5055
-      - LOG_LEVEL=info
-      # Optional TMDB DPI bypass (see config/seerr/tmdb-interceptor.js). Empty by default;
-      # the installer sets SEERR_NODE_OPTIONS when the bypass module is enabled.
-      - NODE_OPTIONS=${SEERR_NODE_OPTIONS:-}
-    ports:
-      - "5055:5055"
-    volumes:
-      - ${CONFIG_DIR:-./config}/seerr:/app/config
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
-
-  prowlarr:
-    container_name: prowlarr
-    image: lscr.io/linuxserver/prowlarr:latest
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
-    ports:
-      - "9696:9696"
-    volumes:
-      - ${CONFIG_DIR:-./config}/prowlarr:/config
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
-
   qbittorrent:
+    <<: *common
     container_name: qbittorrent
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent:5.3.0_v2.1.2-ls487
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
-      - WEBUI_PORT=8080
+      <<: *common-env
+      WEBUI_PORT: "8080"
+      TORRENTING_PORT: "6881"
     ports:
       - "8080:8080"
       - "6881:6881"
@@ -84,55 +42,146 @@ services:
     volumes:
       - ${CONFIG_DIR:-./config}/qbittorrent:/config
       - ${DATA_DIR:-/mnt/hdd/data}:/data
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  prowlarr:
+    <<: *common
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:2.7.0.5723-ls168
+    ports:
+      - "9696:9696"
+    volumes:
+      - ${CONFIG_DIR:-./config}/prowlarr:/config
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   radarr:
+    <<: *common
     container_name: radarr
-    image: lscr.io/linuxserver/radarr:latest
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
+    image: lscr.io/linuxserver/radarr:6.4.4.10685-ls326
     ports:
       - "7878:7878"
     volumes:
       - ${CONFIG_DIR:-./config}/radarr:/config
       - ${DATA_DIR:-/mnt/hdd/data}:/data
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
+    depends_on:
+      qbittorrent:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:7878/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   sonarr:
+    <<: *common
     container_name: sonarr
-    image: lscr.io/linuxserver/sonarr:latest
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
+    image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls5
     ports:
       - "8989:8989"
     volumes:
       - ${CONFIG_DIR:-./config}/sonarr:/config
       - ${DATA_DIR:-/mnt/hdd/data}:/data
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
+    depends_on:
+      qbittorrent:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8989/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   bazarr:
+    <<: *common
     container_name: bazarr
-    image: lscr.io/linuxserver/bazarr:latest
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Asia/Kolkata}
+    image: lscr.io/linuxserver/bazarr:v1.6.2-ls372
     ports:
       - "6767:6767"
     volumes:
       - ${CONFIG_DIR:-./config}/bazarr:/config
       - ${DATA_DIR:-/mnt/hdd/data}:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:6767/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  jellyfin:
+    <<: *common
+    container_name: jellyfin
+    image: lscr.io/linuxserver/jellyfin:12.4ubu2604-ls59
+    ports:
+      - "8096:8096"
+      - "8920:8920"       # HTTPS (optional)
+      - "7359:7359/udp"   # client auto-discovery
+      - "1900:1900/udp"   # DLNA
+    volumes:
+      - ${CONFIG_DIR:-./config}/jellyfin:/config
+      - ${DATA_DIR:-/mnt/hdd/data}:/data
+    # Intel QuickSync / VAAPI hardware transcoding: uncomment on hosts with /dev/dri
+    # devices:
+    #   - /dev/dri:/dev/dri
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  seerr:
+    container_name: seerr
+    image: ghcr.io/seerr-team/seerr:v3.4.1
+    init: true
     restart: unless-stopped
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      PORT: "5055"
+      LOG_LEVEL: info
+      # Optional TMDB DPI bypass (see config/seerr/tmdb-interceptor.js). Empty by default;
+      # the installer sets SEERR_NODE_OPTIONS when the bypass module is enabled.
+      NODE_OPTIONS: ${SEERR_NODE_OPTIONS:-}
+    ports:
+      - "5055:5055"
+    volumes:
+      - ${CONFIG_DIR:-./config}/seerr:/app/config
+    depends_on:
+      radarr:
+        condition: service_healthy
+      sonarr:
+        condition: service_healthy
+      jellyfin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:5055/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Cloudflare challenge solver for Prowlarr indexers behind Cloudflare.
+  # Opt-in: COMPOSE_PROFILES=byparr in .env (the installer sets it when chosen).
+  byparr:
+    container_name: byparr
+    image: ghcr.io/thephaseless/byparr:1.0.7
+    restart: unless-stopped
+    profiles: ["byparr"]
+    environment:
+      PORT: "8191"
+      LOG_LEVEL: info
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8191:8191"

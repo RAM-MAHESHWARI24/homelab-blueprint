@@ -1,0 +1,61 @@
+# Dependabot keeps every pinned container image, Python dependency and GitHub
+# Action current by opening pull requests. Images are pinned to version tags in
+# the compose files (no :latest), so updates arrive as reviewable PRs instead
+# of silently changing on a Watchtower schedule.
+version: 2
+updates:
+  # Container images in each module's compose file
+  - package-ecosystem: "docker-compose"
+    directory: "/apps/mediaserver"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      mediaserver-images:
+        patterns: ["*"]
+    labels: ["dependencies", "docker", "mediaserver"]
+
+  - package-ecosystem: "docker-compose"
+    directory: "/apps/noodle-gallery"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      noodle-gallery-images:
+        patterns: ["*"]
+    labels: ["dependencies", "docker", "noodle-gallery"]
+
+  - package-ecosystem: "docker"
+    directory: "/apps/control-hub"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "docker", "control-hub"]
+
+  # Python requirements
+  - package-ecosystem: "pip"
+    directory: "/apps/control-hub"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-deps:
+        patterns: ["*"]
+    labels: ["dependencies", "python"]
+
+  - package-ecosystem: "pip"
+    directory: "/apps/immich-face-xmp-exporter"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "python"]
+
+  - package-ecosystem: "pip"
+    directory: "/apps/tv-autoupdater"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "python"]
+
+  # Workflow actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels: ["dependencies", "ci"]

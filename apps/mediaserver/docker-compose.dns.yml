@@ -1,0 +1,20 @@
+# Optional override: force public resolvers inside the media containers.
+# Useful when your ISP's DNS hijacks or blocks indexer / metadata domains.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dns.yml up -d
+#
+# The installer adds this file automatically when "DNS override" is enabled
+# in the wizard (DNS_OVERRIDE=true in the rendered env file).
+services:
+  qbittorrent:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
+  prowlarr:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
+  radarr:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
+  sonarr:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
+  bazarr:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
+  seerr:
+    dns: [ "${DNS_PRIMARY:-1.1.1.1}", "${DNS_SECONDARY:-8.8.8.8}" ]
