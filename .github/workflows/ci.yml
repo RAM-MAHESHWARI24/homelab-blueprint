@@ -72,7 +72,7 @@ jobs:
 
       - name: Validate Configuration Schema Integrity
         run: |
-          python setup/config_core/schema_migrator.py --check
+          python setup/installer/schema_migrator.py --check
 
       - name: Execute Setup Wizard Verification Test Suite
         run: |
@@ -152,3 +152,65 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
           format: 'table'
+
+  real-install:
+    name: Real Headless Install, Health Probes & Teardown (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Headless install (not a dry run)
+        run: |
+          sudo ./setup.sh --headless --config testing/fixtures/ci_minimal.json
+
+      - name: Installed artefacts exist with safe permissions
+        run: |
+          sudo test -f /etc/homelab/mediaserver.env
+          sudo test -f /etc/homelab/control-hub.env
+          sudo test -f /etc/homelab/control-hub.token
+          sudo test -f /var/lib/homelab/installed.json
+          sudo stat -c '%a %n' /etc/homelab/mediaserver.env | grep -q '^600 '
+          sudo stat -c '%a %n' /etc/homelab/control-hub.token | grep -q '^640 '
+          sudo test -f /etc/systemd/system/control-hub.service
+          sudo test -f /etc/sudoers.d/homelab-blueprint
+          sudo visudo -cf /etc/sudoers.d/homelab-blueprint
+          sudo grep -q 'User=homelab' /etc/systemd/system/control-hub.service
+          sudo grep -q "$GITHUB_WORKSPACE" /etc/systemd/system/control-hub.service
+          ! sudo grep -q '{{' /etc/systemd/system/control-hub.service
+
+      - name: Services are up
+        run: |
+          systemctl is-active control-hub.service
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:7575/api/health && break; sleep 2; done
+          curl -fsS http://127.0.0.1:7575/api/health
+          # Control Hub must refuse unauthenticated API calls and accept the installed token
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7575/api/system/vitals)" = "401"
+          TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/system/vitals >/dev/null
+          # Media stack
+          docker ps --format '{{.Names}}\t{{.Status}}'
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8096/health && break; sleep 3; done
+          curl -fsS http://127.0.0.1:8096/health
+          curl -fsS http://127.0.0.1:7878/ping
+          curl -fsS http://127.0.0.1:8989/ping
+          curl -fsS http://127.0.0.1:9696/ping
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          sudo journalctl -u control-hub.service --no-pager -n 100 || true
+          sudo cat /var/lib/homelab/installed.json || true
+          docker ps -a || true
+          cd apps/mediaserver && docker compose logs --tail 50 || true
+
+      - name: Teardown removes everything it installed
+        run: |
+          sudo ./teardown.sh --yes
+          ! sudo test -e /etc/homelab
+          ! sudo test -e /var/lib/homelab
+          ! sudo test -e /etc/systemd/system/control-hub.service
+          ! sudo test -e /etc/sudoers.d/homelab-blueprint
+          ! systemctl is-active --quiet control-hub.service
+          test -z "$(docker ps -q)"

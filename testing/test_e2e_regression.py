@@ -23,7 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "apps" / "immich-face-xmp-exporter"))
 
-from setup.config_core.storage_manager import test_atomic_hardlink
+import setup  # noqa: F401  (adds apps/control-hub to sys.path)
+from core.config_core.storage_manager import test_atomic_hardlink
 from export_faces_to_xmp import build_exiftool_args_for_asset
 
 
@@ -339,7 +340,7 @@ class TestUniversalHardwareDetection(unittest.TestCase):
 
     def test_cpu_and_ram_dynamic_probing(self):
         """TC-HW-01: Prober accurately queries CPU model, thread count, architecture, and RAM headroom"""
-        from setup.config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
+        from core.config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
 
         cpu = probe_cpu_info()
         self.assertIsInstance(cpu["model"], str)
@@ -414,6 +415,10 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
         self.assertIn("homelab ALL=(ALL) NOPASSWD:", sudoers_text)
         self.assertIn("/usr/sbin/rtcwake", sudoers_text)
         self.assertIn("control-hub.service", sudoers_text)
+        self.assertNotIn("watchtower", sudoers_text, "Watchtower was removed in v2; no sudo entry should remain")
+        # Install-time templating: no hardcoded install directory in shipped templates
+        self.assertIn("{{INSTALL_DIR}}", text)
+        self.assertNotIn("/opt/homelab-blueprint", text)
 
     def test_preflight_doctor_cli(self):
         """TC-DOCTOR-01: Verify Homelab Doctor executes comprehensive pre-flight host sweep"""
@@ -450,7 +455,7 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
 
     def test_schema_migrator_auto_upgrade(self):
         """TC-MIGRATOR-01: Verify schema migrator detects missing keys, creates backups, and injects defaults"""
-        from setup.config_core.schema_migrator import (
+        from setup.installer.schema_migrator import (
             detect_schema_diff,
             migrate_single_env,
         )

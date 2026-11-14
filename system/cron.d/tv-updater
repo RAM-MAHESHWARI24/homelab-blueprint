@@ -1,3 +1,4 @@
-# CleanYourTV - Automated Android TV background app updater (SmartTube, CloudStream, sideloads)
-# Runs every 15 minutes during waking hours (06:00 - 23:59)
-*/15 6-23 * * * root /usr/bin/python3 /opt/homelab-blueprint/apps/tv-updater/tv_updater.py >> /var/log/tv-updater.log 2>&1
+# TV auto-updater - background Android TV app updater (SmartTube, CloudStream, sideloads)
+# Runs every 15 minutes between 06:00 and 23:59 as the unprivileged service user.
+# Rendered by the installer: {{INSTALL_DIR}}, {{SERVICE_USER}}, {{STATE_DIR}}
+*/15 6-23 * * * {{SERVICE_USER}} /usr/bin/python3 {{INSTALL_DIR}}/apps/tv-updater/tv_updater.py >> {{STATE_DIR}}/tv-autoupdater/tv-autoupdater.log 2>&1

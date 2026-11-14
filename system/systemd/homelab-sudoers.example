@@ -1,17 +1,36 @@
 # ==============================================================================
-# Homelab Blueprint - Least-Privilege Sudoers Whitelist for Control Hub
-# Target Location: /etc/sudoers.d/homelab-blueprint
-# Permissions: 0440 (root:root)
+# Homelab Blueprint - sudoers drop-in for the Control Hub service account
+# Installed to /etc/sudoers.d/homelab-blueprint (0440) by the installer after
+# validation with `visudo -c`. {{INSTALL_DIR}} is rendered at install time.
+#
+# Honest note: the 'homelab' user is in the docker group so it can manage
+# containers, and docker-group membership is root-equivalent on the host.
+# These entries exist to avoid *accidental* damage and to keep the daemon's
+# actions auditable, not to contain a compromised daemon. The bearer token
+# (CONTROL_HUB_TOKEN) is the real security boundary.
 # ==============================================================================
 
-# Grant unprivileged 'homelab' daemon user exact rights needed for system telemetry & power automation
-homelab ALL=(ALL) NOPASSWD: /usr/bin/smbstatus -S
-homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/watchtower-run.sh
-homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh *
-homelab ALL=(ALL) NOPASSWD: /bin/touch /run/server-suspend.skip
-homelab ALL=(ALL) NOPASSWD: /bin/rm -f /run/server-suspend.skip
-homelab ALL=(ALL) NOPASSWD: /bin/rm -f /run/server-suspend.override
+# Sleep Guard: skip / override flags and the suspend routine itself
+homelab ALL=(ALL) NOPASSWD: /usr/bin/touch /run/server-suspend.skip
+homelab ALL=(ALL) NOPASSWD: /usr/bin/rm -f /run/server-suspend.skip
+homelab ALL=(ALL) NOPASSWD: /usr/bin/rm -f /run/server-suspend.override
+homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /run/server-suspend.override
+homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/server-suspend.conf
+homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/cron.d/server-suspend
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop server-suspend-override.timer
-homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service
+homelab ALL=(ALL) NOPASSWD: /usr/bin/systemd-run --on-calendar=* --unit=server-suspend-override /usr/local/sbin/server-suspend.sh --override
 homelab ALL=(ALL) NOPASSWD: /usr/sbin/rtcwake *
 
+# Host telemetry (active SMB sessions defer suspend)
+homelab ALL=(ALL) NOPASSWD: /usr/bin/smbstatus -S
+
+# Static IP changes go through one audited script (writes Netplan, arms the revert timer)
+homelab ALL=(ALL) NOPASSWD: {{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/core/netplan_cli.py *
+
+# Optional modules
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh start
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh stop
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich_backup_gdrive.sh
+
+# Self-restart after configuration changes
+homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service

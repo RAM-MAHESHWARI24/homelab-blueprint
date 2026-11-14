@@ -11,15 +11,16 @@ import platform
 import subprocess
 from pathlib import Path
 
-# Add config_core to path
 SETUP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SETUP_DIR.parent
-sys.path.insert(0, str(SETUP_DIR))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
-from config_core.port_manager import check_port
-from config_core.storage_manager import test_atomic_hardlink
-from config_core.schema_migrator import detect_schema_diff, find_all_environment_targets
+import setup  # noqa: F401  (adds apps/control-hub to sys.path)
+from core.config_core.system_prober import probe_cpu_info, probe_ram_info, probe_hardware_acceleration
+from core.config_core.port_manager import check_port
+from core.config_core.storage_manager import test_atomic_hardlink
+from setup.installer.schema_migrator import detect_schema_diff, find_all_environment_targets
 
 # Safe UTF-8 console output for cross-platform terminals (Windows cp1252 & Linux UTF-8)
 if hasattr(sys.stdout, "reconfigure"):

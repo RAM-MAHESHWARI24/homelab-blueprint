@@ -190,7 +190,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 2: Single-Mount Storage & Atomic Hardlinks
 
-* **Target Source:** [`setup/config_core/storage_manager.py`](../setup/config_core/storage_manager.py), [`docs/STORAGE_AND_HARDLINKS.md`](../docs/STORAGE_AND_HARDLINKS.md)
+* **Target Source:** [`apps/control-hub/core/config_core/storage_manager.py`](../apps/control-hub/core/config_core/storage_manager.py), [`docs/STORAGE_AND_HARDLINKS.md`](../docs/STORAGE_AND_HARDLINKS.md)
 * **Goal:** Mathematically verify 0-Disk I/O atomic hardlinks and prevent cross-mount performance degradation.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
@@ -204,7 +204,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 3: Safe Netplan Static IP & Auto-Rollback
 
-* **Target Source:** [`setup/config_core/netplan_manager.py`](../setup/config_core/netplan_manager.py), [`docs/NETPLAN_STATIC_IP_QUIRKS.md`](../docs/NETPLAN_STATIC_IP_QUIRKS.md)
+* **Target Source:** [`apps/control-hub/core/config_core/netplan_manager.py`](../apps/control-hub/core/config_core/netplan_manager.py), [`docs/NETPLAN_STATIC_IP_QUIRKS.md`](../docs/NETPLAN_STATIC_IP_QUIRKS.md)
 * **Goal:** Guarantee that static IP misconfigurations never lock an administrator out of SSH.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
@@ -502,7 +502,7 @@ jobs:
 
       - name: Validate Configuration Schema Integrity
         run: |
-          python setup/config_core/schema_migrator.py --check
+          python setup/installer/schema_migrator.py --check
 
       - name: Execute Setup Wizard Verification Test Suite
         run: |

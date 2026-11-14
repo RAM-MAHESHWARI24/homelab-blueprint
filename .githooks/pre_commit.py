@@ -134,7 +134,7 @@ def check_cli_argument_parsing(staged_files):
     cli_tools = [
         "apps/immich-face-xmp-exporter/sync_space_faces.py",
         "apps/immich-face-xmp-exporter/export_faces_to_xmp.py",
-        "setup/config_core/schema_migrator.py"
+        "setup/installer/schema_migrator.py"
     ]
     staged_set = set(staged_files)
     to_verify = [t for t in cli_tools if t in staged_set]

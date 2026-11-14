@@ -49,7 +49,7 @@ homelab-blueprint/
 │   └── assets/                         # Full visual verification screenshot gallery
 ├── setup/                              # Zero-dependency Python 3 onboarding wizard (Port 8000)
 │   ├── server.py                       # Pure standard-library HTTP server & REST API
-│   ├── config_core/                    # System probing, secrets generator, Netplan manager
+│   ├── installer/                      # Deployer, host units, install manifest, schema migrator
 │   ├── static/                         # High-DPI dark glassmorphism onboarding interface
 │   ├── test_setup.py                   # Automated verification test suite
 │   └── README.md                       # Setup wizard architectural documentation

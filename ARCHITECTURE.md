@@ -11,7 +11,7 @@ The blueprint is built from the ground up to **auto-detect host hardware and dyn
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   AUTOMATED HARDWARE PROBING ENGINE                    │
-│                        (setup/config_core/system_prober.py)            │
+│                        (apps/control-hub/core/config_core/system_prober.py)            │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
        ┌────────────────────────────┼────────────────────────────┐

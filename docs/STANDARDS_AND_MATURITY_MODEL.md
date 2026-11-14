@@ -87,8 +87,8 @@ This document establishes the **Target Maturity Model** for the Homelab Blueprin
 * **Schema Evolution & Zero-Downtime Upgrades:** When new releases introduce new `.env` keys, an automated migrator upgrades legacy configs without user intervention or manual copy-pasting.
 
 ### Current Status (High Compliance: A+)
-* **Pass:** Dynamic synchronization between root `.env` and downstream stacks (`apps/mediaserver/.env`, `apps/noodle-gallery/.env`, `apps/control-hub/.env`) via `setup/config_core/env_manager.py`.
-* **Pass:** Automated schema migrator implemented at [`setup/config_core/schema_migrator.py`](../setup/config_core/schema_migrator.py). Automatically detects schema diffs against `.env.example`, injects missing keys with defaults, creates timestamped backups (`.env.backup.<timestamp>`), and preserves user secrets.
+* **Pass:** Dynamic synchronization between root `.env` and downstream stacks (`apps/mediaserver/.env`, `apps/noodle-gallery/.env`, `apps/control-hub/.env`) via `apps/control-hub/core/config_core/env_manager.py`.
+* **Pass:** Automated schema migrator implemented at [`setup/installer/schema_migrator.py`](../setup/installer/schema_migrator.py). Automatically detects schema diffs against `.env.example`, injects missing keys with defaults, creates timestamped backups (`.env.backup.<timestamp>`), and preserves user secrets.
 * **Pass:** Integrated tooling exposed via `./setup.sh --migrate` (with `--check` and `--dry-run` flags) and integrated into pre-flight diagnostic prober (`./setup.sh --doctor`).
 * **Pass:** Verified with regression test `TC-MIGRATOR-01` in `testing/test_e2e_regression.py`.
 
@@ -170,7 +170,7 @@ PHASE 2 (Security Hardening) [100% COMPLETE]:
 └── [x] 7. Integrate Trivy container & repo vulnerability scanner in CI (.github/workflows/ci.yml)
 
 PHASE 3 (Developer & Upgrade Experience) [100% COMPLETE]:
-├── [x] 8. Build setup/config_core/schema_migrator.py (.env auto-upgrade & ./setup.sh --migrate)
+├── [x] 8. Build setup/installer/schema_migrator.py (.env auto-upgrade & ./setup.sh --migrate)
 ├── [x] 9. Publish apps/control-hub/docs/openapi.yaml & Swagger UI (:7575/api/docs)
 ├── [x] 10. Split /api/health into /api/livez and /api/readyz
 ├── [x] 11. Extract standalone control-hub repo with independent CI matrix

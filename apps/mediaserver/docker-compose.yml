@@ -41,7 +41,9 @@ services:
       - TZ=${TZ:-Asia/Kolkata}
       - PORT=5055
       - LOG_LEVEL=info
-      - NODE_OPTIONS=--dns-result-order=ipv4first --require /app/config/tmdb-interceptor.js
+      # Optional TMDB DPI bypass (see config/seerr/tmdb-interceptor.js). Empty by default;
+      # the installer sets SEERR_NODE_OPTIONS when the bypass module is enabled.
+      - NODE_OPTIONS=${SEERR_NODE_OPTIONS:-}
     ports:
       - "5055:5055"
     volumes:
