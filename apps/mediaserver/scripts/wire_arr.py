@@ -27,7 +27,7 @@ machine-readable report (used by the blueprint installer).
 import argparse
 import base64
 import hashlib
-import http.cookiejar
+from http.cookiejar import CookieJar
 import json
 import os
 import secrets
@@ -140,7 +140,7 @@ def seed_qbittorrent(config_dir: Path, user: str, password: str, puid: int, pgid
 class QBit:
     def __init__(self, host: str, user: str, password: str):
         self.base = f"http://{host}:{PORTS['qbittorrent']}"
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
         self.user, self.password = user, password
 
     def _form(self, path: str, fields: Dict[str, str]) -> Tuple[int, str]:
@@ -335,7 +335,7 @@ class Jellyfin:
 # ----------------------------------------------------------------------------- seerr
 def wire_seerr(host: str, admin_user: str, admin_pass: str, radarr_key: str, sonarr_key: str) -> None:
     base = f"http://{host}:{PORTS['seerr']}"
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
 
     def call(path, method="GET", data=None, timeout=30):
         body = json.dumps(data).encode() if data is not None else None
