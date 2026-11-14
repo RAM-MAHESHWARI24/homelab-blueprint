@@ -165,13 +165,27 @@ for f in "${FILES[@]}"; do
     [ -z "$f" ] && continue
     # Safety: never delete anything outside the directories the installer writes to.
     case "$f" in
-        /etc/cron.d/*|/etc/sudoers.d/*|/etc/systemd/system/*|/usr/local/sbin/*|/run/*|"$ETC_DIR"/*|"$STATE_DIR"/*|/etc/server-suspend.conf|/etc/sysctl.d/99-homelab-*) ;;
+        /etc/cron.d/*|/etc/sudoers.d/*|/etc/systemd/system/*|/usr/local/sbin/*|/run/*|"$ETC_DIR"/*|"$STATE_DIR"/*|/etc/server-suspend.conf|/etc/server-suspend.d/*|/etc/sysctl.d/99-homelab-*|/etc/samba/homelab-shares.conf) ;;
         *) echo "  ! skipping unexpected path from manifest: $f"; continue ;;
     esac
     if [ -e "$f" ] || [ -L "$f" ]; then
         if [ "$DRY_RUN" = true ]; then log_action "remove $f"; else rm -f "$f"; log_action "removed $f"; fi
     fi
 done
+
+# Samba: drop the include line the installer appended to smb.conf (the share file itself is in the manifest)
+if [ -f /etc/samba/smb.conf ] && grep -q '^include = /etc/samba/homelab-shares.conf' /etc/samba/smb.conf; then
+    if [ "$DRY_RUN" = true ]; then
+        log_action "remove the homelab-shares include line from /etc/samba/smb.conf"
+    else
+        sed -i '/^# Added by Homelab Blueprint/d; /^include = \/etc\/samba\/homelab-shares.conf$/d' /etc/samba/smb.conf
+        log_action "removed homelab-shares include from /etc/samba/smb.conf"
+        systemctl reload smbd 2>/dev/null || systemctl restart smbd 2>/dev/null || true
+    fi
+fi
+if [ -d /etc/server-suspend.d ] && [ -z "$(ls -A /etc/server-suspend.d 2>/dev/null)" ]; then
+    [ "$DRY_RUN" = true ] || rmdir /etc/server-suspend.d 2>/dev/null || true
+fi
 
 # Module .env symlinks pointing into $ETC_DIR, the venv and dry-run previews live in the checkout
 for link in "$SCRIPT_DIR"/apps/*/.env "$SCRIPT_DIR/.env" "$SCRIPT_DIR"/apps/*/config.json; do

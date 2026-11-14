@@ -40,7 +40,9 @@ from core.config_core import (
 
 from .host import (
     run_command,
+    run_command_input,
     ensure_system_user,
+    install_file,
     install_systemd_unit,
     install_cron,
     install_sudoers,
@@ -64,8 +66,14 @@ MODULE_ALIASES = {
     "tv_autoupdater": "tv_autoupdater",
     "sleep_guard": "sleep_guard",
     "ml_schedule": "ml_schedule",
+    "photo_backup": "photo_backup",
+    "immich_backup": "photo_backup",
+    "samba": "samba",
+    "tailscale": "tailscale",
 }
 DEFAULT_MODULES = ["media", "photos", "control_hub"]
+# Docker stacks first, then the daemon, then host integrations that depend on them.
+MODULE_ORDER = ["media", "photos", "control_hub", "ml_schedule", "photo_backup", "sleep_guard", "tv_autoupdater", "samba", "tailscale"]
 
 COMPOSE_PULL_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_PULL_TIMEOUT", "1800"))
 COMPOSE_UP_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_UP_TIMEOUT", "600"))
@@ -120,7 +128,7 @@ class Deployment:
             canonical = MODULE_ALIASES.get(str(item))
             if canonical and canonical not in resolved:
                 resolved.append(canonical)
-        return resolved
+        return sorted(resolved, key=lambda m: MODULE_ORDER.index(m) if m in MODULE_ORDER else len(MODULE_ORDER))
 
     def template_vars(self) -> Dict[str, str]:
         return {
@@ -129,6 +137,10 @@ class Deployment:
             "ETC_DIR": str(self.etc_dir),
             "STATE_DIR": str(self.state_dir),
             "PYTHON": str(self.root / "apps" / "control-hub" / "venv" / "bin" / "python3"),
+            "DATA_DIR": str(self.config.get("hdd_data", "/mnt/hdd/data")),
+            "MEMORIES_DIR": str(self.config.get("hdd_memories", "/mnt/hdd/Memories")),
+            "HOST_USER": str(self.config.get("host_user") or SERVICE_USER),
+            "GDRIVE_REMOTE": str(self.config.get("gdrive_remote") or ""),
         }
 
     # ---------------------------------------------------------------- step 1
@@ -355,6 +367,113 @@ class Deployment:
         self.services_launched.append("ml_schedule")
         self.log("Installed Immich ML on/off schedule.")
 
+    def module_photo_backup(self) -> None:
+        """Optional: nightly Postgres dump + XMP export + rclone mirror of the photo library."""
+        src = self.root / "apps" / "immich-face-xmp-exporter" / "scripts" / "immich_backup_gdrive.sh.example"
+        cron = self.root / "system" / "cron.d" / "immich-backup"
+        remote = str(self.config.get("gdrive_remote") or "").strip()
+        if self.dry_run:
+            self.log(f"Would install immich_backup_gdrive.sh and /etc/cron.d/immich-backup (rclone remote '{remote or 'unset'}').")
+            self.services_launched.append("photo_backup (dry-run)")
+            return
+        if not self.linux:
+            return
+        if not src.exists() or not cron.exists():
+            self.fail("photo_backup", "immich_backup_gdrive.sh.example or its cron template is missing")
+            return
+        if not remote:
+            self.fail("photo_backup", "no rclone remote configured (gdrive_remote); run `rclone config` first and re-run with the remote name")
+            return
+        if not shutil.which("rclone"):
+            self.warn("rclone is not installed; the nightly photo backup will fail until it is (https://rclone.org/install/).")
+        backup_dir = self.state_dir / "photo-backups"
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            self.manifest.add_dir(backup_dir)
+        except OSError as e:
+            self.fail("photo_backup", f"could not create {backup_dir}: {e}")
+            return
+        install_helper_script(src, self.manifest, name="immich_backup_gdrive.sh")
+        install_cron(cron, "immich-backup", self.manifest, variables=self.template_vars())
+        self.services_launched.append("photo_backup")
+        self.log(f"Nightly photo backup installed (22:00, rclone remote '{remote}').")
+
+    def module_samba(self) -> None:
+        """Optional: LAN shares for the media and photo folders, included from the distro smb.conf."""
+        template = self.root / "system" / "networking" / "homelab-shares.conf.example"
+        smb_conf = Path("/etc/samba/smb.conf")
+        shares_conf = Path("/etc/samba/homelab-shares.conf")
+        host_user = str(self.config.get("host_user") or "").strip()
+        if self.dry_run:
+            self.log(f"Would render {shares_conf} ([Media], [Photos] for '{host_user or '?'}'), include it from smb.conf and set the Samba password.")
+            self.services_launched.append("samba (dry-run)")
+            return
+        if not self.linux:
+            return
+        if not template.exists():
+            self.fail("samba", "system/networking/homelab-shares.conf.example missing")
+            return
+        if not host_user or not run_command(["id", "-u", host_user], timeout=10).ok:
+            self.fail("samba", f"host user '{host_user or '(empty)'}' does not exist; shares need a login user")
+            return
+        if not shutil.which("smbd"):
+            self.log("Installing samba package...")
+            env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+            res = run_command(["apt-get", "install", "-y", "-q", "samba"], timeout=900, env=env)
+            if not res.ok:
+                self.fail("samba", f"apt-get install samba failed: {res['stderr'][-300:]}")
+                return
+        install_file(template, shares_conf, self.manifest, mode=0o644, variables=self.template_vars())
+        include_line = f"include = {shares_conf}"
+        try:
+            current = smb_conf.read_text(encoding="utf-8") if smb_conf.exists() else ""
+            if include_line not in current:
+                with smb_conf.open("a", encoding="utf-8") as fh:
+                    lead = "" if (not current or current.endswith("\n")) else "\n"
+                    fh.write(f"{lead}\n# Added by Homelab Blueprint (removed by teardown.sh)\n{include_line}\n")
+        except OSError as e:
+            self.fail("samba", f"could not update {smb_conf}: {e}")
+            return
+        if shutil.which("testparm"):
+            check = run_command(["testparm", "-s", "--suppress-prompt"], timeout=30)
+            if not check.ok:
+                self.fail("samba", f"testparm rejected the configuration: {check['stderr'][-300:]}")
+                return
+        password = str(self.config.get("media_admin_pass") or self.config.get("qbittorrent_pass") or "")
+        if password:
+            proc = run_command_input(["smbpasswd", "-s", "-a", host_user], f"{password}\n{password}\n", timeout=30)
+            if proc.ok:
+                self.log(f"Samba password for '{host_user}' set to the master password.")
+            else:
+                self.warn(f"smbpasswd for '{host_user}' failed: {proc['stderr'][-200:]}; set it with `sudo smbpasswd -a {host_user}`")
+        run_command(["systemctl", "enable", "--now", "smbd"], timeout=60)
+        run_command(["systemctl", "reload-or-restart", "smbd"], timeout=60)
+        self.services_launched.append("samba")
+        self.log(f"Samba shares [Media] and [Photos] published for '{host_user}'.")
+
+    def module_tailscale(self) -> None:
+        """Optional: kernel forwarding so the host can act as a Tailscale subnet router."""
+        src = self.root / "system" / "networking" / "99-tailscale.conf"
+        dst = Path("/etc/sysctl.d/99-homelab-tailscale.conf")
+        if self.dry_run:
+            self.log(f"Would install {dst} (ip_forward) and apply it with sysctl.")
+            self.services_launched.append("tailscale (dry-run)")
+            return
+        if not self.linux:
+            return
+        if not src.exists():
+            self.fail("tailscale", "system/networking/99-tailscale.conf missing")
+            return
+        install_file(src, dst, self.manifest, mode=0o644)
+        res = run_command(["sysctl", "-q", "-p", str(dst)], timeout=30)
+        if not res.ok:
+            self.fail("tailscale", f"sysctl -p failed: {res['stderr'][-200:]}")
+            return
+        if not shutil.which("tailscale"):
+            self.warn("Tailscale itself is not installed; see https://tailscale.com/download/linux, then `tailscale up --advertise-routes=<lan-cidr>`.")
+        self.services_launched.append("tailscale")
+        self.log("IP forwarding enabled for Tailscale subnet routing.")
+
     def module_control_hub(self) -> None:
         ch_dir = self.root / "apps" / "control-hub"
         unit_src = self.root / "system" / "systemd" / "control-hub.service"
@@ -444,6 +563,14 @@ class Deployment:
             self.fail("tv_autoupdater", "cron template system/cron.d/tv-updater missing")
             return
         ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        state_dir = self.state_dir / "tv-autoupdater"
+        try:
+            state_dir.mkdir(parents=True, exist_ok=True)
+            run_command(["chown", f"{SERVICE_USER}:{SERVICE_USER}", str(state_dir)], timeout=30)
+            self.manifest.add_dir(state_dir)
+        except OSError as e:
+            self.fail("tv_autoupdater", f"could not create {state_dir}: {e}")
+            return
         install_cron(cron_src, "tv-autoupdater", self.manifest, variables=self.template_vars())
         self.services_launched.append("tv_autoupdater")
         self.log("TV auto-updater cron registered.")
@@ -468,6 +595,14 @@ class Deployment:
             os.chmod(conf_dst, 0o644)
             self.manifest.add_file(conf_dst)
         install_cron(cron_src, "server-suspend", self.manifest, variables=self.template_vars())
+        if "media" in self.modules:
+            hook_src = self.root / "apps" / "mediaserver" / "host" / "post-wake-arr.sh"
+            if hook_src.exists():
+                hook_dst = Path("/etc/server-suspend.d/50-mediaserver.sh")
+                install_file(hook_src, hook_dst, self.manifest, mode=0o755)
+                self.log("Installed post-wake media pipeline recovery hook.")
+            else:
+                self.warn("apps/mediaserver/host/post-wake-arr.sh missing; no post-wake Arr recovery hook installed.")
         self.services_launched.append("sleep_guard")
         self.log("Sleep Guard (rtcwake suspend schedule) installed.")
 
@@ -537,9 +672,12 @@ class Deployment:
             "media": self.module_media,
             "photos": self.module_photos,
             "ml_schedule": self.module_ml_schedule,
+            "photo_backup": self.module_photo_backup,
             "control_hub": self.module_control_hub,
             "tv_autoupdater": self.module_tv_autoupdater,
             "sleep_guard": self.module_sleep_guard,
+            "samba": self.module_samba,
+            "tailscale": self.module_tailscale,
         }
         for module in self.modules:
             handler = handlers.get(module)

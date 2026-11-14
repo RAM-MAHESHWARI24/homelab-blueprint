@@ -22,7 +22,7 @@ While application workloads (Jellyfin, qBittorrent, Immich, Radarr) run inside i
 * **ACPI S3 Suspend & RTC Wakeup:** Lowers server power consumption to ~1.2W during idle nighttime windows and awakens automatically at 06:00 AM via hardware CMOS RTC alarms.
 * **Control Hub Daemon (`control-hub.service`):** Native systemd service running the Flask telemetry sampler and configuration REST API outside container networking namespaces.
 * **Maintenance & Cleanups:** Scheduled Docker container image pruning, Watchtower updates, and Smart TV fleet ADB provisioning.
-* **Kernel & File Sharing Configuration:** Tailscale UDP optimization (`99-tailscale.conf`) and dual-share Samba permissions (`smb.conf.example`).
+* **Kernel & File Sharing Configuration:** Tailscale UDP optimization (`99-tailscale.conf`) and LAN shares for the media and photo folders (`homelab-shares.conf.example`).
 
 ---
 
@@ -45,7 +45,7 @@ system/
 │   └── watchtower                        # Weekly container image update sweep
 ├── networking/
 │   ├── 99-tailscale.conf                 # Sysctl kernel tuning (UDP buffers, IP forwarding)
-│   └── smb.conf.example                  # Samba multi-mount definition (MediaDrive + RootFS)
+│   └── homelab-shares.conf.example       # Samba share definitions (Media + Photos), included from smb.conf
 └── maintenance/
     └── watchtower-run.sh                 # Docker container update execution wrapper
 ```
@@ -148,10 +148,12 @@ sudo cp system/networking/99-tailscale.conf /etc/sysctl.d/
 sudo sysctl --system
 ```
 
-### Samba Dual-Share Configuration (`smb.conf.example`)
-Defines the two primary LAN network shares:
-1. `[MediaDrive]`: Read/Write access to `/mnt/hdd/data` for daily file management and movie drop-offs.
-2. `[RootFS]`: Secured administrative access to `/` for developer configuration from remote workstations.
+### Samba Shares (`homelab-shares.conf.example`)
+Share definitions only; the distribution's `[global]` section is left alone. The installer renders the
+placeholders, writes `/etc/samba/homelab-shares.conf` and appends `include = /etc/samba/homelab-shares.conf`
+to `smb.conf`:
+1. `[Media]`: read/write access to the media root (`DATA_DIR`) for the host user.
+2. `[Photos]`: read/write access to the photo library (`MEMORIES_DIR`) with macOS `vfs_fruit` extras.
 
 * **Detailed Runbook:** [Networking: Tailscale & Samba](../docs/NETWORKING_TAILSCALE_SAMBA.md)
 

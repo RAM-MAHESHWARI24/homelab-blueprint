@@ -45,6 +45,17 @@ def run_command(cmd: List[str], cwd: Optional[str] = None, timeout: int = 300, e
         return CommandResult(success=False, stdout="", stderr=str(e), returncode=-1)
 
 
+def run_command_input(cmd: List[str], stdin_text: str, timeout: int = 60) -> CommandResult:
+    """Like run_command but feeds stdin (for tools such as smbpasswd -s)."""
+    try:
+        proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True, timeout=timeout)
+        return CommandResult(success=proc.returncode == 0, stdout=proc.stdout.strip(), stderr=proc.stderr.strip(), returncode=proc.returncode)
+    except subprocess.TimeoutExpired:
+        return CommandResult(success=False, stdout="", stderr=f"timed out after {timeout}s: {' '.join(cmd)}", returncode=-1)
+    except FileNotFoundError as e:
+        return CommandResult(success=False, stdout="", stderr=str(e), returncode=-1)
+
+
 def render_template(text: str, variables: Dict[str, str]) -> str:
     """Replaces {{KEY}} placeholders. Unknown placeholders are left untouched."""
     for key, value in variables.items():
