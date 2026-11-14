@@ -6,6 +6,41 @@
 let systemSnapshot = null;
 let currentMode = "express"; // "express" | "power" | "ai"
 
+// ---------------------------------------------------------------------------
+// Access token: the wizard runs as root, so every API call carries the one-time
+// token printed in the terminal (?token=... on first open, then sessionStorage).
+// ---------------------------------------------------------------------------
+const TOKEN_KEY = "homelab_setup_token";
+let setupToken = "";
+try {
+  const url = new URL(window.location.href);
+  const fromUrl = url.searchParams.get("token");
+  if (fromUrl) {
+    setupToken = fromUrl;
+    sessionStorage.setItem(TOKEN_KEY, fromUrl);
+    url.searchParams.delete("token");
+    window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+  } else {
+    setupToken = sessionStorage.getItem(TOKEN_KEY) || "";
+  }
+} catch (_) { /* storage unavailable */ }
+
+async function api(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  if (setupToken) headers["Authorization"] = `Bearer ${setupToken}`;
+  const res = await fetch(path, Object.assign({}, options, { headers }));
+  if (res.status === 401) {
+    const entered = window.prompt("Access token required.\nPaste the token shown in the server terminal (the ?token=... part of the URL):");
+    if (entered && entered.trim()) {
+      setupToken = entered.trim();
+      try { sessionStorage.setItem(TOKEN_KEY, setupToken); } catch (_) { /* ignore */ }
+      headers["Authorization"] = `Bearer ${setupToken}`;
+      return fetch(path, Object.assign({}, options, { headers }));
+    }
+  }
+  return res;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   fetchSystemSnapshot();
@@ -34,7 +69,7 @@ function renderActiveMode() {
 // Fetch Host Snapshot from REST API
 async function fetchSystemSnapshot() {
   try {
-    const res = await fetch("/api/probe");
+    const res = await api("/api/probe");
     if (!res.ok) throw new Error("Failed to fetch system snapshot");
     systemSnapshot = await res.json();
     populateSnapshotUI(systemSnapshot);
@@ -137,7 +172,7 @@ async function testHardlink(path, statusElemId) {
   elem.innerHTML = `<span style="color: var(--cyan)">Testing atomic link...</span>`;
 
   try {
-    const res = await fetch("/api/verify/hardlink", {
+    const res = await api("/api/verify/hardlink", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: path }),
@@ -156,7 +191,7 @@ async function testHardlink(path, statusElemId) {
 // Secrets Generation
 async function generateAllSecrets() {
   try {
-    const res = await fetch("/api/secrets/generate", { method: "POST" });
+    const res = await api("/api/secrets/generate", { method: "POST" });
     const secrets = await res.json();
 
     const expPwd = document.getElementById("exp-admin-pass");
@@ -183,7 +218,7 @@ async function generateAllSecrets() {
 // Load AI Context Dump
 async function loadAIPrompt() {
   try {
-    const res = await fetch("/api/ai/context");
+    const res = await api("/api/ai/context");
     const data = await res.json();
     const promptElem = document.getElementById("ai-prompt-content");
     if (promptElem) promptElem.innerText = data.prompt;
@@ -268,13 +303,15 @@ async function executeDeployment(mode) {
       hdd_memories: document.getElementById("exp-photos-dir").value,
       server_ip: document.getElementById("exp-server-ip").value,
       enable_static_ip: document.getElementById("exp-static-ip-toggle").checked,
-      qbittorrent_pass: document.getElementById("exp-admin-pass").value || "adminadmin",
+      default_gateway: systemSnapshot ? systemSnapshot.network.default_gateway : "",
+      dns_servers: systemSnapshot ? systemSnapshot.network.dns_servers : [],
+      qbittorrent_pass: document.getElementById("exp-admin-pass").value || "",
       puid: systemSnapshot ? systemSnapshot.user.puid : 1000,
       pgid: systemSnapshot ? systemSnapshot.user.pgid : 1000,
-      host_user: systemSnapshot ? systemSnapshot.user.username : "homelab_user",
-      timezone: systemSnapshot ? systemSnapshot.timezone : "Asia/Kolkata",
-      active_nic: systemSnapshot ? systemSnapshot.network.active_nic : "eth0",
-      enabled_services: ["media", "photos", "control_hub", "tv_updater"],
+      host_user: systemSnapshot ? systemSnapshot.user.username : "",
+      timezone: systemSnapshot ? systemSnapshot.timezone : "UTC",
+      active_nic: systemSnapshot ? systemSnapshot.network.active_nic : "",
+      enabled_services: ["media", "photos", "control_hub"],
     };
   } else {
     // Power mode
@@ -282,8 +319,9 @@ async function executeDeployment(mode) {
     const services = [];
     if (document.getElementById("pow-svc-media").checked) services.push("media");
     if (document.getElementById("pow-svc-photos").checked) services.push("photos");
-    if (document.getElementById("pow-svc-tv").checked) services.push("tv_updater");
+    if (document.getElementById("pow-svc-tv").checked) services.push("tv_autoupdater");
     if (document.getElementById("pow-svc-sleep").checked) services.push("sleep_guard");
+    services.push("control_hub");
 
     payload = {
       mode: "power",
@@ -299,9 +337,10 @@ async function executeDeployment(mode) {
       hdd_data: document.getElementById("pow-data-dir").value,
       hdd_memories: document.getElementById("pow-photos-dir").value,
       config_dir: document.getElementById("pow-ssd-dir").value,
+      dns_servers: systemSnapshot ? systemSnapshot.network.dns_servers : [],
       qbittorrent_user: document.getElementById("pow-qbit-user").value || "admin",
-      qbittorrent_pass: document.getElementById("pow-qbit-pass").value || "adminadmin",
-      postgres_password: document.getElementById("pow-pg-pass").value || "postgres_pass",
+      qbittorrent_pass: document.getElementById("pow-qbit-pass").value || "",
+      postgres_password: document.getElementById("pow-pg-pass").value || "",
       radarr_api_key: document.getElementById("pow-radarr-key").value,
       sonarr_api_key: document.getElementById("pow-sonarr-key").value,
       prowlarr_api_key: document.getElementById("pow-prowlarr-key").value,
@@ -311,7 +350,8 @@ async function executeDeployment(mode) {
 
   try {
     progressFill.style.width = "50%";
-    const res = await fetch("/api/deploy", {
+    terminal.innerText += "Provisioning in progress. Pulling container images can take several minutes on a first install...\n";
+    const res = await api("/api/deploy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -325,7 +365,8 @@ async function executeDeployment(mode) {
     if (result.success) {
       renderSuccessLaunch(result);
     } else {
-      terminal.innerText += "\n[ERROR] Deployment encountered errors. See logs above.";
+      const errs = (result.errors || []).map(e => `  - [${e.service}] ${e.msg}`).join("\n");
+      terminal.innerText += `\n\n[ERROR] Deployment finished with errors:\n${errs || result.error || "see logs above"}`;
     }
   } catch (err) {
     terminal.innerText += `\n[FATAL ERROR] ${err.message}`;
@@ -356,18 +397,104 @@ function renderSuccessLaunch(result) {
     grid.appendChild(card);
   });
 
-  redirectBtn.href = result.dashboard_url;
+  const creds = result.credentials || {};
+  const hubToken = creds.control_hub_token || "";
+  const dashboardUrl = hubToken ? `${result.dashboard_url}/?token=${encodeURIComponent(hubToken)}` : result.dashboard_url;
+  redirectBtn.href = dashboardUrl;
   launchSection.style.display = "block";
 
-  // Auto redirect countdown
-  let count = 8;
+  // Show generated credentials exactly once (they are also stored under /etc/homelab, root-only).
+  if (!result.dry_run && (hubToken || creds.qbittorrent_pass || creds.postgres_password)) {
+    const box = document.createElement("div");
+    box.className = "launch-card";
+    box.style.cssText = "margin-top:1rem;display:block;cursor:default";
+    box.innerHTML = `
+      <h4 style="margin-top:0">Save these credentials now</h4>
+      <p style="margin:0 0 .6rem">They are stored root-only in <code>/etc/homelab/</code>. Show the dashboard token again later with <code>sudo ./setup.sh token</code>.</p>
+      <div style="font-family: var(--font-mono); font-size:.85rem; line-height:1.7; word-break:break-all">
+        ${hubToken ? `Control Hub token: <b>${hubToken}</b><br>` : ""}
+        ${creds.qbittorrent_pass ? `qBittorrent: <b>${creds.qbittorrent_user || "admin"}</b> / <b>${creds.qbittorrent_pass}</b><br>` : ""}
+        ${creds.postgres_password ? `Photo DB password: <b>${creds.postgres_password}</b>` : ""}
+      </div>`;
+    grid.parentNode.insertBefore(box, grid.nextSibling);
+  }
+
   const countSpan = document.getElementById("redirect-countdown");
+  const netplan = result.netplan_result || {};
+
+  // A static IP change is pending: the server now answers on the NEW address and will
+  // revert automatically unless we confirm within the window.
+  if (netplan.pending) {
+    const newIp = String(netplan.ip || "").split("/")[0];
+    const newBase = `${window.location.protocol}//${newIp}:${window.location.port || 80}`;
+    const confirmBox = document.createElement("div");
+    confirmBox.className = "launch-card";
+    confirmBox.style.cssText = "margin-top:1rem;display:block;cursor:default;border-color:var(--amber)";
+    confirmBox.innerHTML = `
+      <h4 style="margin-top:0">Confirm the new static IP (${newIp})</h4>
+      <p id="netplan-confirm-status" style="margin:0 0 .8rem">Checking that the server is reachable on ${newIp}...</p>
+      <button type="button" class="btn-primary" id="btn-netplan-confirm" disabled>Keep this IP</button>
+      <span style="margin-left:.8rem;font-family:var(--font-mono);font-size:.8rem">reverts in <span id="netplan-countdown">${netplan.timeout_sec || 120}</span>s if not confirmed</span>`;
+    grid.parentNode.insertBefore(confirmBox, grid.nextSibling);
+    if (countSpan) countSpan.parentElement.style.display = "none";
+
+    let remaining = netplan.timeout_sec || 120;
+    const tick = setInterval(() => {
+      remaining -= 1;
+      const el = document.getElementById("netplan-countdown");
+      if (el) el.innerText = Math.max(remaining, 0);
+      if (remaining <= 0) clearInterval(tick);
+    }, 1000);
+
+    const status = document.getElementById("netplan-confirm-status");
+    const btn = document.getElementById("btn-netplan-confirm");
+    const probe = async () => {
+      try {
+        const r = await fetch(`${newBase}/api/health`, { mode: "cors", cache: "no-store" });
+        if (r.ok) {
+          status.innerText = `Server reachable on ${newIp}. Click "Keep this IP" to make it permanent.`;
+          btn.disabled = false;
+          return true;
+        }
+      } catch (_) { /* not reachable yet */ }
+      return false;
+    };
+    const poll = setInterval(async () => { if (await probe()) clearInterval(poll); }, 3000);
+    probe();
+
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const r = await fetch(`${newBase}/api/netplan/confirm`, { method: "POST", headers: { "Authorization": `Bearer ${setupToken}`, "Content-Type": "application/json" }, body: "{}" });
+        const data = await r.json();
+        if (data.success) {
+          status.innerText = "Static IP confirmed. Redirecting to the dashboard...";
+          clearInterval(tick);
+          setTimeout(() => { window.location.href = dashboardUrl.replace(window.location.hostname, newIp); }, 1500);
+        } else {
+          status.innerText = `Confirmation failed: ${data.message || "unknown error"}`;
+          btn.disabled = false;
+        }
+      } catch (err) {
+        status.innerText = `Could not confirm: ${err.message}`;
+        btn.disabled = false;
+      }
+    };
+    return;
+  }
+
+  // Dry runs stay on this page; real installs redirect after a countdown.
+  if (result.dry_run) {
+    if (countSpan) countSpan.parentElement.innerText = "Dry run complete. Nothing was changed on this server.";
+    return;
+  }
+  let count = 15;
   const timer = setInterval(() => {
     count -= 1;
     if (countSpan) countSpan.innerText = count;
     if (count <= 0) {
       clearInterval(timer);
-      window.location.href = result.dashboard_url;
+      window.location.href = dashboardUrl;
     }
   }, 1000);
 }
