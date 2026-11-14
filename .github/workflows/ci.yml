@@ -38,8 +38,7 @@ jobs:
             setup.sh \
             teardown.sh \
             apps/control-hub/run.sh \
-            system/maintenance/watchtower-run.sh \
-            system/power/immich-ml-control.sh \
+            apps/immich-face-xmp-exporter/scripts/immich-ml-control.sh \
             system/power/server-suspend.sh \
             apps/tv-updater/setup_cron.sh \
             apps/mediaserver/host/post-wake-arr.sh \

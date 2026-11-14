@@ -576,6 +576,10 @@ class Deployment:
         except OSError as e:
             self.fail("tv_autoupdater", f"could not create {state_dir}: {e}")
             return
+        tv_cfg = self.etc_dir / "tv-autoupdater.json"
+        if tv_cfg.exists():
+            run_command(["chgrp", SERVICE_USER, str(tv_cfg)], timeout=10)
+            os.chmod(tv_cfg, 0o640)
         install_cron(cron_src, "tv-autoupdater", self.manifest, variables=self.template_vars())
         self.services_launched.append("tv_autoupdater")
         self.log("TV auto-updater cron registered.")
