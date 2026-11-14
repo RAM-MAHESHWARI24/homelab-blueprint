@@ -354,6 +354,15 @@ function bindActionEvents() {
   const btnPowSec = document.getElementById("btn-gen-pow-secrets");
   if (btnPowSec) btnPowSec.onclick = generateAllSecrets;
 
+  // The rclone remote field only matters when photo backup is ticked
+  const powBackup = document.getElementById("pow-svc-photo-backup");
+  const gdriveGroup = document.getElementById("pow-gdrive-group");
+  if (powBackup && gdriveGroup) {
+    const sync = () => { gdriveGroup.style.display = powBackup.checked ? "" : "none"; };
+    powBackup.addEventListener("change", sync);
+    sync();
+  }
+
   // Deploy buttons
   const btnDeployExp = document.getElementById("btn-deploy-express");
   if (btnDeployExp) btnDeployExp.onclick = () => executeDeployment("express");
@@ -407,6 +416,10 @@ async function executeDeployment(mode) {
     if (document.getElementById("pow-svc-photos").checked) services.push("photos");
     if (document.getElementById("pow-svc-tv").checked) services.push("tv_autoupdater");
     if (document.getElementById("pow-svc-sleep").checked) services.push("sleep_guard");
+    if (document.getElementById("pow-svc-ml-schedule").checked) services.push("ml_schedule");
+    if (document.getElementById("pow-svc-photo-backup").checked) services.push("photo_backup");
+    if (document.getElementById("pow-svc-samba").checked) services.push("samba");
+    if (document.getElementById("pow-svc-tailscale").checked) services.push("tailscale");
     services.push("control_hub");
 
     payload = {
@@ -430,6 +443,10 @@ async function executeDeployment(mode) {
       radarr_api_key: document.getElementById("pow-radarr-key").value,
       sonarr_api_key: document.getElementById("pow-sonarr-key").value,
       prowlarr_api_key: document.getElementById("pow-prowlarr-key").value,
+      gdrive_remote: document.getElementById("pow-gdrive-remote").value.trim(),
+      enable_byparr: document.getElementById("pow-opt-byparr").checked,
+      enable_tmdb_bypass: document.getElementById("pow-opt-tmdb").checked,
+      dns_override: document.getElementById("pow-opt-dns").checked,
       enabled_services: services,
     };
   }
