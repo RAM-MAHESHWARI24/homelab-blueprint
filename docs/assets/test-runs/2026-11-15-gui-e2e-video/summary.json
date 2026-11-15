@@ -1,0 +1,126 @@
+{
+  "vm": "hb-gui-1115-1638",
+  "old_ip": "172.20.86.120",
+  "new_ip": "172.20.86.220",
+  "source": "github",
+  "branch": "refactor/v2",
+  "passed": true,
+  "minutes": 10.1,
+  "results": [
+    {
+      "step": "VM launched",
+      "ok": true,
+      "detail": "172.20.86.120"
+    },
+    {
+      "step": "Wizard printed its token URL",
+      "ok": true,
+      "detail": "http://172.20.86.120:8000/?token=<redacted>"
+    },
+    {
+      "step": "Wizard loads and probes the host",
+      "ok": true,
+      "detail": "172.20.86.120 (eth0)"
+    },
+    {
+      "step": "Express mode pre-fills the server's current IP",
+      "ok": true,
+      "detail": "field=172.20.86.120 vm=172.20.86.120"
+    },
+    {
+      "step": "Express master password is empty (no shipped default)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Static IP is off by default",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Deploy result reached the browser",
+      "ok": true,
+      "detail": "330s"
+    },
+    {
+      "step": "Credentials are shown once (Control Hub token present)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Wizard points at the indexer picker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Static-IP confirm box is shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Old page detects the server on the new address",
+      "ok": true,
+      "detail": "Server reachable on 172.20.86.220. Continue there to keep this IP."
+    },
+    {
+      "step": "Static IP confirmed from the new address",
+      "ok": true,
+      "detail": "Static IP confirmed. Opening the dashboard..."
+    },
+    {
+      "step": "Browser handed over to the Control Hub",
+      "ok": true,
+      "detail": "http://172.20.86.220:7575/"
+    },
+    {
+      "step": "Dashboard shows the one-time indexer banner",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Picker lists Prowlarr's definitions",
+      "ok": true,
+      "detail": "400 shown"
+    },
+    {
+      "step": "Nothing is pre-selected",
+      "ok": true,
+      "detail": "0 ticked"
+    },
+    {
+      "step": "Add button disabled until something is picked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Indexer step can be skipped",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Control Hub still answers on the new address after the revert window",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Old address no longer answers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "VM interface carries the new address",
+      "ok": true,
+      "detail": "1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever | 2: eth0    inet 172.20.86.220/20 brd 172.20.95.255 scope global eth0\\       valid_lft forever preferred_lft for"
+    },
+    {
+      "step": "Revert timer is gone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "Apps wired inside the VM (check_wiring.sh)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
