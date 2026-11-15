@@ -14,7 +14,7 @@
 
 2. **Safe Netplan Apply ([`NETPLAN_STATIC_IP_QUIRKS.md`](NETPLAN_STATIC_IP_QUIRKS.md))**:
    - Never propose `netplan apply` over an SSH session without pre-validation.
-   - Always run `netplan generate` first, followed by `netplan try --timeout 45`.
+   - Always run `netplan generate` first; apply through `netplan_manager.py` (backup + revert timer + confirm from the new address), never a bare `netplan apply`.
 
 3. **Low-Power CPU Transcode Protection ([`HASWELL_DIRECT_PLAY_GUIDE.md`](HASWELL_DIRECT_PLAY_GUIDE.md))**:
    - Haswell (i3-4005U) lacks 10-bit HEVC decoding blocks.

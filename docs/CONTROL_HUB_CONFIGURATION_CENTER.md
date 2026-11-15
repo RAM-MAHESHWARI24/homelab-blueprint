@@ -73,7 +73,7 @@ Administrators can now inspect, live-test, and update their entire homelab topol
 ### 🌐 4. Safe Netplan Static IP with 45s Auto-Rollback
 - Auto-detects active network interfaces, gateway, and DNS servers.
 - Generates standard Netplan v2 YAML configuration.
-- **Safety Guarantee:** Applies with `netplan try --timeout 45`. If connection drops or network configuration fails, Netplan automatically rolls back to the backup network configuration within 45 seconds, protecting remote SSH sessions from getting severed.
+- **Safety Guarantee:** Applies with an armed revert timer (120 s by default). Unless the change is confirmed from the new address, the previous Netplan files are restored automatically, protecting remote sessions.
 
 ### 🤖 5. AI Copilot Diagnostics & Compact Prompt Exporter
 - Probes CPU model, architecture, thread count, and low-power / Direct Play profile.

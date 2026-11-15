@@ -11,7 +11,6 @@
 4. [Power Management & Sleep Guard (`system/power/`)](#-power-management--sleep-guard-systempower)
 5. [Cron Job Automation (`system/cron.d/`)](#-cron-job-automation-systemcrond)
 6. [Host Networking & File Sharing (`system/networking/`)](#-host-networking--file-sharing-systemnetworking)
-7. [Maintenance Routines (`system/maintenance/`)](#-maintenance-routines-systemmaintenance)
 8. [Cross-References & Documentation Links](#-cross-references--documentation-links)
 
 ---
@@ -151,16 +150,6 @@ to `smb.conf`:
 2. `[Photos]`: read/write access to the photo library (`MEMORIES_DIR`) with macOS `vfs_fruit` extras.
 
 * **Detailed Runbook:** [Networking: Tailscale & Samba](../docs/NETWORKING_TAILSCALE_SAMBA.md)
-
----
-
-## 🛠️ Maintenance Routines (`system/maintenance/`)
-
-### `watchtower-run.sh`
-Performs a safe, non-destructive Docker container image update sweep:
-* Pulls newest container tags for active services.
-* Automatically prunes dangling images and unused build caches.
-* Preserves database volumes and pinned container tags.
 
 ---
 

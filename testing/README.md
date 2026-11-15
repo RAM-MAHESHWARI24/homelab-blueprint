@@ -211,7 +211,7 @@ multipass delete homelab-low-spec --purge
 | :--- | :--- | :--- | :--- | :--- |
 | **`TC-NET-01`** | Pre-Flight Netplan Syntax | Execute `generate_netplan_yaml()` and validate via `netplan generate`. | Generates Netplan v2 YAML with `renderer: networkd` and explicit routes block. | Netplan syntax check returns exit code 0. |
 | **`TC-NET-02`** | Safety Backup Creation | Apply proposed Netplan configuration. | Creates timestamped backup directory in `/etc/netplan/backup_<timestamp>/`. | Original YAMLs preserved bit-for-bit. |
-| **`TC-NET-03`** | Auto-Rollback on Invalid Gateway | Apply Netplan configuration pointing to non-existent gateway (e.g. `192.168.254.254`). | `netplan try --timeout 45` triggers auto-revert upon timeout. | Network reverts to original DHCP/static state; SSH survives. |
+| **`TC-NET-03`** | Auto-Rollback on Invalid Gateway | Apply Netplan configuration pointing to non-existent gateway (e.g. `192.168.254.254`). | The `homelab-netplan-revert` timer restores the backup when no confirmation arrives. | Network reverts to original DHCP/static state; SSH survives. |
 
 ---
 
@@ -468,7 +468,6 @@ jobs:
             setup.sh \
             teardown.sh \
             apps/control-hub/run.sh \
-            system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \
             apps/tv-updater/setup_cron.sh \

@@ -89,9 +89,9 @@ Find the most efficient entry point based on your current task:
 * **[Port Bindings & Network Matrix](PORT_BINDINGS_AND_CONFLICTS.md)**
   * *Why it matters:* Authoritative directory of all active TCP/UDP ports across the 13 homelab services, collision avoidance, and socket conflict prevention.
 * **[Safe Netplan Static IP](NETPLAN_STATIC_IP_QUIRKS.md)**
-  * *Why it matters:* Covers Ubuntu Netplan v2 configuration, YAML formatting quirks, and the essential 45-second auto-rollback command (`netplan try --timeout 45`) to prevent SSH lockout.
+  * *Why it matters:* Covers Ubuntu Netplan v2 configuration, YAML formatting quirks, and the revert-timer flow (backup, apply, confirm from the new address) that prevents SSH lockout.
 * **[Networking: Tailscale & Samba](NETWORKING_TAILSCALE_SAMBA.md)**
-  * *Why it matters:* Tailscale mesh subnet routing for secure remote access without port forwarding, paired with Samba LAN shares (`MediaDrive` and `RootFS`).
+  * *Why it matters:* Tailscale mesh subnet routing for secure remote access without port forwarding, paired with the opt-in Samba shares (`Media` and `Photos`).
 * **[Gigabit LAN Diagnostics](GIGABIT_LAN_DIAGNOSTICS.md)**
   * *Why it matters:* Troubleshooting PHY auto-negotiation, bad Cat5e/Cat6 patch cables, and isolating 100 Mbps Ethernet link drops.
 
@@ -178,7 +178,7 @@ Every primary module in this monorepo includes a dedicated, colocated `README.md
 | :--- | :--- | :--- |
 | **Media takes 2x disk space / slow copy** | `ls -l /data/media/movies` (check link count) | [Storage & Hardlinks Guide](STORAGE_AND_HARDLINKS.md) |
 | **Jellyfin 100% CPU on 4K playback** | `ls -l /dev/dri` & inspect Jellyfin logs | [Hardware Acceleration Guide](HARDWARE_ACCELERATION_VAAPI_QSV.md) |
-| **Lost SSH access after static IP edit** | Wait 45s for `netplan try` auto-rollback | [Safe Netplan Guide](NETPLAN_STATIC_IP_QUIRKS.md) |
+| **Lost SSH access after static IP edit** | Wait for the revert timer (120 s) to restore the old address | [Safe Netplan Guide](NETPLAN_STATIC_IP_QUIRKS.md) |
 | **Permission Denied creating files in Docker** | `id` (verify PUID/PGID matches `1000:1000`) | [Docker Permissions Guide](DOCKER_PERMISSIONS_PUID_PGID.md) |
 | **Server didn't sleep or woke unexpectedly** | `journalctl -u control-hub` & inspect sleep logs | [Power Management Guide](POWER_MANAGEMENT_RTCWAKE.md) |
 | **Port conflict on server startup** | Run live port prober in Control Hub `:7575` | [Port Bindings Guide](PORT_BINDINGS_AND_CONFLICTS.md) |

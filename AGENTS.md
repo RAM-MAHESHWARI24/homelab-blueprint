@@ -33,7 +33,7 @@ Every agent proposing modifications must honor these five non-negotiable invaria
 
 ### 1.4. Network Safety & Netplan Rollback ([`docs/NETPLAN_STATIC_IP_QUIRKS.md`](docs/NETPLAN_STATIC_IP_QUIRKS.md))
 * **The Rule:** Never invoke raw `netplan apply` over remote SSH.
-* **Implementation:** Always validate with `netplan generate` first, followed by `netplan try --timeout 45` to guarantee automatic rollback if connectivity drops.
+* **Implementation:** Always validate with `netplan generate` first, then apply through `config_core/netplan_manager.py`, which arms the `homelab-netplan-revert` timer and restores the backup unless the change is confirmed from the new address.
 
 ### 1.5. Sleep Guard & Power Deferral ([`ADR-0003`](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md))
 * **The Rule:** Never remove or bypass active condition guards in `system/power/server-suspend.sh`.
