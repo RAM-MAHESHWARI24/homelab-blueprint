@@ -47,7 +47,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 40s
+      start_period: 300s
+      start_interval: 5s
 
   prowlarr:
     <<: *common
@@ -62,7 +63,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 300s
+      start_interval: 5s
 
   radarr:
     <<: *common
@@ -81,7 +83,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 300s
+      start_interval: 5s
 
   sonarr:
     <<: *common
@@ -100,7 +103,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 300s
+      start_interval: 5s
 
   bazarr:
     <<: *common
@@ -116,7 +120,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 300s
+      start_interval: 5s
 
   jellyfin:
     <<: *common
@@ -138,7 +143,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 300s
+      start_interval: 5s
 
   seerr:
     container_name: seerr
@@ -172,7 +178,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 300s
+      start_interval: 5s
 
   # Cloudflare challenge solver for Prowlarr indexers behind Cloudflare.
   # Opt-in: COMPOSE_PROFILES=byparr in .env (the installer sets it when chosen).

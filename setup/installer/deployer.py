@@ -77,7 +77,8 @@ MODULE_ORDER = ["media", "photos", "control_hub", "ml_schedule", "photo_backup",
 
 COMPOSE_PULL_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_PULL_TIMEOUT", "1800"))
 COMPOSE_UP_TIMEOUT = int(os.getenv("HOMELAB_COMPOSE_UP_TIMEOUT", "600"))
-HEALTH_WAIT_TIMEOUT = int(os.getenv("HOMELAB_HEALTH_WAIT_TIMEOUT", "240"))
+# Longer than the compose start_period (300 s): first-start migrations on slow hardware take minutes.
+HEALTH_WAIT_TIMEOUT = int(os.getenv("HOMELAB_HEALTH_WAIT_TIMEOUT", "600"))
 # Polls are 5 s apart; a container seen "restarting" this many times is in a crash loop.
 RESTART_LOOP_SIGHTINGS = 4
 
@@ -239,6 +240,13 @@ class Deployment:
 
         self.log(f"Starting {module} containers...")
         up = run_command(base + ["up", "-d", "--remove-orphans"], cwd=str(module_dir), timeout=COMPOSE_UP_TIMEOUT)
+        if not up.ok and "dependency failed to start" in (up["stderr"] or "") + (up["stdout"] or ""):
+            # A dependency was still starting (first-start migrations on slow hardware) when
+            # compose checked it. Let the stack settle, then start the rest once more.
+            self.manifest.add_compose(module, module_dir, env_file)
+            self.log(f"{module}: a dependency was not healthy yet; waiting for it, then starting the rest...")
+            self._wait_healthy(base, module_dir, running_only=True)
+            up = run_command(base + ["up", "-d", "--remove-orphans"], cwd=str(module_dir), timeout=COMPOSE_UP_TIMEOUT)
         if not up.ok:
             self.fail(module, f"docker compose up failed: {up['stderr'] or up['stdout']}")
             return False
@@ -256,7 +264,9 @@ class Deployment:
         self.log(f"{module} is up and healthy.")
         return True
 
-    def _wait_healthy(self, base: List[str], module_dir: Path) -> "tuple[bool, str]":
+    def _wait_healthy(self, base: List[str], module_dir: Path, running_only: bool = False) -> "tuple[bool, str]":
+        """Waits until every container runs and none is still starting. running_only ignores containers
+        compose created but has not started yet (those waiting on a dependency)."""
         deadline = time.time() + HEALTH_WAIT_TIMEOUT
         last = ""
         restarting_seen: Dict[str, int] = {}
@@ -276,6 +286,8 @@ class Deployment:
                     rows.extend(parsed if isinstance(parsed, list) else [parsed])
                 except json.JSONDecodeError:
                     continue
+            if running_only:
+                rows = [r for r in rows if r.get("State") in ("running", "restarting")]
             if not rows:
                 last = "no containers reported by compose ps"
                 time.sleep(5)
