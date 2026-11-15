@@ -28,12 +28,25 @@ updates:
     groups:
       noodle-gallery-images:
         patterns: ["*"]
+    ignore:
+      # Major updates need a migration plan, not a version bump (PR #7):
+      # - Postgres 14 -> 16 cannot open the existing data directory without a dump/restore;
+      # - the gallery server migrates its database forward on start and cannot go back.
+      - dependency-name: "*immich-app/postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "*open-noodle/gallery-*"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker", "noodle-gallery"]
 
   - package-ecosystem: "docker"
     directory: "/apps/control-hub"
     schedule:
       interval: "weekly"
+    ignore:
+      # Stay on the tested Python line (CI covers 3.10-3.12 and does not build this
+      # image); patch releases still come through (PR #4 proposed 3.15).
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     labels: ["dependencies", "docker", "control-hub"]
 
   # Python requirements
