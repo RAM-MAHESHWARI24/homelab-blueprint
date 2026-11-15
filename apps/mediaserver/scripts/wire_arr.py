@@ -121,7 +121,6 @@ def seed_qbittorrent(config_dir: Path, user: str, password: str, puid: int, pgid
         "Downloads\\SavePath=/data/torrents/\n"
         "WebUI\\Address=*\n"
         "WebUI\\Port=8080\n"
-        "WebUI\\LocalHostAuth=false\n"
         "WebUI\\CSRFProtection=true\n"
         "WebUI\\ServerDomains=*\n"
         f"WebUI\\Username={user}\n"
@@ -156,13 +155,32 @@ class QBit:
         except (urllib.error.URLError, OSError) as e:
             return 0, str(e)
 
+    def _get(self, path: str) -> Tuple[int, str]:
+        req = urllib.request.Request(self.base + path)
+        try:
+            with self.opener.open(req, timeout=15) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode(errors="replace")
+        except (urllib.error.URLError, OSError) as e:
+            return 0, str(e)
+
     def login(self, attempts: int = 4) -> Tuple[bool, str]:
-        """Returns (ok, detail); detail carries the HTTP status and body so a failure is diagnosable from the log."""
+        """
+        Returns (ok, detail). qBittorrent answers 200 'Ok.' to a successful login and
+        204 (empty) when the client needs no authentication (LocalHostAuth off or a
+        whitelisted subnet); both are confirmed with an authenticated call. The detail
+        carries status and body so a failure is diagnosable from the install log.
+        """
         st, body = 0, ""
         for i in range(attempts):
             st, body = self._form("/api/v2/auth/login", {"username": self.user, "password": self.password})
-            if st == 200 and "Ok" in body:
-                return True, f"HTTP {st}"
+            if (st == 200 and "Ok" in body) or st == 204:
+                vst, version = self._get("/api/v2/app/version")
+                if vst == 200:
+                    how = "password accepted" if st == 200 else "no auth required for this client"
+                    return True, f"{how}, qBittorrent {version.strip()}"
+                return False, f"login HTTP {st} but app/version HTTP {vst} {version.strip()[:120]!r}"
             if i + 1 < attempts:
                 time.sleep(3)
         return False, f"HTTP {st} {body.strip()[:160]!r} (user={self.user})"

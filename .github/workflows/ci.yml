@@ -240,7 +240,10 @@ jobs:
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/available | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"] > 50, d; print("indexer definitions:", d["count"])'
           # qBittorrent accepts the generated password (read from the root-only env file)
           QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
-          curl -fsS --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok'
+          curl -fsS -c /tmp/qb.jar --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok'
+          # ...and the session it returns is usable; without a password the API must refuse
+          curl -fsS -b /tmp/qb.jar http://127.0.0.1:8080/api/v2/app/version
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v2/app/version)" = "403"
 
       - name: Show logs on failure
         if: failure()
