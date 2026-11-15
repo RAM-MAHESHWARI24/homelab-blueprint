@@ -11,8 +11,6 @@ measure peak RSS memory utilization, and assess pipeline throughput and latency.
 """
 
 import json
-import os
-import shutil
 import subprocess
 import sys
 import time

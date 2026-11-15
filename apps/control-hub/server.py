@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ServerFF Control Hub - Modular Backend API Daemon
-High-Performance Dashboard Engine for serverff (Ubuntu 26.04 / Haswell i3-4005U)
+Homelab Control Hub - modular backend API daemon.
+Lightweight Flask dashboard engine for low-power home servers.
 """
 
 import time
@@ -9,6 +9,7 @@ from pathlib import Path
 from flask import Flask, jsonify, send_file, send_from_directory
 
 from config import HOST, PORT
+from core.auth import install_auth
 from core.telemetry_sampler import start_telemetry_sampler
 
 # Import all visual widget blueprints
@@ -22,6 +23,7 @@ from widgets.cron_tasks import cron_tasks_bp
 from widgets.service_matrix import service_matrix_bp
 from widgets.tv_updater import tv_updater_bp
 from widgets.config_center import config_center_bp
+from widgets.indexers import indexers_bp
 
 APP_START_TIME = time.time()
 
@@ -30,13 +32,16 @@ def create_app():
     """Application factory registering all modular widget blueprints"""
     app = Flask(__name__, static_folder="static")
 
+    # 0. Bearer-token guard for every /api/* route except public probes
+    app.config["CONTROL_HUB_TOKEN"], app.config["CONTROL_HUB_TOKEN_GENERATED"] = install_auth(app)
+
     # 1. Observability & Health Probing
     @app.route("/api/health")
     def health():
         return jsonify({
             "status": "ok",
             "service": "control-hub",
-            "version": "1.0.1",
+            "version": "2.0.0",
             "uptime_seconds": round(time.time() - APP_START_TIME, 1)
         })
 
@@ -119,6 +124,7 @@ def create_app():
     app.register_blueprint(service_matrix_bp)
     app.register_blueprint(tv_updater_bp)
     app.register_blueprint(config_center_bp)
+    app.register_blueprint(indexers_bp)
 
     # 5. Catch-all static proxy
     @app.route("/<path:path>")
@@ -141,8 +147,9 @@ if __name__ == "__main__":
     # Launch real-time background telemetry sampler
     start_telemetry_sampler()
 
-    try:
-        print(f"🚀 ServerFF Control Hub listening on http://{HOST}:{PORT}")
-    except UnicodeEncodeError:
-        print(f"[+] ServerFF Control Hub listening on http://{HOST}:{PORT}")
+    print(f"[+] Control Hub listening on http://{HOST}:{PORT}")
+    if app.config.get("CONTROL_HUB_TOKEN_GENERATED"):
+        print("[!] No CONTROL_HUB_TOKEN configured; a one-time token was generated for this run:")
+        print(f"    http://<server-ip>:{PORT}/?token={app.config['CONTROL_HUB_TOKEN']}")
+        print("    Set CONTROL_HUB_TOKEN in .env (or /etc/homelab/control-hub.env) to make it permanent.")
     app.run(host=HOST, port=PORT, debug=False, threaded=True)

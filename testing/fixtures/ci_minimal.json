@@ -1,0 +1,13 @@
+{
+  "_comment": "Real (non-dry-run) headless install used by the CI 'real-install' job on a GitHub-hosted Ubuntu runner.",
+  "host_user": "runner",
+  "puid": 1001,
+  "pgid": 1001,
+  "server_ip": "127.0.0.1",
+  "timezone": "UTC",
+  "hdd_data": "/srv/homelab-ci/data",
+  "hdd_memories": "/srv/homelab-ci/memories",
+  "enable_static_ip": false,
+  "control_hub_port": 7575,
+  "enabled_services": ["media", "control_hub"]
+}

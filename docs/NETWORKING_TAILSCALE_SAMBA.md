@@ -20,12 +20,13 @@ All Tailscale-connected phones and laptops can now access `http://<your-server-i
 
 ---
 
-## 2. Samba Dual-Share Setup (`smb.conf`)
-Samba provides network access from Windows and Mac computers.
+## 2. Samba Shares (`system/networking/homelab-shares.conf.example`)
+Samba is an opt-in module of the Setup Wizard. The installer renders the template to `/etc/samba/homelab-shares.conf`, adds one `include =` line to `smb.conf`, validates with `testparm` and sets the host user's Samba password. `teardown.sh` removes both again.
 
-* **Share 1: `[MediaDrive]` (`/mnt/hdd/data`):**
-  - Browseable network folder for adding torrents, managing movies, and playing media.
+* **`[Media]` (`DATA_DIR`, default `/mnt/hdd/data`):**
+  - Browseable share for adding torrents, managing movies and playing media.
   - File permissions: `create mask = 0775`, `directory mask = 0775`.
-* **Share 2: `[RootFS]` (`/`):**
-  - Hidden administrative share (`browseable = no`).
-  - Useful for direct file editing from VS Code or developer tools over LAN.
+* **`[Photos]` (`MEMORIES_DIR`):**
+  - The photo library, with `vfs_fruit` extras for macOS clients.
+
+No share exposes the root filesystem. Access is limited to the host user (`valid users = {{HOST_USER}}`).

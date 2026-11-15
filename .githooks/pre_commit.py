@@ -9,7 +9,6 @@ Performs rapid (< 3s) local verification on staged files before allowing a git c
   5. Shell script static analysis (if shellcheck is available)
 """
 
-import os
 import re
 import sys
 import py_compile
@@ -59,6 +58,28 @@ def check_python_syntax(staged_files):
     if errors:
         return False, "\n".join(errors)
     return True, f"Verified {len(py_files)} Python file(s)"
+
+
+def check_ruff(staged_files):
+    """Runs ruff on staged Python files when it is installed (CI always runs it)."""
+    py_files = [f for f in staged_files if f.endswith(".py") and (REPO_ROOT / f).exists()]
+    if not py_files:
+        return True, "No Python files staged"
+
+    try:
+        probe = subprocess.run([sys.executable, "-m", "ruff", "--version"], capture_output=True, text=True)
+        if probe.returncode != 0:
+            return True, "Ruff not installed locally (deferred to CI)"
+    except Exception:
+        return True, "Ruff not installed locally (deferred to CI)"
+
+    res = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--output-format", "concise", *py_files],
+        cwd=str(REPO_ROOT), capture_output=True, text=True
+    )
+    if res.returncode != 0:
+        return False, res.stdout.strip() or res.stderr.strip()
+    return True, f"Ruff passed for {len(py_files)} Python file(s)"
 
 
 def check_secrets(staged_files):
@@ -113,7 +134,7 @@ def check_cli_argument_parsing(staged_files):
     cli_tools = [
         "apps/immich-face-xmp-exporter/sync_space_faces.py",
         "apps/immich-face-xmp-exporter/export_faces_to_xmp.py",
-        "setup/config_core/schema_migrator.py"
+        "setup/installer/schema_migrator.py"
     ]
     staged_set = set(staged_files)
     to_verify = [t for t in cli_tools if t in staged_set]
@@ -172,6 +193,7 @@ def main():
 
     checks = [
         ("Python Syntax & Compilation", check_python_syntax),
+        ("Ruff Static Analysis", check_ruff),
         ("Secret Sanitization Scan", check_secrets),
         ("CLI Argument Parsing (--help)", check_cli_argument_parsing),
         ("Documentation & Link Integrity", check_doc_integrity),

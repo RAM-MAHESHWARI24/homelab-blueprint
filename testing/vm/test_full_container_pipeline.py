@@ -19,7 +19,6 @@ Executes the complete real-world media stack transaction:
 """
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -28,7 +27,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Optional, Tuple
 
 # Ensure UTF-8 output on Windows terminals
 if hasattr(sys.stdout, "reconfigure"):

@@ -25,7 +25,7 @@
         <span>Ubuntu Server Homelab Onboarding</span>
       </div>
       <h1>Homelab Blueprint Setup</h1>
-      <p>Configure storage paths, single-mount atomic hardlinks, and core services in under 60 seconds.</p>
+      <p>Pick your storage, set one password, choose modules. The installer wires the apps together for you.</p>
     </header>
 
     <!-- Host System Live Auto-Detected Snapshot -->
@@ -80,7 +80,7 @@
       <div class="glass-card">
         <div class="card-title-row">
           <h2>⚡ Express Configuration</h2>
-          <span class="badge-soft badge-emerald">60s Ready</span>
+          <span class="badge-soft badge-emerald">Recommended</span>
         </div>
         <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
           Only the critical storage paths and master password are required. Everything else is auto-tuned with production defaults.
@@ -115,10 +115,10 @@
 
         <!-- Safe Netplan Static IP Toggle -->
         <div class="toggle-card">
-          <input type="checkbox" id="exp-static-ip-toggle" checked>
+          <input type="checkbox" id="exp-static-ip-toggle">
           <div class="toggle-info">
-            <h4>Lock current LAN IP as Permanent Static IP via Netplan</h4>
-            <p>Uses <code>netplan try --timeout 45</code> with automatic rollback so your SSH connection is never severed if network fails.</p>
+            <h4>Lock the current LAN IP as a static address (optional)</h4>
+            <p>Writes a Netplan file and arms a 120-second revert timer. If the new address does not come up, or you do not confirm it from the new address, the previous network configuration is restored automatically, so an SSH session is never lost for good.</p>
           </div>
         </div>
 
@@ -133,10 +133,10 @@
         <!-- Admin Master Password -->
         <div class="form-group">
           <div class="form-label-row">
-            <label class="form-label" for="exp-admin-pass">Master Password (qBittorrent & Database)</label>
+            <label class="form-label" for="exp-admin-pass">Master Password (qBittorrent, Jellyfin, Seerr)</label>
             <span class="default-hint" id="btn-gen-exp-secrets">⚡ Click to Auto-Generate Secure Passwords</span>
           </div>
-          <input type="text" id="exp-admin-pass" placeholder="Enter password or auto-generate" value="adminadmin">
+          <input type="text" id="exp-admin-pass" placeholder="Leave blank to generate a random password (shown once after install)" autocomplete="off">
         </div>
 
         <!-- Safe Dry-Run Simulation Toggle -->
@@ -182,14 +182,14 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="pow-tz">Server Timezone</label>
-            <input type="text" id="pow-tz" value="Asia/Kolkata">
+            <input type="text" id="pow-tz" value="UTC" placeholder="Auto-detected from the host">
           </div>
         </div>
         <div class="toggle-card">
-          <input type="checkbox" id="pow-static-ip-toggle" checked>
+          <input type="checkbox" id="pow-static-ip-toggle">
           <div class="toggle-info">
-            <h4>Apply Safe Static IP via Netplan</h4>
-            <p>Generates <code>/etc/netplan/99-homelab-blueprint.yaml</code>, tests syntax with <code>netplan generate</code>, and applies with <code>netplan try --timeout 45</code>.</p>
+            <h4>Apply a static IP via Netplan (optional)</h4>
+            <p>Generates <code>/etc/netplan/99-homelab-blueprint.yaml</code>, validates it with <code>netplan generate</code>, backs up the current configuration and applies with a 120-second revert timer. The change only sticks once you confirm it from the new address.</p>
           </div>
         </div>
       </div>
@@ -203,7 +203,7 @@
         <div class="sys-snapshot-grid">
           <div class="form-group">
             <label class="form-label" for="pow-user">Host Username</label>
-            <input type="text" id="pow-user" value="homelab_user">
+            <input type="text" id="pow-user" placeholder="Auto-detected from the host">
           </div>
           <div class="form-group">
             <label class="form-label" for="pow-puid">User PUID</label>
@@ -271,17 +271,78 @@
             </div>
           </label>
           <label class="service-item-card">
-            <input type="checkbox" id="pow-svc-tv" checked>
+            <input type="checkbox" id="pow-svc-tv">
             <div class="service-meta">
-              <h4>📺 CleanYourTV</h4>
-              <p>Silent ADB background app updater for Android / Google TVs</p>
+              <h4>📺 TV auto-updater</h4>
+              <p>Keeps SmartTube and CloudStream current on Android / Google TVs over ADB (official sources only; signatures pinned)</p>
             </div>
           </label>
           <label class="service-item-card">
-            <input type="checkbox" id="pow-svc-sleep" checked>
+            <input type="checkbox" id="pow-svc-sleep">
             <div class="service-meta">
               <h4>⚡ Sleep Guard</h4>
-              <p>S3 Suspend (12:00 AM) & RTC Wake (06:00 AM) power management</p>
+              <p>Nightly S3 suspend with RTC wake, post-wake hooks and backup deferral</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-ml-schedule">
+            <div class="service-meta">
+              <h4>🧠 Photo ML schedule</h4>
+              <p>Runs the photo machine-learning container only at night (cron start/stop) to save RAM and power</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-photo-backup">
+            <div class="service-meta">
+              <h4>☁️ Photo backup to rclone remote</h4>
+              <p>Nightly database dump and library sync with rclone (remote configured below)</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-samba">
+            <div class="service-meta">
+              <h4>📂 Samba shares</h4>
+              <p>Exposes the media and photo folders on the LAN for Windows / macOS clients</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-svc-tailscale">
+            <div class="service-meta">
+              <h4>🔒 Tailscale subnet router prep</h4>
+              <p>Enables IP forwarding (sysctl) so this host can advertise your LAN to your tailnet</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="form-group" id="pow-gdrive-group" style="margin-top: 1rem; display: none;">
+          <div class="form-label-row">
+            <label class="form-label" for="pow-gdrive-remote">rclone remote for photo backups</label>
+            <span class="default-hint">Create it first with <code>rclone config</code>, e.g. <code>gdrive:homelab-photos</code></span>
+          </div>
+          <input type="text" id="pow-gdrive-remote" placeholder="remote:path">
+        </div>
+
+        <h3 style="font-size: 1rem; margin: 1.5rem 0 0.75rem;">Media stack options</h3>
+        <div class="service-grid">
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-opt-byparr">
+            <div class="service-meta">
+              <h4>🛡️ Byparr</h4>
+              <p>Cloudflare challenge solver, registered in Prowlarr as a proxy for indexers that need it</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-opt-tmdb">
+            <div class="service-meta">
+              <h4>🌐 TMDB bypass</h4>
+              <p>Routes Seerr's TMDB traffic through a DPI-evading interceptor (for networks where TMDB is blocked)</p>
+            </div>
+          </label>
+          <label class="service-item-card">
+            <input type="checkbox" id="pow-opt-dns">
+            <div class="service-meta">
+              <h4>🔎 Container DNS override</h4>
+              <p>Points the media containers at the DNS servers above instead of the host resolver (for ISPs that hijack DNS)</p>
             </div>
           </label>
         </div>
@@ -300,11 +361,11 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="pow-qbit-pass">qBittorrent Password</label>
-            <input type="text" id="pow-qbit-pass" value="adminadmin">
+            <input type="text" id="pow-qbit-pass" placeholder="Blank = generated" autocomplete="off">
           </div>
           <div class="form-group">
             <label class="form-label" for="pow-pg-pass">Postgres DB Password</label>
-            <input type="text" id="pow-pg-pass" value="postgres_secure_pass">
+            <input type="text" id="pow-pg-pass" placeholder="Blank = generated" autocomplete="off">
           </div>
         </div>
         <div class="sys-snapshot-grid">
@@ -363,7 +424,7 @@
         <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Modular Quirks & Runbooks (docs/)</h3>
         <ul style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.8; margin-left: 1.5rem;">
           <li><b>STORAGE_AND_HARDLINKS.md:</b> Explains 0 disk I/O atomic inode pointers.</li>
-          <li><b>NETPLAN_STATIC_IP_QUIRKS.md:</b> Safe <code>netplan try --timeout 45</code> to prevent SSH lockouts.</li>
+          <li><b>NETPLAN_STATIC_IP_QUIRKS.md:</b> Static IP with a revert timer and confirm-from-new-address flow, so SSH is never locked out.</li>
           <li><b>HASWELL_DIRECT_PLAY_GUIDE.md:</b> CPU-protective direct play for older low-power processors.</li>
           <li><b>POWER_MANAGEMENT_RTCWAKE.md:</b> S3 RAM suspend & RTC wake with backup deferral guards.</li>
           <li><b>DOCKER_PERMISSIONS_PUID_PGID.md:</b> PUID/PGID matching and UMASK 002.</li>

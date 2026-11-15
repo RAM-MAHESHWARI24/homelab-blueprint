@@ -5,7 +5,6 @@ Generates a valid Matroska (.mkv) video file for offline E2E integration testing
 Uses ffmpeg if installed, or synthesizes a valid compliant EBML/Matroska container.
 """
 
-import os
 import shutil
 import struct
 import subprocess

@@ -104,7 +104,7 @@ Implemented via [`.githooks/pre-push`](../.githooks/pre-push) and [`.githooks/pr
 
 ### Enforced Quality Suites:
 1. **Configuration Schema Parity:**
-   * Executes `python setup/config_core/schema_migrator.py --check`.
+   * Executes `python setup/installer/schema_migrator.py --check`.
    * Ensures that `.env.example` templates and subsystem `.env` files remain 100% in sync with zero missing keys.
 2. **Setup Wizard Regression Suite:**
    * Executes `python setup/test_setup.py`.

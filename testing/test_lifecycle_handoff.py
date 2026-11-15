@@ -26,16 +26,38 @@ import shutil
 import tempfile
 import unittest
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "apps" / "control-hub"))
 
+TEST_TOKEN = "lifecycle-test-token-0123456789"
+os.environ["CONTROL_HUB_TOKEN"] = TEST_TOKEN
+
+from flask.testing import FlaskClient
 from setup.server import SetupApiHandler
 from server import create_app
+
+
+class AuthClient(FlaskClient):
+    """Flask test client that sends the bearer token on every request."""
+
+    def open(self, *args, **kwargs):
+        headers = dict(kwargs.pop("headers", None) or {})
+        headers.setdefault("Authorization", f"Bearer {TEST_TOKEN}")
+        kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
+def wizard_request(url: str, data: bytes = None, auth: bool = True):
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        headers["Authorization"] = f"Bearer {TEST_TOKEN}"
+    return urllib.request.Request(url, data=data, headers=headers)
 
 
 class TestCompleteLifecycleHandoff(unittest.TestCase):
@@ -45,14 +67,31 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
     def setUpClass(cls):
         """Spins up Setup Wizard on an ephemeral port and initializes Control Hub test client"""
         cls.wizard_port = 8099
-        cls.wizard_server = HTTPServer(("127.0.0.1", cls.wizard_port), SetupApiHandler)
+        SetupApiHandler.token = TEST_TOKEN
+        cls.wizard_server = ThreadingHTTPServer(("127.0.0.1", cls.wizard_port), SetupApiHandler)
         cls.wizard_thread = threading.Thread(target=cls.wizard_server.serve_forever, daemon=True)
         cls.wizard_thread.start()
         time.sleep(0.5)
 
-        # Control Hub Flask App
+        # Control Hub Flask App (token taken from CONTROL_HUB_TOKEN set above)
         cls.hub_app = create_app()
+        cls.hub_app.test_client_class = AuthClient
         cls.hub_client = cls.hub_app.test_client()
+
+    def test_00_token_enforcement(self):
+        """TC-SEC-01: Wizard and Control Hub reject API calls without the bearer token"""
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.wizard_port}/api/health") as res:
+            self.assertEqual(res.status, 200, "health probe must stay public")
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(f"http://127.0.0.1:{self.wizard_port}/api/probe")
+        self.assertEqual(ctx.exception.code, 401)
+
+        plain_client = FlaskClient(self.hub_app)  # bypasses AuthClient: no token header
+        self.assertEqual(plain_client.get("/api/health").status_code, 200)
+        self.assertEqual(plain_client.get("/api/system/vitals").status_code, 401)
+        self.assertEqual(plain_client.post("/api/config/netplan-apply", json={}).status_code, 401)
+        self.assertEqual(plain_client.get("/api/system/vitals", headers={"Authorization": "Bearer wrong"}).status_code, 401)
+        self.assertEqual(self.hub_client.get("/api/auth/check").status_code, 200)
 
     @classmethod
     def tearDownClass(cls):
@@ -76,7 +115,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
             self.assertEqual(data.get("status"), "healthy")
 
         # 2. Hardware Probe
-        with urllib.request.urlopen(f"http://127.0.0.1:{self.wizard_port}/api/probe") as res:
+        with urllib.request.urlopen(wizard_request(f"http://127.0.0.1:{self.wizard_port}/api/probe")) as res:
             self.assertEqual(res.status, 200)
             probe = json.loads(res.read().decode())
 
@@ -105,11 +144,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
         """TC-FLOW-02: Setup Wizard live atomic hardlink probe and CSPRNG secrets generator"""
         # 1. Atomic Hardlink Probe
         payload = json.dumps({"path": "."}).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{self.wizard_port}/api/verify/hardlink",
-            data=payload,
-            headers={"Content-Type": "application/json"}
-        )
+        req = wizard_request(f"http://127.0.0.1:{self.wizard_port}/api/verify/hardlink", data=payload)
         with urllib.request.urlopen(req) as res:
             self.assertEqual(res.status, 200)
             hl = json.loads(res.read().decode())
@@ -118,11 +153,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
             self.assertIsNotNone(hl.get("latency_ms"))
 
         # 2. CSPRNG Secrets Generation
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{self.wizard_port}/api/secrets/generate",
-            data=b"{}",
-            headers={"Content-Type": "application/json"}
-        )
+        req = wizard_request(f"http://127.0.0.1:{self.wizard_port}/api/secrets/generate", data=b"{}")
         with urllib.request.urlopen(req) as res:
             self.assertEqual(res.status, 200)
             secrets = json.loads(res.read().decode())
@@ -139,29 +170,31 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
             "hdd_memories": "/mnt/hdd/Memories",
             "server_ip": "192.168.1.100",
             "enable_static_ip": True,
-            "active_nic": "eth0",
+            "active_nic": "enp3s0",
             "qbittorrent_pass": "flow_test_password_123",
             "puid": 1000,
             "pgid": 1000,
-            "timezone": "Asia/Kolkata",
-            "enabled_services": ["media", "photos", "control_hub", "tv_updater"]
+            "timezone": "Europe/London",
+            "enabled_services": ["media", "photos", "control_hub", "tv_updater", "sleep_guard"]
         }
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{self.wizard_port}/api/deploy",
-            data=json.dumps(deploy_payload).encode(),
-            headers={"Content-Type": "application/json"}
-        )
+        req = wizard_request(f"http://127.0.0.1:{self.wizard_port}/api/deploy", data=json.dumps(deploy_payload).encode())
         with urllib.request.urlopen(req) as res:
             self.assertEqual(res.status, 200)
             result = json.loads(res.read().decode())
             self.assertTrue(result.get("success"), f"Deployment failed: {result.get('errors')}")
+            self.assertTrue(result.get("dry_run"))
             self.assertIn("dashboard_url", result)
             self.assertIn(":7575", result["dashboard_url"], "Dashboard URL must point to Control Hub on Port 7575")
+            self.assertIn("tv_autoupdater (dry-run)", result["services_launched"], "legacy 'tv_updater' id must map to tv_autoupdater")
 
-            # Verify dry-run preview directory was populated without modifying production
-            preview_dir = REPO_ROOT / "setup" / "dry_run_preview"
-            self.assertTrue(preview_dir.exists())
-            self.assertTrue((preview_dir / ".env").exists())
+            # Dry-run renders into setup/dry_run_preview/etc/homelab and never into /etc
+            preview_etc = REPO_ROOT / "setup" / "dry_run_preview" / "etc" / "homelab"
+            self.assertTrue((preview_etc / "homelab.env").exists())
+            self.assertTrue((preview_etc / "noodle-gallery.env").exists())
+            self.assertTrue((preview_etc / "config.json").exists())
+            rendered = (preview_etc / "noodle-gallery.env").read_text(encoding="utf-8")
+            self.assertNotIn("DB_PASSWORD=postgres\n", rendered, "a real DB password must be generated")
+            self.assertNotIn("YOUR_SECURE_POSTGRES_PASSWORD", rendered)
 
     # =========================================================================
     # Phase 2: Day 1+ Command Center & Control Hub Tests (Port 7575)
@@ -310,7 +343,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
         """TC-FLOW-08: Complete lifecycle handoff: settings configured in Setup Wizard propagate to Control Hub"""
         temp_env_dir = Path(tempfile.mkdtemp(prefix="homelab_handoff_test_"))
         try:
-            from setup.config_core.env_manager import sync_all_blueprint_envs, load_env_file
+            from core.config_core.env_manager import sync_all_blueprint_envs, load_env_file
 
             custom_test_config = {
                 "server_ip": "192.168.1.188",
@@ -339,7 +372,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
             self.assertEqual(loaded_env.get("RADARR_API_KEY"), "HANDOFF_RADARR_TEST_KEY_12345")
 
             # Verify Control Hub's config manager can read and update these parameters
-            from setup.config_core.env_manager import update_env_variables, write_env_file
+            from core.config_core.env_manager import update_env_variables, write_env_file
             raw_content = Path(updated_files["master_env"]).read_text(encoding="utf-8")
             new_content = update_env_variables(raw_content, {"HDD_DATA": "/mnt/expanded_pool/data"})
             write_env_file(updated_files["master_env"], new_content)
@@ -357,7 +390,7 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
         data = res.get_json()
         self.assertEqual(data.get("status"), "ok")
         self.assertEqual(data.get("service"), "control-hub")
-        self.assertEqual(data.get("version"), "1.0.1")
+        self.assertEqual(data.get("version"), "2.0.0")
         self.assertIn("uptime_seconds", data)
 
         # 2. Kubernetes Liveness Probe

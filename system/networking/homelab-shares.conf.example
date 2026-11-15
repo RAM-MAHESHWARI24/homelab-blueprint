@@ -1,0 +1,43 @@
+# ==============================================================================
+# Homelab Blueprint - Samba shares
+#
+# Rendered by the installer to /etc/samba/homelab-shares.conf and pulled into
+# the distribution's smb.conf with a single line:
+#
+#     include = /etc/samba/homelab-shares.conf
+#
+# Only share definitions live here, so your [global] settings stay yours.
+# Placeholders ({{DATA_DIR}}, {{MEMORIES_DIR}}, {{HOST_USER}}) are filled in
+# at install time; copy and edit by hand for a manual setup.
+# ==============================================================================
+
+[Media]
+   comment = Homelab media library and downloads
+   path = {{DATA_DIR}}
+   valid users = {{HOST_USER}}
+   read only = no
+   browseable = yes
+   guest ok = no
+   create mask = 0664
+   directory mask = 0775
+   force create mode = 0664
+   force directory mode = 0775
+
+[Photos]
+   comment = Homelab photo and video library
+   path = {{MEMORIES_DIR}}
+   valid users = {{HOST_USER}}
+   read only = no
+   browseable = yes
+   guest ok = no
+   create mask = 0664
+   directory mask = 0775
+   force create mode = 0664
+   force directory mode = 0775
+   # macOS Finder niceties (needs vfs_fruit, shipped with samba)
+   vfs objects = fruit streams_xattr
+   fruit:metadata = stream
+   fruit:veto_appledouble = no
+   fruit:posix_rename = yes
+   fruit:zero_file_id = yes
+   fruit:delete_empty_adfiles = yes

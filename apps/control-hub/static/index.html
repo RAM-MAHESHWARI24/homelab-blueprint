@@ -66,6 +66,10 @@
           </svg>
           <span>Settings</span>
         </button>
+        <button class="btn-hud-action btn-indexers-toggle" id="btn-open-indexers" style="display: none;" title="Add indexers from Prowlarr's definition list">
+          <span>🔎</span>
+          <span>Indexers</span>
+        </button>
         <button class="btn-hud-action btn-ai-toggle" id="btn-open-ai-copilot" title="Hardware-tailored diagnostics & compact AI prompt exporter">
           <span class="ai-sparkle">🤖</span>
           <span>AI Copilot</span>
@@ -78,6 +82,19 @@
         </button>
       </div>
     </header>
+
+    <!-- ONE-TIME INDEXER PICKER BANNER (shown while Prowlarr has no indexers) -->
+    <section class="indexer-banner" id="indexer-banner" style="display: none;">
+      <div class="indexer-banner-text">
+        <strong>Pick your indexers.</strong>
+        Everything is wired, but Prowlarr has no indexers yet, so Radarr and Sonarr cannot search.
+        Choose from Prowlarr's own list; nothing is pre-selected and you can skip this.
+      </div>
+      <div class="indexer-banner-actions">
+        <button class="btn-primary" id="btn-indexer-banner-open">Pick indexers</button>
+        <button class="btn-secondary" id="btn-indexer-banner-skip">Skip for now</button>
+      </div>
+    </section>
 
     <!-- DEDICATED SLEEP GUARD HERO COMMAND MODULE -->
     <section class="sleep-guard-hero" id="sleep-guard-card">
@@ -435,7 +452,7 @@
       </div>
     </section>
 
-    <!-- DEDICATED COMMAND CARD: ANDROID TV APP UPDATER (CleanYourTV ADB Cluster) -->
+    <!-- DEDICATED COMMAND CARD: ANDROID TV AUTO-UPDATER -->
     <section class="tv-updater-section" id="tv-updater-section">
       <div class="card tv-updater-card">
         <div class="card-header">
@@ -479,7 +496,7 @@
               </div>
               <div class="meta-item">
                 <span class="meta-title">MANAGED APKS</span>
-                <span class="meta-value">SmartTube, CloudStream, HD Streamz</span>
+                <span class="meta-value">SmartTube, CloudStream (signing keys pinned)</span>
               </div>
             </div>
 
@@ -496,10 +513,6 @@
               <div class="lib-strip-item">
                 <span class="lib-strip-label">CLOUDSTREAM</span>
                 <span class="lib-strip-val" id="tv-val-cs">v4.8.0-PRE</span>
-              </div>
-              <div class="lib-strip-item">
-                <span class="lib-strip-label">HD STREAMZ</span>
-                <span class="lib-strip-val" id="tv-val-hds">v3.19-a</span>
               </div>
               <div class="lib-strip-action">
                 <span>Manage &amp; Force Update &nearr;</span>
@@ -1129,7 +1142,7 @@
             <span id="modal-tv-banner-text">Cluster ready: 3 target TVs online with genuine developer builds verified.</span>
           </div>
           <div class="banner-quick-actions">
-            <button class="btn-micro" id="btn-modal-sync-upstream" title="Fetch latest GitHub releases for SmartTube &amp; CloudStream and official HD Streamz build">
+            <button class="btn-micro" id="btn-modal-sync-upstream" title="Fetch the latest GitHub releases for SmartTube &amp; CloudStream">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="micro-icon">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
@@ -1197,10 +1210,6 @@
               <div class="catalog-item">
                 <span class="cat-name">CloudStream Beta (Pre-release)</span>
                 <span class="cat-src text-dim">GitHub: recloudstream/cloudstream</span>
-              </div>
-              <div class="catalog-item">
-                <span class="cat-name">HD Streamz (Developer Origin)</span>
-                <span class="cat-src text-dim">Cloudflare CDN direct &bull; Keystore verified</span>
               </div>
             </div>
           </div>
@@ -1279,6 +1288,52 @@
   </div>
 
   <!-- MODAL: ANDROID TV UPDATER LOG STREAMER -->
+  <!-- INDEXER PICKER MODAL -->
+  <div class="modal-overlay" id="indexer-modal" style="display: none;">
+    <div class="modal-glass modal-wide">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-dot dot-live"></span>
+          <div>
+            <h3>Add indexers to Prowlarr</h3>
+            <span class="modal-sub-path">List comes live from your Prowlarr. You are responsible for which indexers you add and for local law.</span>
+          </div>
+        </div>
+        <button class="modal-close" id="indexer-modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body indexer-modal-body">
+        <div class="indexer-toolbar">
+          <input type="search" id="indexer-search" class="cyber-input" placeholder="Search by name or description" autocomplete="off">
+          <select id="indexer-filter-protocol" class="cyber-input">
+            <option value="all">All protocols</option>
+            <option value="torrent">Torrent</option>
+            <option value="usenet">Usenet</option>
+          </select>
+          <select id="indexer-filter-privacy" class="cyber-input">
+            <option value="all">Public and private</option>
+            <option value="public">Public only</option>
+            <option value="semiPrivate">Semi-private</option>
+            <option value="private">Private only</option>
+          </select>
+        </div>
+        <div class="indexer-summary" id="indexer-summary">Loading…</div>
+        <div class="indexer-list" id="indexer-list"></div>
+        <div class="indexer-results" id="indexer-results"></div>
+      </div>
+
+      <div class="modal-footer">
+        <div class="modal-footer-left">
+          <label class="indexer-force"><input type="checkbox" id="indexer-force-save"> Save even if Prowlarr's connection test fails</label>
+        </div>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="indexer-modal-cancel">Close</button>
+          <button class="btn-primary" id="indexer-modal-add" disabled>Add selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="tv-updater-log-modal" style="display: none;">
     <div class="modal-glass modal-wide">
       <div class="modal-header">
@@ -1286,7 +1341,7 @@
           <span class="modal-dot dot-live"></span>
           <div>
             <h3>Android TV App Updater: Execution Log</h3>
-            <span class="modal-sub-path">Log: /var/log/tv-updater.log &bull; Target: CleanYourTV ADB Cluster</span>
+            <span class="modal-sub-path">Log: /var/lib/homelab/tv-autoupdater/tv-autoupdater.log</span>
           </div>
         </div>
         <button class="modal-close" id="tv-log-modal-close">&times;</button>
@@ -1629,7 +1684,7 @@
           <div class="cfg-grid-form">
             <div class="cfg-field-group">
               <label for="cfg-qbit-pass">qBittorrent Password</label>
-              <input type="text" id="cfg-qbit-pass" value="adminadmin" class="cyber-input">
+              <input type="text" id="cfg-qbit-pass" value="" placeholder="set in /etc/homelab/control-hub.env" class="cyber-input">
             </div>
             <div class="cfg-field-group">
               <label for="cfg-radarr-key">Radarr API Key</label>
@@ -1807,6 +1862,7 @@
   <div class="toast-container" id="toast-container"></div>
 
 
-  <script type="module" src="/js/app.js?v=25"></script>
+  <script src="/js/auth.js?v=1"></script>
+  <script type="module" src="/js/app.js?v=26"></script>
 </body>
 </html>

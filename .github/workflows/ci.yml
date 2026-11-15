@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -21,6 +21,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Python for linting
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ruff Static Analysis (undefined names, unused imports, bug patterns)
+        run: |
+          pip install -q ruff
+          ruff check . --output-format github
+
       - name: ShellCheck Static Analysis
         run: |
           shellcheck --severity=warning \
@@ -28,10 +38,10 @@ jobs:
             setup.sh \
             teardown.sh \
             apps/control-hub/run.sh \
-            system/maintenance/watchtower-run.sh \
-            system/power/immich-ml-control.sh \
+            apps/immich-face-xmp-exporter/scripts/immich-ml-control.sh \
             system/power/server-suspend.sh \
             apps/tv-updater/setup_cron.sh \
+            apps/mediaserver/host/post-wake-arr.sh \
             apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example
 
   setup-wizard-test-matrix:
@@ -45,7 +55,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -62,7 +72,7 @@ jobs:
 
       - name: Validate Configuration Schema Integrity
         run: |
-          python setup/config_core/schema_migrator.py --check
+          python setup/installer/schema_migrator.py --check
 
       - name: Execute Setup Wizard Verification Test Suite
         run: |
@@ -81,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate Media Stack Compose Syntax
         run: |
@@ -89,19 +99,23 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
           echo "✅ apps/mediaserver docker-compose.yml is valid."
+          # Every image must be pinned to a version tag (Dependabot keeps them current)
+          ! grep -nE 'image:.*:(latest|release|main|develop)\s*$' docker-compose.yml
 
       - name: Validate Noodle Gallery Compose Syntax
         run: |
           cd apps/noodle-gallery
           cp .env.example .env
-          docker compose config --quiet
+          # Secrets are required (no defaults shipped); supply CI-only values
+          DB_PASSWORD=ci-only docker compose config --quiet
           echo "✅ apps/noodle-gallery docker-compose.yml is valid."
+          ! grep -nE 'image:.*:(latest|release|main|develop)\s*$' docker-compose.yml
 
       - name: Validate Control Hub Standalone Compose Syntax
         run: |
           cd apps/control-hub
           cp .env.example .env
-          docker compose config --quiet
+          CONTROL_HUB_TOKEN=ci-only QBITTORRENT_PASS=ci-only docker compose config --quiet
           echo "✅ apps/control-hub docker-compose.yml is valid."
 
       - name: Set up QEMU for Cross-Platform Simulation (ARM64)
@@ -114,16 +128,21 @@ jobs:
 
       - name: Verify Multi-Arch Image Availability
         run: |
-          for img in "ghcr.io/seerr-team/seerr:latest" "ghcr.io/thephaseless/byparr:latest" "lscr.io/linuxserver/jellyfin:latest"; do
+          # Verify the pinned tags from the compose files publish both architectures
+          mapfile -t IMAGES < <(grep -hoE 'image: *[^ ]+' apps/mediaserver/docker-compose.yml apps/noodle-gallery/docker-compose.yml | awk '{print $2}' | sort -u)
+          # Retry with backoff: registries answer bursts with HTTP 429 (toomanyrequests).
+          check() {
+            docker buildx imagetools inspect "$1" 2>/dev/null | grep -qE "amd64|arm64"               || docker manifest inspect "$1" 2>/dev/null | grep -qE "amd64|arm64"
+          }
+          for img in "${IMAGES[@]}"; do
             echo "Verifying multi-arch availability for $img..."
-            if docker buildx imagetools inspect "$img" 2>/dev/null | grep -E "amd64|arm64" >/dev/null; then
-              echo "✅ Verified $img (via buildx imagetools)"
-            elif docker manifest inspect "$img" 2>/dev/null | grep -E "amd64|arm64" >/dev/null; then
-              echo "✅ Verified $img (via docker manifest inspect)"
-            else
-              echo "❌ Failed to inspect $img"
-              exit 1
-            fi
+            ok=false
+            for delay in 0 15 45; do
+              sleep "$delay"
+              if check "$img"; then ok=true; break; fi
+              echo "  retrying $img"
+            done
+            if $ok; then echo "✅ Verified $img"; else echo "❌ Failed to inspect $img"; exit 1; fi
           done
           echo "✅ All multi-arch container images verified."
 
@@ -132,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run Trivy Repository & Dependency Scanner
         uses: aquasecurity/trivy-action@master
@@ -142,3 +161,140 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
           format: 'table'
+
+  real-install:
+    name: Real Headless Install, Health Probes & Teardown (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # The Control Hub unit runs as the unprivileged `homelab` user with
+      # WorkingDirectory inside the checkout. The runner's home is 0750, so the
+      # service cannot start from $GITHUB_WORKSPACE; install from the production
+      # location instead (what bootstrap.sh does on a real server).
+      INSTALL_DIR: /opt/homelab-blueprint
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Copy checkout to the production install location
+        run: |
+          sudo mkdir -p "$INSTALL_DIR"
+          sudo cp -a "$GITHUB_WORKSPACE/." "$INSTALL_DIR/"
+          sudo chown -R root:root "$INSTALL_DIR"
+
+      - name: Headless install (not a dry run)
+        run: |
+          cd "$INSTALL_DIR"
+          sudo ./setup.sh --headless --config testing/fixtures/ci_minimal.json
+
+      - name: Installed artefacts exist with safe permissions
+        run: |
+          set -x
+          sudo test -f /etc/homelab/mediaserver.env
+          sudo test -f /etc/homelab/control-hub.env
+          sudo test -f /etc/homelab/control-hub.token
+          sudo test -f /var/lib/homelab/installed.json
+          sudo stat -c '%a %n' /etc/homelab/mediaserver.env | grep -q '^600 '
+          sudo stat -c '%a %n' /etc/homelab/control-hub.token | grep -q '^640 '
+          # Prowlarr key for the Control Hub indexer picker: group-readable by the service user only
+          sudo test -f /etc/homelab/prowlarr.key
+          sudo stat -c '%a %G %n' /etc/homelab/prowlarr.key | grep -q '^640 homelab '
+          sudo test -f /etc/systemd/system/control-hub.service
+          sudo test -f /etc/sudoers.d/homelab-blueprint
+          sudo visudo -cf /etc/sudoers.d/homelab-blueprint
+          sudo grep -q 'User=homelab' /etc/systemd/system/control-hub.service
+          sudo grep -q "$INSTALL_DIR" /etc/systemd/system/control-hub.service
+          # The install manifest must list the media stack so teardown can stop it
+          sudo grep -q '"module": "media"' /var/lib/homelab/installed.json
+          ! sudo grep -q '{{' /etc/systemd/system/control-hub.service
+
+      - name: Services are up
+        run: |
+          systemctl is-active control-hub.service
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:7575/api/health && break; sleep 2; done
+          curl -fsS http://127.0.0.1:7575/api/health
+          # Control Hub must refuse unauthenticated API calls and accept the installed token
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7575/api/system/vitals)" = "401"
+          TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/system/vitals >/dev/null
+          # Media stack
+          docker ps --format '{{.Names}}\t{{.Status}}'
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8096/health && break; sleep 3; done
+          curl -fsS http://127.0.0.1:8096/health
+          curl -fsS http://127.0.0.1:7878/ping
+          curl -fsS http://127.0.0.1:8989/ping
+          curl -fsS http://127.0.0.1:9696/ping
+
+      - name: Apps are wired together (fully configured, not just running)
+        run: |
+          set -x
+          RADARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/radarr/config.xml)"
+          SONARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/sonarr/config.xml)"
+          PROWLARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/prowlarr/config.xml)"
+          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/downloadclient | grep -qE '"name": *"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/rootfolder | grep -q '/data/media/movies'
+          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/downloadclient | grep -qE '"name": *"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/rootfolder | grep -q '/data/media/tv'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -qE '"name": *"Radarr"'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -qE '"name": *"Sonarr"'
+          curl -fsS http://127.0.0.1:8096/System/Info/Public | grep -qE '"StartupWizardCompleted": *true'
+          # Indexer picker: Control Hub sees Prowlarr, nothing pre-selected, Prowlarr's own list is served
+          TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/status | tee /tmp/ix.json
+          python3 -c 'import json; d=json.load(open("/tmp/ix.json")); assert d.get("installed") and d.get("reachable") and d.get("configured") == 0, d'
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/available | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"] > 50, d; print("indexer definitions:", d["count"])'
+          # qBittorrent accepts the generated password (read from the root-only env file)
+          QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
+          # qBittorrent 5.x answers a good login with 204 + a QBT_SID cookie (4.x: 200 "Ok.")
+          QB_LOGIN="$(curl -s -o /dev/null -w '%{http_code}' -c /tmp/qb.jar --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login)"
+          echo "qBittorrent login HTTP $QB_LOGIN"; test "$QB_LOGIN" = 200 -o "$QB_LOGIN" = 204
+          grep -q QBT_SID /tmp/qb.jar
+          # ...and the session it returns is usable; without a password the API must refuse
+          curl -fsS -b /tmp/qb.jar http://127.0.0.1:8080/api/v2/app/version
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v2/app/version)" = "403"
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "::group::control-hub.service journal"
+          sudo journalctl -u control-hub.service --no-pager -n 100 || true
+          echo "::endgroup::"
+          echo "::group::install manifest"
+          sudo cat /var/lib/homelab/installed.json || true
+          echo "::endgroup::"
+          docker ps -a || true
+          # The env file is root-only (0600), so compose needs sudo to read it.
+          echo "::group::compose logs"
+          sudo docker compose --env-file /etc/homelab/mediaserver.env -f "$INSTALL_DIR/apps/mediaserver/docker-compose.yml" logs --tail 80 || true
+          echo "::endgroup::"
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            echo "::group::$c (state + health + last 60 log lines)"
+            docker inspect --format '{{.State.Status}} restarts={{.RestartCount}} exit={{.State.ExitCode}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' "$c" || true
+            docker inspect --format '{{if .State.Health}}{{range .State.Health.Log}}{{.Output}}{{end}}{{end}}' "$c" | tail -n 5 || true
+            sudo docker logs --tail 60 "$c" 2>&1 || true
+            echo "::endgroup::"
+          done
+          sudo ls -la /srv/homelab/appdata/mediaserver/ || true
+          echo "::group::installed files and unit"
+          sudo ls -la /etc/homelab /etc/sudoers.d/homelab-blueprint /etc/systemd/system/control-hub.service || true
+          sudo cat /etc/systemd/system/control-hub.service || true
+          echo "::endgroup::"
+          echo "::group::qBittorrent WebUI log + login probe"
+          sudo tail -n 40 /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/logs/qbittorrent.log || true
+          sudo grep -E '^WebUI' /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/qBittorrent.conf | sed 's/Password_PBKDF2=.*/Password_PBKDF2=<set>/' || true
+          QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env || true)"
+          curl -si --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login || true
+          echo "::endgroup::"
+
+      - name: Teardown removes everything it installed
+        # Runs after a failed install too: a half-installed stack must still be removable
+        if: always()
+        run: |
+          cd "$INSTALL_DIR"
+          sudo ./teardown.sh --yes
+          ! sudo test -e /etc/homelab
+          ! sudo test -e /var/lib/homelab
+          ! sudo test -e /etc/systemd/system/control-hub.service
+          ! sudo test -e /etc/sudoers.d/homelab-blueprint
+          ! systemctl is-active --quiet control-hub.service
+          test -z "$(docker ps -q)"

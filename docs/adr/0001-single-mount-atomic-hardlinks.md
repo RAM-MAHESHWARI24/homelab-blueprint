@@ -49,10 +49,10 @@ We mandate a **single-mount `/data` storage hierarchy** across the entire homela
 
 ### Negative / Trade-offs
 * All media must reside on the same filesystem partition.
-* Storage setup wizard and Control Hub must actively validate `os.link` capability prior to deployment (automated in `setup/config_core/storage_manager.py`).
+* Storage setup wizard and Control Hub must actively validate `os.link` capability prior to deployment (automated in `apps/control-hub/core/config_core/storage_manager.py`).
 
 ## References
 * [Storage Architecture & 0-I/O Hardlinks Guide](../STORAGE_AND_HARDLINKS.md)
-* [Setup Wizard Storage Prober](../../setup/config_core/storage_manager.py)
+* [Setup Wizard Storage Prober](../../apps/control-hub/core/config_core/storage_manager.py)
 * [Lifecycle Test TC-FLOW-02](../../testing/test_lifecycle_handoff.py)
 

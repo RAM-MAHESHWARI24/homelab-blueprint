@@ -9,7 +9,6 @@ Zero external dependencies (Python 3.10+ standard library only).
 
 import os
 import sys
-import re
 import shutil
 import argparse
 from datetime import datetime
@@ -197,10 +196,10 @@ def migrate_single_env(
     # Build injection block
     injection_lines = [
         "",
-        f"# ==============================================================================",
+        "# ==============================================================================",
         f"# Injected by Homelab Schema Migrator ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
-        f"# Newly introduced configuration keys with recommended template defaults.",
-        f"# ==============================================================================",
+        "# Newly introduced configuration keys with recommended template defaults.",
+        "# ==============================================================================",
     ]
 
     for key in sorted(missing_keys.keys()):
@@ -237,16 +236,36 @@ def migrate_single_env(
     }
 
 
-def find_all_environment_targets(base_dir: Path) -> List[Tuple[Path, Path]]:
-    """Discovers all known .env and .env.example target pairs across the monorepo."""
-    targets = [
-        (base_dir / ".env", base_dir / ".env.example"),
-        (base_dir / "apps" / "mediaserver" / ".env", base_dir / "apps" / "mediaserver" / ".env.example"),
-        (base_dir / "apps" / "noodle-gallery" / ".env", base_dir / "apps" / "noodle-gallery" / ".env.example"),
-        (base_dir / "apps" / "control-hub" / ".env", base_dir / "apps" / "control-hub" / ".env.example"),
+def find_all_environment_targets(base_dir: Path, etc_dir: Path = None) -> List[Tuple[Path, Path]]:
+    """
+    Discovers (rendered .env, .env.example template) pairs.
+
+    v2 installs render env files into /etc/homelab/<module>.env; standalone or
+    legacy layouts keep them beside each module. Both locations are checked and
+    the first that exists (or the /etc/homelab one, when neither exists) is used.
+    """
+    if etc_dir is None:
+        etc_dir = Path(os.getenv("HOMELAB_ETC_DIR", "/etc/homelab"))
+
+    modules = [
+        ("homelab", base_dir, base_dir / ".env.example"),
+        ("mediaserver", base_dir / "apps" / "mediaserver", base_dir / "apps" / "mediaserver" / ".env.example"),
+        ("noodle-gallery", base_dir / "apps" / "noodle-gallery", base_dir / "apps" / "noodle-gallery" / ".env.example"),
+        ("control-hub", base_dir / "apps" / "control-hub", base_dir / "apps" / "control-hub" / ".env.example"),
     ]
-    # Filter to only targets where the reference template exists
-    return [(env, ex) for (env, ex) in targets if ex.exists()]
+    targets: List[Tuple[Path, Path]] = []
+    for module_id, module_dir, example in modules:
+        if not example.exists():
+            continue
+        rendered = etc_dir / f"{module_id}.env"
+        local = module_dir / ".env"
+        if rendered.exists():
+            targets.append((rendered, example))
+        elif local.exists() and not local.is_symlink():
+            targets.append((local, example))
+        else:
+            targets.append((rendered, example))
+    return targets
 
 
 def run_migration_suite(
@@ -308,7 +327,7 @@ def run_migration_suite(
         return 0
     elif check_only:
         print(f"{BOLD}{YELLOW}  ⚠️ {overall_out_of_date} environment(s) have missing configuration keys.{RESET}")
-        print(f"  Run './setup.sh --migrate' to automatically upgrade them safely.")
+        print("  Run './setup.sh --migrate' to automatically upgrade them safely.")
         print(f"{BOLD}{CYAN}============================================================{RESET}\n")
         return 1
     else:
