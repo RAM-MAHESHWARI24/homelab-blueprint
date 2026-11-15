@@ -352,9 +352,43 @@ class Deployment:
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
 
+    def photos_image_override(self) -> "tuple[bool, Optional[str]]":
+        """
+        Optional pins for an existing photo library (config keys photos_server_image /
+        photos_ml_image, full image references). Database migrations only go forward,
+        so a server moving onto the blueprint must keep the version it already runs.
+        The override lives in a separate compose file so the pinned lines in
+        docker-compose.yml stay readable by Dependabot and the CI tag check.
+        Returns (ok, yaml); yaml is None when nothing is overridden.
+        """
+        services = {"gallery-server": "photos_server_image", "gallery-machine-learning": "photos_ml_image"}
+        lines = []
+        for service, key in services.items():
+            ref = str(self.config.get(key) or "").strip()
+            if not ref:
+                continue
+            tag = ref.rsplit("/", 1)[-1]
+            if any(c.isspace() for c in ref) or (":" not in tag and "@" not in ref) or tag.endswith((":latest", ":release")):
+                self.fail("photos", f"{key} must be a pinned image reference (repo:tag or repo@sha256:...), got '{ref}'")
+                return False, None
+            lines.append(f"  {service}:\n    image: {ref}\n")
+        return True, (("services:\n" + "".join(lines)) if lines else None)
+
     def module_photos(self) -> None:
         module_dir = self.root / "apps" / "noodle-gallery"
-        self._compose("photos", module_dir, self.etc_dir / "noodle-gallery.env")
+        extra: List[str] = []
+        ok, override = self.photos_image_override()
+        if not ok:
+            return
+        if override:
+            path = self.etc_dir / "noodle-gallery.override.yml"
+            if self.dry_run:
+                self.log(f"Would write image pins to {path}:\n{override}")
+            else:
+                write_private_file(path, override, self.manifest, mode=0o600)
+                self.log(f"Photo images pinned by configuration ({path}).")
+            extra.append(str(path))
+        self._compose("photos", module_dir, self.etc_dir / "noodle-gallery.env", extra)
 
     def module_ml_schedule(self) -> None:
         """Optional: start/stop the Immich ML container on a schedule (noodle-gallery-tools script)."""

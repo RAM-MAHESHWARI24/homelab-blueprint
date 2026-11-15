@@ -76,6 +76,28 @@ def test_exit_waits_for_netplan_confirm():
         SetupApiHandler.deployed = False
 
 
+def test_photos_image_override():
+    """Existing photo libraries can pin their running images; floating tags are refused."""
+    from setup.installer.deployer import Deployment
+
+    print("Testing photo image pins for existing libraries...")
+    root = Path(__file__).resolve().parent.parent
+    d = Deployment(str(root), {"dry_run": True})
+    assert d.photos_image_override() == (True, None)
+
+    d = Deployment(str(root), {"dry_run": True, "photos_server_image": "ghcr.io/immich-app/immich-server:v1.140.1",
+                               "photos_ml_image": "ghcr.io/immich-app/immich-machine-learning@sha256:" + "a" * 64})
+    ok, yml = d.photos_image_override()
+    assert ok and "gallery-server:\n    image: ghcr.io/immich-app/immich-server:v1.140.1" in yml, yml
+    assert "gallery-machine-learning:" in yml
+
+    for bad in ("ghcr.io/immich-app/immich-server", "ghcr.io/immich-app/immich-server:release", "x:latest"):
+        d = Deployment(str(root), {"dry_run": True, "photos_server_image": bad})
+        assert d.photos_image_override() == (False, None), bad
+        assert d.errors and d.errors[-1]["service"] == "photos"
+    print("  [OK] pins accepted, floating tags refused")
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -174,6 +196,7 @@ def run_tests():
         assert "adminadmin" not in rendered
 
         test_exit_waits_for_netplan_confirm()
+        test_photos_image_override()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:
