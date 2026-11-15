@@ -22,6 +22,7 @@ import ipaddress
 import json
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 REPO_SLUG = "RAM-MAHESHWARI24/homelab-blueprint"
 WIZARD_URL_RE = re.compile(r"http://(\d+\.\d+\.\d+\.\d+):8000/\?token=([A-Za-z0-9_\-]+)")
 REVERT_WINDOW_SEC = 120
+
+# Reports are committed, so every saved text file goes through redact() and
+# screenshots mask the one-time credentials box.
+_SECRET_PATTERNS = [
+    (re.compile(r"(token=)[A-Za-z0-9_\-]{12,}"), r"\1<redacted>"),
+    (re.compile(r"(Control Hub token:\s*)\S+"), r"\1<redacted>"),
+    (re.compile(r"(X-Api-Key: )\S+?(['\"\s])"), r"\1<redacted>\2"),
+    (re.compile(r"(Bearer )[A-Za-z0-9_\-]{12,}"), r"\1<redacted>"),
+    (re.compile(r"(password=)[^\s'\"]+"), r"\1<redacted>"),
+    (re.compile(r"\b([A-Z_]*(?:KEY|PASS|TOKEN))=\S+"), r"\1=<redacted>"),
+    (re.compile(r"\b[0-9a-f]{32}\b"), "<redacted-key>"),
+]
+
+
+def redact(text: str) -> str:
+    for pattern, repl in _SECRET_PATTERNS:
+        text = pattern.sub(repl, text)
+    return text
 
 
 class Step(Exception):
@@ -52,6 +71,8 @@ class GuiTest:
         self.shot_no = 0
         self.vm_ip = ""
         self.new_ip = ""
+        self.ssh_ip = ""
+        self.key_dir = None
         self.started = time.time()
 
     # ------------------------------------------------------------------ utils
@@ -59,7 +80,7 @@ class GuiTest:
         line = f"[{time.strftime('%H:%M:%S')}] {msg}"
         print(line, flush=True)
         with open(self.report_dir / "run.log", "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+            fh.write(redact(line) + "\n")
 
     def record(self, name: str, ok: bool, detail: str = "") -> None:
         self.results.append({"step": name, "ok": ok, "detail": detail})
@@ -75,12 +96,38 @@ class GuiTest:
             raise Step(f"multipass {' '.join(args[:3])} failed: {res.stderr.strip() or res.stdout.strip()}")
         return res
 
+    # After the static-IP change multipass can no longer reach the VM (it resolves
+    # <vm>.mshome.net, which keeps the old address), so the test installs its own SSH
+    # key at launch and switches to plain SSH on the new address.
+    def setup_ssh_key(self) -> None:
+        self.key_dir = Path(tempfile.mkdtemp(prefix="hb-gui-key-"))  # user-only ACL, which ssh requires
+        self.key = self.key_dir / "id_test"
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "hb-gui-test", "-f", str(self.key)],
+                       check=True, stdin=subprocess.DEVNULL)
+        pub = (self.key_dir / "id_test.pub").read_text(encoding="utf-8").strip()
+        self.vm_sh(f"echo {shlex.quote(pub)} >> /home/ubuntu/.ssh/authorized_keys")
+
+    def _ssh_base(self) -> list:
+        return ["-i", str(self.key), "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={self.key_dir / 'known_hosts'}",
+                "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "LogLevel=ERROR"]
+
+    def ssh(self, remote: str, timeout: int = 600) -> subprocess.CompletedProcess:
+        return subprocess.run(["ssh", *self._ssh_base(), f"ubuntu@{self.ssh_ip}", remote], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+
     def vm_sh(self, script: str, timeout: int = 600, check: bool = True) -> subprocess.CompletedProcess:
         """Short commands only: on Windows, `multipass exec` stalls once stdout passes 4 KB. Use vm_read for files."""
+        if self.ssh_ip:
+            res = self.ssh(f"sudo bash -c {shlex.quote(script)}", timeout=timeout)
+            if check and res.returncode != 0:
+                raise Step(f"ssh command failed: {res.stderr.strip() or res.stdout.strip()}")
+            return res
         return self.multipass("exec", self.vm, "--", "sudo", "bash", "-c", script, timeout=timeout, check=check)
 
     def vm_read(self, path: str) -> str:
         """Reads a VM file through `multipass transfer` (no output-size limit). Empty string if missing."""
+        if self.ssh_ip:
+            return self.ssh(f"sudo cat {shlex.quote(path)} 2>/dev/null", timeout=120).stdout
         self.vm_sh(f"test -f {path} && install -m 0644 {path} /tmp/hb-read.tmp || rm -f /tmp/hb-read.tmp", check=False, timeout=60)
         with tempfile.TemporaryDirectory() as td:
             dst = Path(td) / "read.tmp"
@@ -97,7 +144,8 @@ class GuiTest:
         self.shot_no += 1
         path = self.report_dir / f"{self.shot_no:02d}-{label}.png"
         try:
-            page.screenshot(path=str(path), full_page=True)
+            page.screenshot(path=str(path), full_page=True,
+                            mask=[page.locator(".launch-card", has_text="Save these credentials")])
         except Exception as e:  # a navigation in progress can make screenshots fail
             self.log(f"(screenshot {label} failed: {e})")
 
@@ -123,6 +171,7 @@ class GuiTest:
                        "--memory", self.args.memory, "--disk", self.args.disk, "--timeout", "900", timeout=1200)
         self.vm_ip = self.current_vm_ip()
         self.record("VM launched", bool(self.vm_ip), self.vm_ip)
+        self.setup_ssh_key()
 
     def current_vm_ip(self) -> str:
         info = json.loads(self.multipass("info", self.vm, "--format", "json").stdout)
@@ -182,8 +231,7 @@ class GuiTest:
     def save_wizard_log(self) -> None:
         try:
             log = self.vm_read("/var/log/hb-wizard.log")
-            token_re = re.compile(r"(token=|token: *|Control Hub token: *)[A-Za-z0-9_\-]{12,}")
-            (self.report_dir / "wizard.log").write_text(token_re.sub(r"\1<redacted>", log), encoding="utf-8")
+            (self.report_dir / "wizard.log").write_text(redact(log), encoding="utf-8")
         except Exception as e:
             self.log(f"(could not save wizard log: {e})")
 
@@ -215,7 +263,7 @@ class GuiTest:
                 self.wizard_flow(page)
                 self.dashboard_flow(page)
             finally:
-                (self.report_dir / "browser-console.log").write_text("\n".join(console), encoding="utf-8")
+                (self.report_dir / "browser-console.log").write_text(redact("\n".join(console)), encoding="utf-8")
                 self.log("Closing the browser (finalising the video)...")
                 for closer in (ctx.close, browser.close):
                     try:
@@ -256,14 +304,14 @@ class GuiTest:
             term = page.inner_text("#deploy-terminal")
             if "[ERROR] Deployment finished with errors" in term or "[FATAL ERROR]" in term:
                 self.shot(page, "deploy-error")
-                (self.report_dir / "deploy-terminal.txt").write_text(term, encoding="utf-8")
+                (self.report_dir / "deploy-terminal.txt").write_text(redact(term), encoding="utf-8")
                 raise Step(f"deploy reported an error in the browser after {int(time.time() - t0)}s: {term.strip()[-300:]}")
             time.sleep(5)
         else:
             self.shot(page, "deploy-timeout")
             raise Step(f"no deploy result in the browser after {self.args.deploy_timeout} min")
         self.deploy_done = time.time()
-        (self.report_dir / "deploy-terminal.txt").write_text(page.inner_text("#deploy-terminal"), encoding="utf-8")
+        (self.report_dir / "deploy-terminal.txt").write_text(redact(page.inner_text("#deploy-terminal")), encoding="utf-8")
         self.record("Deploy result reached the browser", True, f"{int(self.deploy_done - t0)}s")
         self.shot(page, "deploy-success")
 
@@ -316,6 +364,7 @@ class GuiTest:
 
     # ------------------------------------------------------------ after GUI
     def verify_static_ip_stuck(self) -> None:
+        self.ssh_ip = self.new_ip
         wait = REVERT_WINDOW_SEC + 30 - (time.time() - self.deploy_done)
         if wait > 0:
             self.log(f"Waiting {int(wait)}s past the revert window to prove the change stuck...")
@@ -329,12 +378,17 @@ class GuiTest:
         self.record("Revert timer is gone", not timers.stdout.strip(), timers.stdout.strip())
 
     def verify_wiring(self) -> None:
-        self.multipass("transfer", "check_wiring.sh", f"{self.vm}:/tmp/check_wiring.sh", cwd=str(REPO_ROOT / "testing" / "vm"))
+        src = REPO_ROOT / "testing" / "vm" / "check_wiring.sh"
+        if self.ssh_ip:
+            subprocess.run(["scp", *self._ssh_base(), src.name, f"ubuntu@{self.ssh_ip}:/tmp/check_wiring.sh"],
+                           cwd=str(src.parent), check=True, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+        else:
+            self.multipass("transfer", src.name, f"{self.vm}:/tmp/check_wiring.sh", cwd=str(src.parent))
         # The Windows checkout has CRLF line endings; bash needs LF.
         res = self.vm_sh("sed -i 's/\\r$//' /tmp/check_wiring.sh && bash /tmp/check_wiring.sh --photos > /tmp/check_wiring.txt 2>&1; echo rc=$?",
                          check=False, timeout=300)
         out = self.vm_read("/tmp/check_wiring.txt")
-        (self.report_dir / "check_wiring.txt").write_text(out, encoding="utf-8")
+        (self.report_dir / "check_wiring.txt").write_text(redact(out), encoding="utf-8")
         failed = next((ln for ln in reversed(out.splitlines()) if ln.startswith("+ ")), "")
         passed = "rc=0" in res.stdout and "WIRING OK" in out
         self.record("Apps wired inside the VM (check_wiring.sh)", passed, "" if passed else f"last check: {failed}")
@@ -345,6 +399,7 @@ class GuiTest:
         try:
             if self.args.reuse_vm:
                 self.vm_ip = self.current_vm_ip()
+                self.setup_ssh_key()
             else:
                 self.launch_vm()
             self._wizard_url = self.start_wizard()
@@ -366,6 +421,10 @@ class GuiTest:
                        "branch": self.args.branch, "passed": ok, "minutes": round((time.time() - self.started) / 60, 1),
                        "results": self.results}
             (self.report_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            if self.key_dir and not (self.args.keep_vm or not ok and self.args.keep_on_failure):
+                shutil.rmtree(self.key_dir, ignore_errors=True)
+            elif self.key_dir:
+                self.log(f"SSH key for the kept VM: {self.key} (ssh -i <key> ubuntu@{self.ssh_ip or self.vm_ip})")
             self.log(f"{'ALL CHECKS PASSED' if ok else 'FAILED'} - report: {self.report_dir}")
             if self.args.keep_vm or not ok and self.args.keep_on_failure:
                 self.log(f"VM kept: multipass shell {self.vm}")
