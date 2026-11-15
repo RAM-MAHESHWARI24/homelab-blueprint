@@ -17,7 +17,7 @@ name: noodle-gallery
 services:
   gallery-server:
     container_name: immich_server
-    image: ghcr.io/open-noodle/gallery-server:v4.56.7
+    image: ghcr.io/open-noodle/gallery-server:v5.10.0
     # Upstream Immich alternative: ghcr.io/immich-app/immich-server:<version>
     volumes:
       - ${UPLOAD_LOCATION:-./data/uploads}:/data
@@ -42,7 +42,7 @@ services:
 
   gallery-machine-learning:
     container_name: immich_machine_learning
-    image: ghcr.io/open-noodle/gallery-ml:v4.56.7
+    image: ghcr.io/open-noodle/gallery-ml:v5.10.0
     # Upstream Immich alternative: ghcr.io/immich-app/immich-machine-learning:<version>
     networks:
       default:
@@ -63,7 +63,7 @@ services:
 
   redis:
     container_name: immich_redis
-    image: docker.io/valkey/valkey:9@sha256:8e8d64b405ce18f41b8e5ee20aa4687a8ed0022d1298f2ce31cdcf3a76e09411
+    image: docker.io/valkey/valkey:9@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
     healthcheck:
       test: redis-cli ping || exit 1
       interval: 10s
@@ -73,7 +73,7 @@ services:
 
   database:
     container_name: immich_postgres
-    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    image: ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0@sha256:1a078b237c1d9b420b0ee59147386b4aa60d3a07a8e6a402fc84a57e41b043a4
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (no default is shipped)}
       POSTGRES_USER: ${DB_USERNAME:-postgres}
