@@ -14,9 +14,12 @@ updates:
       mediaserver-images:
         patterns: ["*"]
     ignore:
-      # Sonarr 5.x changes the API that Prowlarr's Sonarr sync uses (HTTP 404 on
-      # /api/v3); CI's wiring check failed on it (PR #12). Revisit when Prowlarr supports v5.
+      # Sonarr is updated by hand. Its tag streams confuse Dependabot: 5.x builds break
+      # Prowlarr's Sonarr sync (HTTP 404, PR #12), and old "v4-4.0.0.x" tags sort as newer
+      # than "4.0.20.x", so PR #19 proposed a downgrade that does not start.
       - dependency-name: "*linuxserver/sonarr"
+      # Byparr is an optional profile that CI does not start, so majors need a manual test.
+      - dependency-name: "*thephaseless/byparr"
         update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker", "mediaserver"]
 
