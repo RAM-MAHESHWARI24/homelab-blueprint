@@ -3,7 +3,7 @@
 # Multi-Arch: linux/amd64, linux/arm64
 # ==============================================================================
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 LABEL maintainer="RAM-MAHESHWARI24"
 LABEL description="High-performance, ultra-lean homelab dashboard and node management daemon"
