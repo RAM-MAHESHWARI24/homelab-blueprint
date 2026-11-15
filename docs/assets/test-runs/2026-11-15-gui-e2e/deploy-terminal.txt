@@ -1,0 +1,54 @@
+[07:47:16] Homelab Blueprint 2.0.0 provisioning: modules=media, photos, control_hub
+[07:47:16] Creating single-mount storage tree at '/mnt/hdd/data' and appdata at '/srv/homelab/appdata/mediaserver'...
+[07:47:16] Created or verified 12 directories (owner 1000:1000).
+[07:47:16] Rendering environment files into '/etc/homelab' (0600)...
+[07:47:16]   -> master_env: /etc/homelab/homelab.env
+[07:47:16]   -> mediaserver_env: /etc/homelab/mediaserver.env
+[07:47:16]   -> noodle_gallery_env: /etc/homelab/noodle-gallery.env
+[07:47:16]   -> control_hub_env: /etc/homelab/control-hub.env
+[07:47:16]   -> tv_autoupdater_config: /etc/homelab/tv-autoupdater.json
+[07:47:16]   -> saved configuration: /etc/homelab/config.json
+[07:47:16] Service user 'homelab' ready (member of docker).
+[07:47:16]   wire: [ok] qBittorrent config - seeded /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/qBittorrent.conf
+[07:47:16] Pulling images for media (this can take a while on first install)...
+[07:48:55] Starting media containers...
+[07:50:10] media is up and healthy.
+[07:50:10] Connecting the media apps to each other (root folders, download client, indexer sync, libraries)...
+[07:50:27]   wire: [ok] radarr: reachable - http://127.0.0.1:7878/ping
+[07:50:27]   wire: [ok] sonarr: reachable - http://127.0.0.1:8989/ping
+[07:50:27]   wire: [ok] prowlarr: reachable - http://127.0.0.1:9696/ping
+[07:50:27]   wire: [ok] qbittorrent: reachable - http://127.0.0.1:8080/
+[07:50:27]   wire: [ok] jellyfin: reachable - http://127.0.0.1:8096/health
+[07:50:27]   wire: [ok] radarr: API key from config.xml
+[07:50:27]   wire: [ok] sonarr: API key from config.xml
+[07:50:27]   wire: [ok] prowlarr: API key from config.xml
+[07:50:27]   wire: [ok] qBittorrent: login - password accepted (HTTP 204), qBittorrent v5.3.0
+[07:50:27]   wire: [ok] qBittorrent: categories movies/tv
+[07:50:27]   wire: [ok] radarr: root folder /data/media/movies - created
+[07:50:27]   wire: [ok] radarr: qBittorrent download client - created
+[07:50:27]   wire: [ok] sonarr: root folder /data/media/tv - created
+[07:50:27]   wire: [ok] sonarr: qBittorrent download client - created
+[07:50:27]   wire: [ok] Prowlarr: application Radarr - created
+[07:50:27]   wire: [ok] Prowlarr: application Sonarr - created
+[07:50:27]   wire: [ok] Prowlarr: application sync triggered - HTTP 201
+[07:50:27]   wire: [ok] Jellyfin: startup wizard - HTTP 204
+[07:50:27]   wire: [ok] Jellyfin: admin login - HTTP 200
+[07:50:27]   wire: [ok] Jellyfin: library Movies - created
+[07:50:27]   wire: [ok] Jellyfin: library Shows - created
+[07:50:27]   wire: [ok] Seerr: sign in with Jellyfin admin
+[07:50:27]   wire: [ok] Seerr: register radarr - HTTP 201
+[07:50:27]   wire: [ok] Seerr: register sonarr - HTTP 201
+[07:50:27]   wire: [ok] Seerr: initialisation - HTTP 200
+[07:50:27]   wire: [ok] Prowlarr: API key file /etc/homelab/prowlarr.key - 0640 root:homelab
+[07:50:27] Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.
+[07:50:27] No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).
+[07:50:27] Pulling images for photos (this can take a while on first install)...
+[07:53:09] Starting photos containers...
+[07:54:27] photos is up and healthy.
+[07:54:27] Creating Control Hub virtual environment...
+[07:54:42] Installing Control Hub Python requirements...
+[07:54:59] Control Hub service enabled on port 7575.
+[07:54:59] Install manifest written: /var/lib/homelab/installed.json
+[07:54:59] Applying static IP 172.20.87.76 on 'eth0' with an armed revert timer...
+[07:55:03] Static IP 172.20.87.76/20 will be applied in 5s. Confirm from the new address within 120s or the previous network configuration is restored.
+[07:55:03] Provisioning completed.
