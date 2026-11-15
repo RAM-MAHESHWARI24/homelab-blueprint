@@ -66,7 +66,7 @@ sudo ./setup.sh --headless --config my-profile.json
 | Photo library | [`apps/noodle-gallery/`](apps/noodle-gallery/) | Open-Noodle Gallery with Postgres and Valkey |
 | Photo tools | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Face-tag XMP export, ML on/off schedule, nightly backup |
 | Control Hub | [`apps/control-hub/`](apps/control-hub/) | Dashboard, indexer picker, Sleep Guard, static-IP changes |
-| TV auto-updater | [`apps/tv-updater/`](apps/tv-updater/) | Keeps SmartTube and CloudStream current on Android TVs over ADB, with pinned signing keys |
+| TV auto-updater | [`apps/tv-autoupdater/`](apps/tv-autoupdater/) | Keeps SmartTube and CloudStream current on Android TVs over ADB, with pinned signing keys |
 | Host extras | [`system/`](system/) | Samba shares, Tailscale forwarding, suspend and wake |
 
 ## Where things live
