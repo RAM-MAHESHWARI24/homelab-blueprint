@@ -514,6 +514,7 @@ function renderSuccessLaunch(result) {
   // Show generated credentials exactly once (they are also stored under /etc/homelab, root-only).
   if (!result.dry_run && (hubToken || creds.qbittorrent_pass || creds.postgres_password)) {
     const box = document.createElement("div");
+    box.id = "credentials-box";
     box.className = "launch-card";
     box.style.cssText = "margin-top:1rem;display:block;cursor:default";
     box.innerHTML = `

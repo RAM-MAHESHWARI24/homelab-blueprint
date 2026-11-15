@@ -145,7 +145,7 @@ class GuiTest:
         path = self.report_dir / f"{self.shot_no:02d}-{label}.png"
         try:
             page.screenshot(path=str(path), full_page=True,
-                            mask=[page.locator(".launch-card", has_text="Save these credentials")])
+                            mask=[page.locator("#credentials-box")])
         except Exception as e:  # a navigation in progress can make screenshots fail
             self.log(f"(screenshot {label} failed: {e})")
 
@@ -257,6 +257,13 @@ class GuiTest:
             ctx = browser.new_context(viewport={"width": 1366, "height": 900},
                                       record_video_dir=str(self.report_dir) if self.args.video else None)
             page = ctx.new_page()
+            if self.args.video:
+                # A video cannot be masked afterwards, so blur the one-time credentials on screen.
+                # The test reads them with inner_text, which blurring does not affect.
+                page.add_init_script(
+                    "document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style');"
+                    " s.textContent = '#credentials-box b { filter: blur(9px); }'; document.head.appendChild(s); });"
+                )
             console: List[str] = []
             page.on("console", lambda m: console.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
             try:
