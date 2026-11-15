@@ -119,7 +119,7 @@ jobs:
           echo "✅ apps/control-hub docker-compose.yml is valid."
 
       - name: Set up QEMU for Cross-Platform Simulation (ARM64)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/amd64,linux/arm64
 
