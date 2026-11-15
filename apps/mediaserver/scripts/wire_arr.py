@@ -139,7 +139,8 @@ def seed_qbittorrent(config_dir: Path, user: str, password: str, puid: int, pgid
 class QBit:
     def __init__(self, host: str, user: str, password: str):
         self.base = f"http://{host}:{PORTS['qbittorrent']}"
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+        self.jar = CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
         self.user, self.password = user, password
 
     def _form(self, path: str, fields: Dict[str, str]) -> Tuple[int, str]:
@@ -167,10 +168,11 @@ class QBit:
 
     def login(self, attempts: int = 4) -> Tuple[bool, str]:
         """
-        Returns (ok, detail). qBittorrent answers 200 'Ok.' to a successful login and
-        204 (empty) when the client needs no authentication (LocalHostAuth off or a
-        whitelisted subnet); both are confirmed with an authenticated call. The detail
-        carries status and body so a failure is diagnosable from the install log.
+        Returns (ok, detail). qBittorrent 4.x answers a successful login with 200 'Ok.',
+        5.x with 204 and a QBT_SID session cookie; a 204 without a cookie means the
+        client needs no authentication (LocalHostAuth off or a whitelisted subnet). Every
+        case is confirmed with an authenticated call, and the detail carries status and
+        body so a failure is diagnosable from the install log.
         """
         st, body = 0, ""
         for i in range(attempts):
@@ -178,7 +180,8 @@ class QBit:
             if (st == 200 and "Ok" in body) or st == 204:
                 vst, version = self._get("/api/v2/app/version")
                 if vst == 200:
-                    how = "password accepted" if st == 200 else "no auth required for this client"
+                    has_session = any(c.name.startswith("QBT_SID") for c in self.jar)
+                    how = f"password accepted (HTTP {st})" if (st == 200 or has_session) else "no auth required for this client"
                     return True, f"{how}, qBittorrent {version.strip()}"
                 return False, f"login HTTP {st} but app/version HTTP {vst} {version.strip()[:120]!r}"
             if i + 1 < attempts:

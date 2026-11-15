@@ -186,6 +186,7 @@ jobs:
 
       - name: Installed artefacts exist with safe permissions
         run: |
+          set -x
           sudo test -f /etc/homelab/mediaserver.env
           sudo test -f /etc/homelab/control-hub.env
           sudo test -f /etc/homelab/control-hub.token
@@ -240,7 +241,10 @@ jobs:
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/available | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"] > 50, d; print("indexer definitions:", d["count"])'
           # qBittorrent accepts the generated password (read from the root-only env file)
           QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
-          curl -fsS -c /tmp/qb.jar --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login | grep -q 'Ok'
+          # qBittorrent 5.x answers a good login with 204 + a QBT_SID cookie (4.x: 200 "Ok.")
+          QB_LOGIN="$(curl -s -o /dev/null -w '%{http_code}' -c /tmp/qb.jar --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login)"
+          echo "qBittorrent login HTTP $QB_LOGIN"; test "$QB_LOGIN" = 200 -o "$QB_LOGIN" = 204
+          grep -q QBT_SID /tmp/qb.jar
           # ...and the session it returns is usable; without a password the API must refuse
           curl -fsS -b /tmp/qb.jar http://127.0.0.1:8080/api/v2/app/version
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v2/app/version)" = "403"
@@ -267,6 +271,10 @@ jobs:
             echo "::endgroup::"
           done
           sudo ls -la /srv/homelab/appdata/mediaserver/ || true
+          echo "::group::installed files and unit"
+          sudo ls -la /etc/homelab /etc/sudoers.d/homelab-blueprint /etc/systemd/system/control-hub.service || true
+          sudo cat /etc/systemd/system/control-hub.service || true
+          echo "::endgroup::"
           echo "::group::qBittorrent WebUI log + login probe"
           sudo tail -n 40 /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/logs/qbittorrent.log || true
           sudo grep -E '^WebUI' /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/qBittorrent.conf | sed 's/Password_PBKDF2=.*/Password_PBKDF2=<set>/' || true
