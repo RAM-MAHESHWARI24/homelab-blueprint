@@ -130,16 +130,19 @@ jobs:
         run: |
           # Verify the pinned tags from the compose files publish both architectures
           mapfile -t IMAGES < <(grep -hoE 'image: *[^ ]+' apps/mediaserver/docker-compose.yml apps/noodle-gallery/docker-compose.yml | awk '{print $2}' | sort -u)
+          # Retry with backoff: registries answer bursts with HTTP 429 (toomanyrequests).
+          check() {
+            docker buildx imagetools inspect "$1" 2>/dev/null | grep -qE "amd64|arm64"               || docker manifest inspect "$1" 2>/dev/null | grep -qE "amd64|arm64"
+          }
           for img in "${IMAGES[@]}"; do
             echo "Verifying multi-arch availability for $img..."
-            if docker buildx imagetools inspect "$img" 2>/dev/null | grep -E "amd64|arm64" >/dev/null; then
-              echo "✅ Verified $img (via buildx imagetools)"
-            elif docker manifest inspect "$img" 2>/dev/null | grep -E "amd64|arm64" >/dev/null; then
-              echo "✅ Verified $img (via docker manifest inspect)"
-            else
-              echo "❌ Failed to inspect $img"
-              exit 1
-            fi
+            ok=false
+            for delay in 0 15 45; do
+              sleep "$delay"
+              if check "$img"; then ok=true; break; fi
+              echo "  retrying $img"
+            done
+            if $ok; then echo "✅ Verified $img"; else echo "❌ Failed to inspect $img"; exit 1; fi
           done
           echo "✅ All multi-arch container images verified."
 

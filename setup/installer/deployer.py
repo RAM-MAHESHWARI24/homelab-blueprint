@@ -224,7 +224,15 @@ class Deployment:
         for extra in extra_files or []:
             base += ["-f", extra]
         self.log(f"Pulling images for {module} (this can take a while on first install)...")
-        pull = run_command(base + ["pull", "--quiet"], cwd=str(module_dir), timeout=COMPOSE_PULL_TIMEOUT)
+        # Registries rate-limit bursts of parallel pulls (HTTP 429 "toomanyrequests"),
+        # and a first install pulls several GB, so retry with backoff before failing.
+        for attempt, delay in enumerate((0, 20, 60)):
+            if delay:
+                self.log(f"Image pull failed; retrying in {delay}s (attempt {attempt + 1} of 3)...")
+                time.sleep(delay)
+            pull = run_command(base + ["pull", "--quiet"], cwd=str(module_dir), timeout=COMPOSE_PULL_TIMEOUT)
+            if pull.ok:
+                break
         if not pull.ok:
             self.fail(module, f"docker compose pull failed: {pull['stderr'] or pull['stdout']}")
             return False
