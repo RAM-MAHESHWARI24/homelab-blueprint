@@ -68,7 +68,14 @@ Run on 2026-11-15 against `refactor/v2` at commit `d5a0907`, installed through `
 | Revert timer is gone | Pass |  |
 | Apps wired inside the VM (check_wiring.sh) | Pass |  |
 
-Evidence: [`docs/assets/test-runs/2026-11-15-gui-e2e/`](assets/test-runs/2026-11-15-gui-e2e/) holds the screenshots, `summary.json`, the step log, the wizard log, the browser's deploy log and the wiring-check output. Secrets are redacted and the credentials box is masked in screenshots.
+### Recorded run
+
+A second full run on 2026-11-15 recorded a video of the browser session, at commit `6d29087`, after the fixes for the last two bugs in section 4. All 23 checks passed again in 10.1 minutes; the VM changed address from 172.20.86.120 to 172.20.86.220.
+
+- Video: [`session.webm`](assets/test-runs/2026-11-15-gui-e2e-video/session.webm). The one-time credentials are blurred on screen during recording.
+- Screenshots and logs: [`docs/assets/test-runs/2026-11-15-gui-e2e-video/`](assets/test-runs/2026-11-15-gui-e2e-video/).
+
+Evidence for the first run: [`docs/assets/test-runs/2026-11-15-gui-e2e/`](assets/test-runs/2026-11-15-gui-e2e/) holds the screenshots, `summary.json`, the step log, the wizard log, the browser's deploy log and the wiring-check output. Secrets are redacted and the credentials box is masked in screenshots.
 
 ## 3. CI `real-install`
 
@@ -78,7 +85,7 @@ First fully green run: `43679665458` at commit `c67f6f1`. Every later push has r
 
 ## 4. Bugs the tests found
 
-Each of these was found by one of the two tests, fixed, and confirmed fixed by a later run.
+Each of these was found by one of the two tests, fixed, and confirmed fixed by a later run. Runs that failed while finding them are not stored; their findings are listed here.
 
 | Found by | Problem | Fix |
 | :--- | :--- | :--- |
@@ -93,6 +100,8 @@ Each of these was found by one of the two tests, fixed, and confirmed fixed by a
 | GUI | The static IP never applied on hosts where cloud-init names the interface `default` | Write the static config under the netplan ID that owns the interface |
 | GUI | The static IP always used a /24 prefix, which breaks the default route on larger networks | Use the interface's current prefix |
 | GUI | The address changed during the install request, so the browser lost the result, never saw the confirm step, and the change reverted | Apply the new address 5 seconds after the reply (Control Hub: 3 seconds) |
+| GUI | On a heavily loaded VM, Radarr's first start outlasted its healthcheck grace period and Compose aborted the media stack | Healthchecks allow 5 minutes to start and check every 5 seconds meanwhile; the installer retries `up` once |
+| GUI | The install dialog did not scroll, so the static-IP "Continue" button sat below the screen edge and the change reverted | The dialog scrolls; the confirm box sits under the credentials and is scrolled into view |
 
 ## 5. What these tests do not cover
 

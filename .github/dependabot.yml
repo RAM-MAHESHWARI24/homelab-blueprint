@@ -13,6 +13,11 @@ updates:
     groups:
       mediaserver-images:
         patterns: ["*"]
+    ignore:
+      # Sonarr 5.x changes the API that Prowlarr's Sonarr sync uses (HTTP 404 on
+      # /api/v3); CI's wiring check failed on it (PR #12). Revisit when Prowlarr supports v5.
+      - dependency-name: "*linuxserver/sonarr"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker", "mediaserver"]
 
   - package-ecosystem: "docker-compose"
@@ -48,7 +53,7 @@ updates:
     labels: ["dependencies", "python"]
 
   - package-ecosystem: "pip"
-    directory: "/apps/tv-autoupdater"
+    directory: "/apps/tv-updater"  # becomes /apps/tv-autoupdater with the Stage B rename
     schedule:
       interval: "weekly"
     labels: ["dependencies", "python"]

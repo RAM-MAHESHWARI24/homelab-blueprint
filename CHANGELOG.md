@@ -29,6 +29,8 @@ A rewrite of the installer around a single goal: a fresh Ubuntu server installed
 
 ### Fixed
 - Static IP changes from the wizard or Control Hub now take effect on hosts where cloud-init configures the interface, use the interface's real prefix instead of assuming /24, and no longer cut off the browser's request before the confirm step.
+- The install no longer fails on slow hardware when an app's first start takes several minutes.
+- The static-IP confirm button in the install dialog is reachable on any screen size.
 
 ### Removed
 - Watchtower; images are updated through Dependabot pull requests.
