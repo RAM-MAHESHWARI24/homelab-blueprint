@@ -69,7 +69,7 @@ updates:
     labels: ["dependencies", "python"]
 
   - package-ecosystem: "pip"
-    directory: "/apps/tv-updater"  # becomes /apps/tv-autoupdater with the Stage B rename
+    directory: "/apps/tv-autoupdater"
     schedule:
       interval: "weekly"
     labels: ["dependencies", "python"]

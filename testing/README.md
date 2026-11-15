@@ -235,7 +235,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 5: Host Daemons, Cron, & Power Management
 
-* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`system/power/`](../system/power), [`apps/tv-updater/`](../apps/tv-updater)
+* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`system/power/`](../system/power), [`apps/tv-autoupdater/`](../apps/tv-autoupdater)
 * **Goal:** Verify ultra-low power consumption, host health telemetry, and autonomous Android TV maintenance.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |

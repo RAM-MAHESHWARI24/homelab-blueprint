@@ -611,7 +611,7 @@ class Deployment:
         self.log(f"Control Hub service enabled on port {self.config.get('control_hub_port', 7575)}.")
 
     def module_tv_autoupdater(self) -> None:
-        cron_src = self.root / "system" / "cron.d" / "tv-updater"
+        cron_src = self.root / "system" / "cron.d" / "tv-autoupdater"
         if self.dry_run:
             self.log("Would register the TV auto-updater cron schedule.")
             self.services_launched.append("tv_autoupdater (dry-run)")
@@ -619,7 +619,7 @@ class Deployment:
         if not self.linux:
             return
         if not cron_src.exists():
-            self.fail("tv_autoupdater", "cron template system/cron.d/tv-updater missing")
+            self.fail("tv_autoupdater", "cron template system/cron.d/tv-autoupdater missing")
             return
         ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
         state_dir = self.state_dir / "tv-autoupdater"
