@@ -505,6 +505,7 @@ function renderSuccessLaunch(result) {
   const belowGrid = grid.nextSibling;
   const addBelowGrid = (el) => grid.parentNode.insertBefore(el, belowGrid);
 
+  let indexerCard = null;
   const creds = result.credentials || {};
   const hubToken = creds.control_hub_token || "";
   const dashboardUrl = hubToken ? `${result.dashboard_url}/?token=${encodeURIComponent(hubToken)}` : result.dashboard_url;
@@ -538,6 +539,7 @@ function renderSuccessLaunch(result) {
       <p style="margin:0">Nothing is pre-selected. The Control Hub dashboard will ask you to choose indexers from
       Prowlarr's own list (skip is allowed). Which indexers you add, and whether they are legal where you live, is up to you.</p>`;
     addBelowGrid(next);
+    indexerCard = next;
   }
 
   const countSpan = document.getElementById("redirect-countdown");
@@ -562,7 +564,9 @@ function renderSuccessLaunch(result) {
       <p id="netplan-confirm-status" style="margin:0 0 .8rem">Checking that the server is reachable on ${newIp}...</p>
       <button type="button" class="btn-primary" id="btn-netplan-confirm" disabled>Continue on ${newIp}</button>
       <span style="margin-left:.8rem;font-family:var(--font-mono);font-size:.8rem">reverts in <span id="netplan-countdown">${netplan.timeout_sec || 120}</span>s if not confirmed</span>`;
-    addBelowGrid(confirmBox);
+    // Directly under the credentials, ahead of the indexer note: this is the time-critical step.
+    grid.parentNode.insertBefore(confirmBox, indexerCard || belowGrid);
+    confirmBox.scrollIntoView({ block: "center" });
     if (countSpan) countSpan.parentElement.style.display = "none";
 
     let remaining = netplan.timeout_sec || 120;
