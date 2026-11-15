@@ -89,7 +89,7 @@ services:
   sonarr:
     <<: *common
     container_name: sonarr
-    image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls5
+    image: lscr.io/linuxserver/sonarr:v4-4.0.0.140-ls5
     ports:
       - "8989:8989"
     volumes:
@@ -148,7 +148,7 @@ services:
 
   seerr:
     container_name: seerr
-    image: ghcr.io/seerr-team/seerr:v3.4.1
+    image: ghcr.io/seerr-team/seerr:v3.5.2
     init: true
     restart: unless-stopped
     # The Seerr image has no PUID/PGID support: it is built with `USER node` (uid 1000)
@@ -185,7 +185,7 @@ services:
   # Opt-in: COMPOSE_PROFILES=byparr in .env (the installer sets it when chosen).
   byparr:
     container_name: byparr
-    image: ghcr.io/thephaseless/byparr:1.0.7
+    image: ghcr.io/thephaseless/byparr:3.1.1
     restart: unless-stopped
     profiles: ["byparr"]
     environment:
