@@ -106,6 +106,8 @@ Find the most efficient entry point based on your current task:
 
 ### 3. Day-to-Day Operations & Control Hub
 
+* **[Installing v2 on an Existing Server](INSTALL_ON_EXISTING_SERVER.md)**
+  * *Why it matters:* Backup, reuse of the existing Immich database password and version, cut-over and rollback for a host that already runs these apps.
 * **[Control Hub Configuration Center](CONTROL_HUB_CONFIGURATION_CENTER.md)**
   * *Why it matters:* Architectural guide to the live node dashboard at `:7575`, real-time port polling, live `os.link` storage testing, and secret regeneration.
 * **[Master Verification & Test Report](HOMELAB_VERIFICATION_AND_TEST_REPORT.md)**

@@ -1,0 +1,133 @@
+# Installing v2 on a Server That Already Runs These Apps
+
+This runbook moves a server that runs an older, hand-made setup onto the v2 installer. It was written for one specific server, but the steps apply to any host that already runs Immich and the Arr apps.
+
+**The main risk is the photo database.** Immich migrates its database forward on startup and cannot go back. A new password or a different version will break or upgrade it. Follow the backup and pinning steps exactly.
+
+## What the old server looks like
+
+| Item | Old setup | After v2 |
+| :--- | :--- | :--- |
+| Dashboard | `serverff-control-hub.service`, user `server_ff`, sudo `NOPASSWD: ALL` | `control-hub.service`, user `homelab`, exact-argument sudoers |
+| Photos | Compose project in `/opt/immich` | `apps/noodle-gallery`, env in `/etc/homelab/noodle-gallery.env` |
+| TV updater | Cron as `server_ff` | `/etc/cron.d/tv-autoupdater` as `homelab` |
+| Recyclarr, webhook listener | `server_ff` crontab | Unchanged unless you move them |
+| Config | `.env` files in the checkout | `/etc/homelab/` |
+| App data | Various | `/srv/homelab/appdata/` |
+
+## 1. Record what is running
+
+```bash
+docker ps --format '{{.Names}}\t{{.Image}}'
+docker inspect immich_server --format '{{.Config.Image}}'
+docker inspect immich_machine_learning --format '{{.Config.Image}}'
+grep -E '^(DB_PASSWORD|DB_USERNAME|DB_DATABASE_NAME|UPLOAD_LOCATION|DB_DATA_LOCATION)=' /opt/immich/.env
+sudo crontab -l -u server_ff
+systemctl cat serverff-control-hub.service
+```
+
+Write down the exact Immich server and ML image references, including the tag. If the tag is `release`, find the digest:
+
+```bash
+docker inspect immich_server --format '{{index .RepoDigests 0}}'
+```
+
+## 2. Back up
+
+Stop nothing yet. Dump the photo database while it runs:
+
+```bash
+sudo mkdir -p /root/pre-v2
+docker exec -t immich_postgres pg_dumpall --clean --if-exists -U postgres | gzip > /root/pre-v2/immich-db.sql.gz
+```
+
+Then copy the app configs and the old Immich folder:
+
+```bash
+sudo tar czf /root/pre-v2/arr-appdata.tgz <path-to-current-arr-configs>
+sudo tar czf /root/pre-v2/opt-immich.tgz --exclude='*/postgres/*' /opt/immich
+sudo cp /etc/sudoers.d/* /root/pre-v2/
+```
+
+Check that the dump is not empty: `zcat /root/pre-v2/immich-db.sql.gz | head`.
+
+## 3. Write the install profile
+
+Create `/root/pre-v2/profile.json`. Reuse the existing database password and pin the images you recorded in step 1:
+
+```json
+{
+  "host_user": "<your login user>",
+  "puid": 1000,
+  "pgid": 1000,
+  "hdd_data": "/mnt/hdd/data",
+  "hdd_memories": "/mnt/hdd/Memories",
+  "enable_static_ip": false,
+  "enabled_services": ["media", "photos", "control_hub"],
+
+  "postgres_password": "<DB_PASSWORD from /opt/immich/.env>",
+  "postgres_user": "<DB_USERNAME>",
+  "postgres_db": "<DB_DATABASE_NAME>",
+  "photo_upload_dir": "<UPLOAD_LOCATION>",
+  "photo_db_dir": "<DB_DATA_LOCATION>",
+  "photos_server_image": "ghcr.io/immich-app/immich-server:<exact tag or @sha256 digest>",
+  "photos_ml_image": "ghcr.io/immich-app/immich-machine-learning:<same version>"
+}
+```
+
+- `photo_db_dir` points at the existing Postgres data, so the database is reused in place.
+- The two image keys keep the version the database was migrated to. Without them, the blueprint's own pinned images start, and those are Open-Noodle Gallery, a fork, at a different version.
+- Media apps start fresh under `/srv/homelab/appdata/mediaserver` by default. To keep the existing Arr configs, set `"config_dir"` to the folder that holds them and `"qbittorrent_pass"` to qBittorrent's current WebUI password. An existing `qBittorrent.conf` is never overwritten, so a different password makes the wiring step fail.
+
+## 4. Stop the old services
+
+```bash
+cd /opt/immich && docker compose down
+sudo systemctl disable --now serverff-control-hub.service
+sudo crontab -l -u server_ff > /root/pre-v2/server_ff.crontab
+```
+
+Remove the TV updater line from the `server_ff` crontab. Keep the Recyclarr and webhook lines if you still want them.
+
+Stop any old Arr containers that publish the same ports (8080, 9696, 7878, 8989, 6767, 8096, 5055).
+
+## 5. Install
+
+```bash
+sudo git clone https://github.com/RAM-MAHESHWARI24/homelab-blueprint.git /opt/homelab-blueprint
+cd /opt/homelab-blueprint
+./setup.sh --doctor
+sudo ./setup.sh --headless --config /root/pre-v2/profile.json
+```
+
+The output ends with the credentials and the Control Hub token. Save them.
+
+## 6. Check
+
+- Immich at `http://<ip>:2283` shows your existing library and users.
+- `docker inspect immich_server --format '{{.Config.Image}}'` matches the image from step 1.
+- The Control Hub at `http://<ip>:7575` accepts the token from `sudo ./setup.sh token`.
+- `sudo -l -U server_ff` no longer shows a blanket rule once you remove the old sudoers file.
+
+When everything works, remove the old pieces:
+
+```bash
+sudo rm /etc/sudoers.d/<old blanket rule file>
+sudo rm /etc/systemd/system/serverff-control-hub.service && sudo systemctl daemon-reload
+```
+
+Keep `/opt/immich` and `/root/pre-v2` for a few weeks.
+
+## Rollback
+
+1. `sudo /opt/homelab-blueprint/teardown.sh --yes`. This keeps media, photos and databases.
+2. If the photo database was changed, restore it:
+
+   ```bash
+   cd /opt/immich && docker compose up -d database
+   zcat /root/pre-v2/immich-db.sql.gz | docker exec -i immich_postgres psql -U postgres
+   ```
+
+3. `cd /opt/immich && docker compose up -d`.
+4. Restore the old sudoers file and `sudo systemctl enable --now serverff-control-hub.service`.
+5. `sudo crontab -u server_ff /root/pre-v2/server_ff.crontab`.
