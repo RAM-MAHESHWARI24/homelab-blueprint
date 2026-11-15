@@ -669,6 +669,21 @@ class Deployment:
         return catalog
 
     # ------------------------------------------------------------------- run
+    def step_service_user(self) -> None:
+        """
+        Creates the unprivileged service account before any module runs. The media
+        module hands it the Prowlarr key (0640 root:homelab) and the TV auto-updater
+        its config, so the group has to exist before those modules write files.
+        """
+        if self.dry_run:
+            self.log(f"Would create system user '{SERVICE_USER}' (docker group).")
+            return
+        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        if not res.ok:
+            self.fail("host", f"could not create service user '{SERVICE_USER}': {res['stderr']}")
+        else:
+            self.log(f"Service user '{SERVICE_USER}' ready (member of docker).")
+
     def run(self) -> Dict[str, Any]:
         if self.dry_run:
             self.log("=== DRY-RUN: nothing on the host will be modified ===")
@@ -676,6 +691,7 @@ class Deployment:
 
         self.step_storage()
         self.step_environment()
+        self.step_service_user()
 
         handlers = {
             "media": self.module_media,

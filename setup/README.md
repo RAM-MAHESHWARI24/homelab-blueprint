@@ -18,7 +18,7 @@ The **Homelab Setup Wizard** is designed with strict engineering constraints:
 * **Zero External Dependencies:** Built solely on Python's built-in `http.server`, `socket`, `subprocess`, `urllib`, and `json` modules.
 * **Runs on Clean Installs:** Executes immediately on a barebones Ubuntu Server with default Python 3.
 * **Non-Destructive Dry-Run Support:** Supports a full simulation mode (`dry_run: true`) that writes preview configs to `setup/dry_run_preview/` without touching production filesystems or network interfaces.
-* **Zero-Downtime Safe Netplan:** Validates static IP configurations using `netplan generate` and `netplan try --timeout 45` to prevent locking the administrator out of SSH.
+* **Zero-Downtime Safe Netplan:** Validates static IP changes with `netplan generate`, applies them with an armed revert timer, and only keeps them once confirmed from the new address.
 * **Atomic Hardlink Inode Tester:** Performs real-time `os.link` file system probes to guarantee 0-I/O hardlinks before any media containers are spun up.
 
 ---
@@ -69,7 +69,7 @@ Designed for 60-second onboarding. Asks only for the essentials:
 Full granular control across all 5 monorepo subsystems:
 * **Network & Host Architecture:** Static IP, Subnet mask, Gateway, DNS, Timezone, Active NIC.
 * **Storage & Paths:** SSD config paths, HDD root mount, download categories (`torrents/movies`, `torrents/tv`).
-* **Modular Stack Toggles:** Individual checkboxes for Media Stack, Noodle Photo Cloud, CleanYourTV, and Sleep Guard.
+* **Modular Stack Toggles:** Opt-in cards for the media stack, photo cloud, ML schedule, photo backup, TV auto-updater, Sleep Guard, Samba, Tailscale and the media extras (Byparr, TMDB bypass, DNS override).
 * **Smart Defaults:** Every optional field displays a default badge and a 1-click **"Keep Default"** reset action.
 * **Security & Secrets:** 1-Click **"⚡ Auto-Generate All"** for database credentials and *arr API keys.
 

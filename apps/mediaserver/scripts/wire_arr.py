@@ -461,15 +461,20 @@ def write_key_file(path: Path, key: str, group: str = "") -> bool:
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(key + "\n", encoding="utf-8")
         os.chmod(tmp, 0o640)
+        actual_group = "root"
         if group and hasattr(os, "chown"):
             import grp
 
             try:
                 os.chown(tmp, 0, grp.getgrnam(group).gr_gid)
-            except (KeyError, PermissionError):
-                pass
+                actual_group = group
+            except (KeyError, PermissionError) as e:
+                tmp.replace(path)
+                return step(f"Prowlarr: API key file {path}", False,
+                            f"written 0640 root:root but group '{group}' could not be applied ({e}); the indexer picker cannot read it",
+                            required=False)
         tmp.replace(path)
-        return step(f"Prowlarr: API key file {path}", True, f"0640 root:{group or 'root'}")
+        return step(f"Prowlarr: API key file {path}", True, f"0640 root:{actual_group}")
     except OSError as e:
         return step(f"Prowlarr: API key file {path}", False, str(e), required=False)
 
