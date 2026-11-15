@@ -126,6 +126,8 @@ Find the most efficient entry point based on your current task:
 
 ### 5. AI Pairing, Standards & Automated Testing
 
+* **[v2.0.0 Test Report](V2_TEST_REPORT.md)**
+  * *Why it matters:* How v2 was tested end to end (CI real install and a browser-driven install on a fresh VM), the results with stored evidence, and every bug those tests found.
 * **[Three-Tier Gatekeeping & Defect Prevention Architecture](THREE_TIER_PROTECTION_AND_GATEKEEPING_ARCHITECTURE.md)**
   * *Why it matters:* Industry-standard 3-tier defense-in-depth model (Local Pre-Commit, Local Pre-Push, Remote Branch Protection & CI) enforcing zero syntax errors, credential protection, documentation integrity, and schema verification before code reaches production.
 * **[Industry Standards & Engineering Maturity Model](STANDARDS_AND_MATURITY_MODEL.md)**

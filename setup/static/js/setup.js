@@ -500,6 +500,11 @@ function renderSuccessLaunch(result) {
     grid.appendChild(card);
   });
 
+  // Boxes below the service grid appear in the order they are added: credentials first,
+  // so "save the credentials above" in the static-IP box is true.
+  const belowGrid = grid.nextSibling;
+  const addBelowGrid = (el) => grid.parentNode.insertBefore(el, belowGrid);
+
   const creds = result.credentials || {};
   const hubToken = creds.control_hub_token || "";
   const dashboardUrl = hubToken ? `${result.dashboard_url}/?token=${encodeURIComponent(hubToken)}` : result.dashboard_url;
@@ -509,6 +514,7 @@ function renderSuccessLaunch(result) {
   // Show generated credentials exactly once (they are also stored under /etc/homelab, root-only).
   if (!result.dry_run && (hubToken || creds.qbittorrent_pass || creds.postgres_password)) {
     const box = document.createElement("div");
+    box.id = "credentials-box";
     box.className = "launch-card";
     box.style.cssText = "margin-top:1rem;display:block;cursor:default";
     box.innerHTML = `
@@ -519,7 +525,7 @@ function renderSuccessLaunch(result) {
         ${creds.qbittorrent_pass ? `qBittorrent: <b>${creds.qbittorrent_user || "admin"}</b> / <b>${creds.qbittorrent_pass}</b><br>` : ""}
         ${creds.postgres_password ? `Photo DB password: <b>${creds.postgres_password}</b>` : ""}
       </div>`;
-    grid.parentNode.insertBefore(box, grid.nextSibling);
+    addBelowGrid(box);
   }
 
   // The wizard exits after install; the always-on Control Hub holds the indexer picker.
@@ -531,7 +537,7 @@ function renderSuccessLaunch(result) {
       <h4 style="margin-top:0">Last step: pick your indexers</h4>
       <p style="margin:0">Nothing is pre-selected. The Control Hub dashboard will ask you to choose indexers from
       Prowlarr's own list (skip is allowed). Which indexers you add, and whether they are legal where you live, is up to you.</p>`;
-    grid.parentNode.insertBefore(next, grid.nextSibling);
+    addBelowGrid(next);
   }
 
   const countSpan = document.getElementById("redirect-countdown");
@@ -556,7 +562,7 @@ function renderSuccessLaunch(result) {
       <p id="netplan-confirm-status" style="margin:0 0 .8rem">Checking that the server is reachable on ${newIp}...</p>
       <button type="button" class="btn-primary" id="btn-netplan-confirm" disabled>Continue on ${newIp}</button>
       <span style="margin-left:.8rem;font-family:var(--font-mono);font-size:.8rem">reverts in <span id="netplan-countdown">${netplan.timeout_sec || 120}</span>s if not confirmed</span>`;
-    grid.parentNode.insertBefore(confirmBox, grid.nextSibling);
+    addBelowGrid(confirmBox);
     if (countSpan) countSpan.parentElement.style.display = "none";
 
     let remaining = netplan.timeout_sec || 120;

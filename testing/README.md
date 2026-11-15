@@ -123,6 +123,10 @@ The blueprint is designed to run on diverse hardware—from salvaged dual-core l
 
 ## 4. VM-Based Sandbox Testing Guide (Multipass)
 
+### GUI end-to-end test (Playwright)
+[`vm/test_wizard_gui.py`](vm/test_wizard_gui.py) installs on a fresh Multipass VM through `bootstrap.sh`, drives the Setup Wizard and Control Hub in Chromium (including a static-IP change confirmed from the new address), then runs [`vm/check_wiring.sh`](vm/check_wiring.sh) inside the VM. Results and how to run it: [v2.0.0 Test Report](../docs/V2_TEST_REPORT.md).
+
+
 Because WSL lacks real motherboard ACPI clocks and virtual network adapters, **Canonical Multipass** is the industry standard for testing Ubuntu server deployments locally without disturbing server `Z:\`.
 
 ### Prerequisites (Host Machine)

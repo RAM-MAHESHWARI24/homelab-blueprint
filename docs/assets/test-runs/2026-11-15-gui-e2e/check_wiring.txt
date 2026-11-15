@@ -1,0 +1,49 @@
+++ key radarr
+++ grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/radarr/config.xml
++ RADARR_KEY=<redacted>
+++ key sonarr
+++ grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/sonarr/config.xml
++ SONARR_KEY=<redacted>
+++ key prowlarr
+++ grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/prowlarr/config.xml
++ PROWLARR_KEY=<redacted>
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:7878/api/v3/downloadclient
++ grep -qE '"name": *"qBittorrent"'
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:7878/api/v3/rootfolder
++ grep -q /data/media/movies
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:8989/api/v3/downloadclient
++ grep -qE '"name": *"qBittorrent"'
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:8989/api/v3/rootfolder
++ grep -q /data/media/tv
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:9696/api/v1/applications
++ grep -qE '"name": *"Radarr"'
++ curl -fsS -H 'X-Api-Key: <redacted>' http://127.0.0.1:9696/api/v1/applications
++ grep -qE '"name": *"Sonarr"'
++ curl -fsS http://127.0.0.1:8096/System/Info/Public
++ grep -qE '"StartupWizardCompleted": *true'
++ curl -fsS http://127.0.0.1:5055/api/v1/settings/public
++ grep -qE '"initialized": *true'
+++ grep -oP '(?<=^QBITTORRENT_PASS=<redacted> /etc/homelab/mediaserver.env
++ QB_PASS=<redacted>
+++ curl -s -o /dev/null -w '%{http_code}' -c /tmp/qb.jar --data-urlencode username=admin --data-urlencode password=<redacted> http://127.0.0.1:8080/api/v2/auth/login
++ QB_LOGIN=204
++ test 204 = 200 -o 204 = 204
++ grep -q QBT_SID /tmp/qb.jar
++ curl -fsS -b /tmp/qb.jar http://127.0.0.1:8080/api/v2/app/version
+v5.3.0++ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v2/app/version
++ test 403 = 403
+++ cat /etc/homelab/control-hub.token
++ TOKEN=<redacted>
++ curl -fsS -H 'Authorization: Bearer <redacted>' http://127.0.0.1:7575/api/auth/check
++ grep -q authenticated
+++ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7575/api/system/vitals
++ test 401 = 401
++ stat -c '%a %G' /etc/homelab/prowlarr.key
++ grep -q '^640 homelab$'
++ systemctl is-active --quiet control-hub.service
++ true
++ curl -fsS http://127.0.0.1:2283/api/server/ping
++ grep -q pong
++ test -d /srv/homelab/appdata/noodle-gallery/postgres
++ set +x
+WIRING OK

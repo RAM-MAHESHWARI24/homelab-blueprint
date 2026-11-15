@@ -5,7 +5,9 @@
 #   sudo bash check_wiring.sh [--photos]
 #
 # Exits non-zero on the first failed check; `set -x` names it in the output.
-set -euo pipefail
+# No pipefail: `curl ... | grep -q` would fail whenever grep exits on the first match
+# and curl gets SIGPIPE. A failing curl still fails the check, because grep sees no match.
+set -eu
 
 APPDATA="${HOMELAB_APPDATA_DIR:-/srv/homelab/appdata}/mediaserver"
 CHECK_PHOTOS=false

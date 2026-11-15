@@ -674,13 +674,17 @@ class Deployment:
             self.log(f"Would apply static IP {ip} on '{nic}' with a 120s auto-revert timer.")
             return {"success": True, "mode": "dry_run", "preview_yaml": preview}
 
+        headless = bool(self.config.get("_headless"))
         self.log(f"Applying static IP {ip} on '{nic}' with an armed revert timer...")
-        result = safe_apply_netplan(interface=nic, ip_address=ip, gateway=gw, dns_servers=dns)
+        # From the wizard, apply a few seconds after this deploy's HTTP reply: changing the
+        # address mid-request loses the reply, so the browser never sees the confirm step.
+        result = safe_apply_netplan(interface=nic, ip_address=ip, gateway=gw, dns_servers=dns,
+                                    apply_delay_sec=0 if headless else 5)
         if not result.get("success"):
             self.fail("netplan", result.get("message") or result.get("error", "unknown error"))
             return result
 
-        if result.get("pending") and self.config.get("_headless"):
+        if result.get("pending") and headless:
             # Nobody will click "confirm" in headless mode: verify the address is live, then confirm.
             check = run_command(["ip", "-4", "-o", "addr", "show", "dev", nic], timeout=10)
             if check.ok and ip.split("/")[0] in check["stdout"]:

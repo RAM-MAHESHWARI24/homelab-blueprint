@@ -19,12 +19,16 @@ A rewrite of the installer around a single goal: a fresh Ubuntu server installed
 - TV auto-updater verifies each APK's signing certificate against pinned fingerprints.
 - Optional image pins for an existing photo library (`photos_server_image`, `photos_ml_image`).
 - Pinned container images, healthchecks, Dependabot, and a CI job that performs a real install, checks the wiring and tears it down again.
+- A Playwright test that installs on a fresh VM through the browser, including a static-IP change. See the [v2.0.0 Test Report](docs/V2_TEST_REPORT.md).
 
 ### Changed
 - Configuration moved to `/etc/homelab/`, container data to `/srv/homelab/appdata/`, state to `/var/lib/homelab/`.
 - The Control Hub runs as the unprivileged `homelab` user with an exact-argument sudoers file.
 - Defaults are neutral: timezone and network interface are detected, regional workarounds are opt-in.
 - `bootstrap.sh` installs the latest release tag by default.
+
+### Fixed
+- Static IP changes from the wizard or Control Hub now take effect on hosts where cloud-init configures the interface, use the interface's real prefix instead of assuming /24, and no longer cut off the browser's request before the confirm step.
 
 ### Removed
 - Watchtower; images are updated through Dependabot pull requests.
