@@ -7,9 +7,18 @@ set -euo pipefail
 # server-side move tracking and accidental deletion protection.
 # ==============================================================================
 
+# All settings come from the environment (the blueprint sets them in /etc/cron.d/immich-backup):
+#   BACKUP_LOCAL    local directory for database dumps and logs
+#   MEDIA_PATH      photo library to mirror
+#   GDRIVE_REMOTE   rclone remote (and optional path), e.g. "gdrive:" or "gdrive:homelab/"
+#   FACE_EXPORTER   path to export_faces_to_xmp.py (defaults to the copy next to this script)
+#   DB_CONTAINER    postgres container name (default immich_postgres)
 BACKUP_LOCAL="${BACKUP_LOCAL:-/opt/immich/backups}"
 MEDIA_PATH="${MEDIA_PATH:-/mnt/hdd/Memories}"
 GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:}"
+case "$GDRIVE_REMOTE" in *:|*/) ;; *) GDRIVE_REMOTE="${GDRIVE_REMOTE}/" ;; esac
+FACE_EXPORTER="${FACE_EXPORTER:-$(dirname "$0")/../export_faces_to_xmp.py}"
+DB_CONTAINER="${DB_CONTAINER:-immich_postgres}"
 GDRIVE_MEMORIES="${GDRIVE_REMOTE}Memories"
 GDRIVE_DB_BACKUP="${GDRIVE_REMOTE}Immich_Backup/database"
 DATE=$(date +%Y%m%d_%H%M%S)
@@ -24,13 +33,17 @@ echo "=================================================="
 
 # 1. Export named faces to XMP sidecars
 echo "[1/4] Running Face-to-XMP Exporter..."
-python3 "$(dirname "$0")/../export_faces_to_xmp.py" || echo "Warning: Face export had warnings, continuing backup."
+if [ -f "$FACE_EXPORTER" ]; then
+    python3 "$FACE_EXPORTER" || echo "Warning: Face export had warnings, continuing backup."
+else
+    echo "Warning: face exporter not found at $FACE_EXPORTER; skipping XMP export."
+fi
 
 # 2. Dump PostgreSQL database (consistent snapshot)
 echo "[2/4] Creating PostgreSQL database dump..."
 DB_DUMP="$BACKUP_LOCAL/immich_db_${DATE}.sql.gz"
 COMPRESS_CMD=$(command -v pigz >/dev/null 2>&1 && echo "pigz -p 4 -1" || echo "gzip")
-docker exec immich_postgres pg_dumpall -U postgres | $COMPRESS_CMD > "$DB_DUMP"
+docker exec "$DB_CONTAINER" pg_dumpall -U postgres | $COMPRESS_CMD > "$DB_DUMP"
 echo "Database dumped successfully: $DB_DUMP ($(du -h "$DB_DUMP" | cut -f1))"
 
 # Prune local database backups older than 7 days

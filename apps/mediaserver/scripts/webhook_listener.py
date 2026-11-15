@@ -7,7 +7,6 @@ Receives approved media requests from Seerr, checks Radarr/Sonarr, and triggers 
 import os
 import re
 import json
-import subprocess
 import requests
 import threading
 import time

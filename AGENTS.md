@@ -24,16 +24,16 @@ Every agent proposing modifications must honor these five non-negotiable invaria
 * **Storage Hierarchy:** Standardize on `/data/torrents/{movies,tv}` and `/data/media/{movies,tv}`.
 
 ### 1.2. Zero-Dependency Bootstrap Wizard ([`ADR-0002`](docs/adr/0002-zero-dependency-setup-wizard.md))
-* **The Rule:** The Phase 1 Setup Wizard (`setup/`) and its configuration core (`setup/config_core/`) must use **Python 3 standard library only**.
+* **The Rule:** The Phase 1 Setup Wizard (`setup/`) and its configuration core (`apps/control-hub/core/config_core/`) must use **Python 3 standard library only**.
 * **Prohibited:** Never add third-party Python packages (`Flask`, `requests`, `pydantic`, `fastapi`, `yaml`) to `setup/`. The wizard must boot on a pristine, minimal, offline Linux install with zero `pip install` steps.
 
 ### 1.3. Universal Hardware Neutrality & Probing
 * **The Rule:** Never hardcode CPU models, core counts, RAM capacities, network interface names (`eth0`), or disk block devices (`sda`).
-* **Implementation:** Always discover capabilities dynamically via `setup/config_core/system_prober.py` and `apps/control-hub/core/telemetry_sampler.py`.
+* **Implementation:** Always discover capabilities dynamically via `apps/control-hub/core/config_core/system_prober.py` and `apps/control-hub/core/telemetry_sampler.py`.
 
 ### 1.4. Network Safety & Netplan Rollback ([`docs/NETPLAN_STATIC_IP_QUIRKS.md`](docs/NETPLAN_STATIC_IP_QUIRKS.md))
 * **The Rule:** Never invoke raw `netplan apply` over remote SSH.
-* **Implementation:** Always validate with `netplan generate` first, followed by `netplan try --timeout 45` to guarantee automatic rollback if connectivity drops.
+* **Implementation:** Always validate with `netplan generate` first, then apply through `config_core/netplan_manager.py`, which arms the `homelab-netplan-revert` timer and restores the backup unless the change is confirmed from the new address.
 
 ### 1.5. Sleep Guard & Power Deferral ([`ADR-0003`](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md))
 * **The Rule:** Never remove or bypass active condition guards in `system/power/server-suspend.sh`.
@@ -87,8 +87,8 @@ We adhere to the **Diátaxis framework** and a **Docs-as-Code** philosophy. Docu
 ### 3.2. Link Hygiene: Semantic Symbols, NOT Line Numbers
 * **Strictly Prohibited:** Never link to line numbers in documentation (e.g. `file.py#L45-L60`). Line numbers break on subsequent commits, leading to immediate doc rot.
 * **Permitted:**
-  * Link to the file: `[system_prober.py](setup/config_core/system_prober.py)`
-  * Link to semantic symbol/function: `[system_prober.py](setup/config_core/system_prober.py) -> probe_cpu_info()`
+  * Link to the file: `[system_prober.py](apps/control-hub/core/config_core/system_prober.py)`
+  * Link to semantic symbol/function: `[system_prober.py](apps/control-hub/core/config_core/system_prober.py) -> probe_cpu_info()`
   * Link to markdown header slug: `[Storage Guide](docs/STORAGE_AND_HARDLINKS.md#atomic-hardlinks)`
 
 ### 3.3. Relative Links Only

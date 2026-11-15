@@ -9,7 +9,7 @@ If a streaming client requests a software transcode of a 1080p or 4K HEVC / AV1 
 * Background services (torrent downloaders, database syncs, TV updates) starve for CPU cycles and crawl to a halt.
 
 ## 2. Automated Low-Power Detection
-The blueprint's hardware probing engine (`setup/config_core/system_prober.py`) automatically detects low-power CPU models by inspecting `/proc/cpuinfo`:
+The blueprint's hardware probing engine (`apps/control-hub/core/config_core/system_prober.py`) automatically detects low-power CPU models by inspecting `/proc/cpuinfo`:
 * Matches keywords: `i3-4`, `i5-4`, `haswell`, `broadwell`, `celeron`, `atom`, `j1900`, `n5105`, `n100`.
 * Sets `"is_low_power": true` in the system snapshot.
 * Displays the active **"Low-Power Direct Play Profile"** in Control Hub's AI Copilot and Settings drawer.

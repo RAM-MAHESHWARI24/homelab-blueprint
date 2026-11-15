@@ -64,3 +64,6 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# GUI end-to-end test output (screenshots, logs)
+testing/vm/reports/gui/

@@ -42,7 +42,7 @@ def main():
     checks = [
         (
             "Configuration Schema Migration Check",
-            [sys.executable, "setup/config_core/schema_migrator.py", "--check"],
+            [sys.executable, "setup/installer/schema_migrator.py", "--check"],
             REPO_ROOT
         ),
         (

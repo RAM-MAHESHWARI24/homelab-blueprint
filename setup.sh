@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Homelab Blueprint - Setup Wizard Launcher
-# Zero-dependency bootstrap for fresh Ubuntu Server
+# Homelab Blueprint - Setup & Management CLI
+# Zero-dependency bootstrap for a fresh Ubuntu Server
 # ==============================================================================
 
 set -euo pipefail
@@ -9,83 +9,86 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Fast-path CLI commands (do not require root)
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
-    echo "Homelab Blueprint Setup & Management CLI"
-    echo ""
-    echo "Usage:"
-    echo "  ./setup.sh                                  Launch zero-dependency web setup daemon (requires root)"
-    echo "  ./setup.sh --headless --config <file.json>  Run unattended headless setup (requires root)"
-    echo "  ./setup.sh --doctor                         Run pre-flight host diagnostic prober (doctor)"
-    echo "  ./setup.sh --migrate                        Auto-upgrade and migrate .env configuration files"
-    echo "  ./setup.sh --help                           Show this help message"
-    echo ""
-    echo "Flags for --migrate:"
-    echo "  --check                 Check status only, non-zero exit code if outdated"
-    echo "  --dry-run               Simulate migrations without modifying files"
-    exit 0
-fi
+usage() {
+    cat <<EOF
+Homelab Blueprint Setup & Management CLI
 
-# Ensure running with root/sudo for system-level configuration & accurate hardware probes
+Usage:
+  sudo ./setup.sh                                   Launch the web setup wizard (prints a one-time token URL)
+  sudo ./setup.sh --headless --config <file.json>   Unattended install from a JSON profile
+  sudo ./setup.sh --headless --config <f> --dry-run Simulate an install without touching the host
+  ./setup.sh --doctor                               Pre-flight host diagnostics (no root needed)
+  sudo ./setup.sh --migrate [--check] [--dry-run]   Upgrade rendered .env files to the current schema
+  sudo ./setup.sh token [--rotate]                  Show or rotate the Control Hub access token
+  ./setup.sh --help                                 This message
+EOF
+}
+
+case "${1:-}" in
+    --help|-h|help)
+        usage
+        exit 0
+        ;;
+    --doctor|doctor|-d)
+        exec python3 "$SCRIPT_DIR/setup/doctor.py"
+        ;;
+esac
+
+# Everything below changes system state and needs root.
 if [ "$EUID" -ne 0 ]; then
-    echo "⚠️ Homelab Setup Wizard requires root privileges to configure Netplan, Storage, and Docker."
-    echo "   Re-launching with sudo..."
+    echo "This command needs root (Docker, Netplan, systemd). Re-launching with sudo..."
     exec sudo bash "$0" "$@"
 fi
 
-if [[ "${1:-}" == "--doctor" || "${1:-}" == "doctor" || "${1:-}" == "-d" ]]; then
-    exec python3 "$SCRIPT_DIR/setup/doctor.py"
-fi
-
-if [[ "${1:-}" == "--migrate" || "${1:-}" == "migrate" || "${1:-}" == "-m" ]]; then
-    shift
-    exec python3 "$SCRIPT_DIR/setup/config_core/schema_migrator.py" "$@"
-fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+case "${1:-}" in
+    --migrate|migrate|-m)
+        shift
+        exec python3 "$SCRIPT_DIR/setup/installer/schema_migrator.py" "$@"
+        ;;
+    token)
+        shift
+        exec python3 "$SCRIPT_DIR/setup/token.py" "$@"
+        ;;
+esac
 
 echo "============================================================"
-echo "  🏠 Initializing Homelab Blueprint Setup Wizard..."
+echo "  Homelab Blueprint - Setup"
 echo "============================================================"
 
-# 1. Verify and install Python 3 & venv
+# 1. Base packages the wizard and installer rely on
 MISSING=()
-if ! command -v python3 &>/dev/null; then MISSING+=("python3"); fi
-if ! dpkg -s python3-venv &>/dev/null 2>&1; then MISSING+=("python3-venv"); fi
-if ! command -v jq &>/dev/null; then MISSING+=("jq"); fi
+command -v python3 >/dev/null 2>&1 || MISSING+=("python3")
+dpkg -s python3-venv >/dev/null 2>&1 || MISSING+=("python3-venv")
+command -v jq >/dev/null 2>&1 || MISSING+=("jq")
+command -v curl >/dev/null 2>&1 || MISSING+=("curl")
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-    echo "📦 Installing essential packages (${MISSING[*]})..."
-    apt-get update -qq && apt-get install -y -qq "${MISSING[@]}"
+    echo "Installing prerequisites: ${MISSING[*]}"
+    apt-get update -qq
+    apt-get install -y -qq "${MISSING[@]}"
 fi
 
-# 2. Check Docker availability & install if missing
-if ! command -v docker &>/dev/null; then
-    echo "📦 Docker Engine not detected. Installing docker.io & docker-compose-v2..."
-    apt-get update -qq && apt-get install -y -qq docker.io docker-compose-v2
+# 2. Docker Engine + Compose v2 (Ubuntu packages; no curl|sh)
+if ! command -v docker >/dev/null 2>&1; then
+    echo "Installing Docker Engine and Compose v2..."
+    apt-get update -qq
+    apt-get install -y -qq docker.io docker-compose-v2
     systemctl enable --now docker
     if [ -n "${SUDO_USER:-}" ]; then
         usermod -aG docker "$SUDO_USER" 2>/dev/null || true
     fi
-    echo "✅ Docker Engine installed and running."
 fi
 
-# 3. Ensure unprivileged system user 'homelab' exists for background daemon
-if ! id -u homelab &>/dev/null; then
-    useradd -r -s /usr/sbin/nologin -G docker homelab 2>/dev/null || true
-fi
-
-# 4. Activate repository git hooks
+# 3. Repository git hooks (developer convenience; harmless for end users)
 if [ -d "$SCRIPT_DIR/.git" ] && [ -d "$SCRIPT_DIR/.githooks" ]; then
     git -C "$SCRIPT_DIR" config core.hooksPath .githooks 2>/dev/null || true
 fi
 
-# 5. Launch the zero-dependency Python Setup Daemon or Headless Runner
+# 4. Hand over to the Python installer
 if [[ "${1:-}" == "--headless" || "${1:-}" == "-hl" ]]; then
-    echo "🚀 Executing unattended headless deployment..."
+    echo "Running unattended deployment..."
     exec python3 "$SCRIPT_DIR/setup/server.py" "$@"
 fi
 
-echo "🚀 Starting Web GUI daemon..."
+echo "Starting the web setup wizard..."
 exec python3 "$SCRIPT_DIR/setup/server.py"

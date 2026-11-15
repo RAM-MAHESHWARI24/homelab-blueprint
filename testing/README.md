@@ -190,7 +190,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 2: Single-Mount Storage & Atomic Hardlinks
 
-* **Target Source:** [`setup/config_core/storage_manager.py`](../setup/config_core/storage_manager.py), [`docs/STORAGE_AND_HARDLINKS.md`](../docs/STORAGE_AND_HARDLINKS.md)
+* **Target Source:** [`apps/control-hub/core/config_core/storage_manager.py`](../apps/control-hub/core/config_core/storage_manager.py), [`docs/STORAGE_AND_HARDLINKS.md`](../docs/STORAGE_AND_HARDLINKS.md)
 * **Goal:** Mathematically verify 0-Disk I/O atomic hardlinks and prevent cross-mount performance degradation.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
@@ -204,14 +204,14 @@ multipass delete homelab-low-spec --purge
 
 ### Module 3: Safe Netplan Static IP & Auto-Rollback
 
-* **Target Source:** [`setup/config_core/netplan_manager.py`](../setup/config_core/netplan_manager.py), [`docs/NETPLAN_STATIC_IP_QUIRKS.md`](../docs/NETPLAN_STATIC_IP_QUIRKS.md)
+* **Target Source:** [`apps/control-hub/core/config_core/netplan_manager.py`](../apps/control-hub/core/config_core/netplan_manager.py), [`docs/NETPLAN_STATIC_IP_QUIRKS.md`](../docs/NETPLAN_STATIC_IP_QUIRKS.md)
 * **Goal:** Guarantee that static IP misconfigurations never lock an administrator out of SSH.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
 | :--- | :--- | :--- | :--- | :--- |
 | **`TC-NET-01`** | Pre-Flight Netplan Syntax | Execute `generate_netplan_yaml()` and validate via `netplan generate`. | Generates Netplan v2 YAML with `renderer: networkd` and explicit routes block. | Netplan syntax check returns exit code 0. |
 | **`TC-NET-02`** | Safety Backup Creation | Apply proposed Netplan configuration. | Creates timestamped backup directory in `/etc/netplan/backup_<timestamp>/`. | Original YAMLs preserved bit-for-bit. |
-| **`TC-NET-03`** | Auto-Rollback on Invalid Gateway | Apply Netplan configuration pointing to non-existent gateway (e.g. `192.168.254.254`). | `netplan try --timeout 45` triggers auto-revert upon timeout. | Network reverts to original DHCP/static state; SSH survives. |
+| **`TC-NET-03`** | Auto-Rollback on Invalid Gateway | Apply Netplan configuration pointing to non-existent gateway (e.g. `192.168.254.254`). | The `homelab-netplan-revert` timer restores the backup when no confirmation arrives. | Network reverts to original DHCP/static state; SSH survives. |
 
 ---
 
@@ -468,7 +468,6 @@ jobs:
             setup.sh \
             teardown.sh \
             apps/control-hub/run.sh \
-            system/maintenance/watchtower-run.sh \
             system/power/immich-ml-control.sh \
             system/power/server-suspend.sh \
             apps/tv-updater/setup_cron.sh \
@@ -502,7 +501,7 @@ jobs:
 
       - name: Validate Configuration Schema Integrity
         run: |
-          python setup/config_core/schema_migrator.py --check
+          python setup/installer/schema_migrator.py --check
 
       - name: Execute Setup Wizard Verification Test Suite
         run: |

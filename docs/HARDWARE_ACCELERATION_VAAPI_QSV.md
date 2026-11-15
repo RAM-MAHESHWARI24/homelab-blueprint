@@ -1,7 +1,7 @@
 # Hardware Acceleration (VAAPI / QSV / NVIDIA) & Multi-Hardware Modes 🎬
 
 ## 1. Automated Render Node Probing
-The system prober (`setup/config_core/system_prober.py`) automatically inspects the host hardware environment at boot and on-demand:
+The system prober (`apps/control-hub/core/config_core/system_prober.py`) automatically inspects the host hardware environment at boot and on-demand:
 1. **Intel QuickSync / VAAPI:** Checks for the presence of Linux Direct Rendering Infrastructure (DRI) nodes:
    - `/dev/dri/renderD128` (Primary GPU compute & render node)
    - `/dev/dri/card0` (Direct Rendering Manager)

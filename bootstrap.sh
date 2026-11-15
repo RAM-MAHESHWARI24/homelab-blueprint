@@ -79,9 +79,9 @@ fi
 
 # Clone or update repository
 if [ -d "$TARGET_DIR/.git" ]; then
-    echo "🔄 Existing repository found at $TARGET_DIR. Fetching latest updates..."
+    echo "🔄 Existing repository found at $TARGET_DIR. Fetching updates..."
     cd "$TARGET_DIR"
-    git fetch -q --all --tags
+    git fetch -q --all --tags --prune
 else
     echo "📥 Cloning Homelab Blueprint to $TARGET_DIR..."
     mkdir -p "$TARGET_DIR"
@@ -89,11 +89,28 @@ else
     cd "$TARGET_DIR"
 fi
 
-# Apply version or branch target if specified
-if [ -n "$REF_TARGET" ]; then
-    echo "📌 Checking out specified target: $REF_TARGET..."
-    git checkout -q "$REF_TARGET"
+# Default to the latest release tag so users never run an untested commit.
+# --branch <name> opts into a moving branch (for testers), --version pins a tag.
+if [ -z "$REF_TARGET" ]; then
+    LATEST_TAG="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
+    if [ -n "$LATEST_TAG" ]; then
+        REF_TARGET="tags/$LATEST_TAG"
+    else
+        REF_TARGET="origin/main"
+    fi
 fi
+
+echo "📌 Checking out $REF_TARGET..."
+case "$REF_TARGET" in
+    tags/*|origin/*)
+        git checkout -q --detach "$REF_TARGET"
+        ;;
+    *)
+        git checkout -q "$REF_TARGET"
+        git pull -q --ff-only origin "$REF_TARGET" || true
+        ;;
+esac
+echo "   Now at: $(git describe --tags --always)"
 
 # Make scripts executable
 chmod +x setup.sh bootstrap.sh teardown.sh 2>/dev/null || true

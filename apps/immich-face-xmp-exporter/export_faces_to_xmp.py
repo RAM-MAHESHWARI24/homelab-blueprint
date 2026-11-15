@@ -158,7 +158,7 @@ def build_exiftool_args_for_asset(asset):
         "-RegionAppliedToDimensionsUnit=pixel"
     ]
 
-    for idx, f in enumerate(faces):
+    for _idx, f in enumerate(faces):
         name = f["name"].strip()
         x1, y1, x2, y2 = f["x1"], f["y1"], f["x2"], f["y2"]
 

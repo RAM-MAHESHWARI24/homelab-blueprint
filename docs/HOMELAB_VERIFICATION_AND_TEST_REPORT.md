@@ -15,7 +15,7 @@ To solve this, the **Homelab Blueprint** provides a complete two-phase lifecycle
 1. **Phase 1: Onboarding Web Setup Wizard (`http://<host>:8000/`)**  
    Welcomes the user on fresh installation. Features dual setup paths (**⚡ Express Mode** for 60-second least-setup and **🛠️ Power User Mode** with explicit defaults for granular control), plus an **🤖 AI Copilot** diagnostic assistant.
 2. **Phase 2: Day-to-Day Command Center via Control Hub (`http://<host>:7575/`)**  
-   Directly integrates the underlying configuration and diagnostic logic (`setup/config_core`) into the live dashboard, allowing real-time storage hardlink testing, 13-service port conflict monitoring, credential generation, safe Netplan IP management, and 1-click AI diagnostic prompt export.
+   Directly integrates the underlying configuration and diagnostic logic (`apps/control-hub/core/config_core`) into the live dashboard, allowing real-time storage hardlink testing, 13-service port conflict monitoring, credential generation, safe Netplan IP management, and 1-click AI diagnostic prompt export.
 
 ```
 +---------------------------------------------------------------------------------------------------+

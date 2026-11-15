@@ -125,42 +125,25 @@ fi
 # Brief delay to allow background daemons to bind sockets
 sleep 5
 
-# Load API keys from environment or config file if present
-PROWLARR_API_KEY="${PROWLARR_API_KEY:-YOUR_PROWLARR_API_KEY}"
-RADARR_API_KEY="${RADARR_API_KEY:-YOUR_RADARR_API_KEY}"
-SONARR_API_KEY="${SONARR_API_KEY:-YOUR_SONARR_API_KEY}"
-
-# Recheck and revive Prowlarr indexers (clears backoff penalty timers)
-if [ "$PROWLARR_API_KEY" != "YOUR_PROWLARR_API_KEY" ]; then
-    echo "[$(ts)] [RECOVERY] Triggering Prowlarr indexer health recheck..." >> "$LOG_FILE"
-    curl -s -X POST "http://localhost:9696/api/v1/indexer/testall" \
-        -H "X-Api-Key: $PROWLARR_API_KEY" >/dev/null 2>&1 || true
+# ------------------------------------------------------------------------------
+# Post-wake hooks: every executable *.sh in the hooks directory runs once, in
+# name order, after resume. Modules drop their own recovery steps here (the
+# blueprint installs apps/mediaserver/host/post-wake-arr.sh as 50-mediaserver.sh).
+# A failing hook is logged and never aborts the others.
+# ------------------------------------------------------------------------------
+HOOKS_DIR="${SERVER_SUSPEND_HOOKS_DIR:-/etc/server-suspend.d}"
+if [ -d "$HOOKS_DIR" ]; then
+    for hook in "$HOOKS_DIR"/*.sh; do
+        [ -e "$hook" ] || continue
+        if [ -x "$hook" ]; then
+            echo "[$(ts)] [HOOK] Running $hook" >> "$LOG_FILE"
+            "$hook" >> "$LOG_FILE" 2>&1 || echo "[$(ts)] [HOOK] $hook exited with status $?" >> "$LOG_FILE"
+        else
+            echo "[$(ts)] [HOOK] Skipping $hook (not executable)" >> "$LOG_FILE"
+        fi
+    done
+else
+    echo "[$(ts)] [HOOK] No hooks directory at $HOOKS_DIR; nothing to run." >> "$LOG_FILE"
 fi
 
-# Trigger Radarr health check & RSS sync
-if [ "$RADARR_API_KEY" != "YOUR_RADARR_API_KEY" ]; then
-    echo "[$(ts)] [RECOVERY] Triggering Radarr health check and RSS sync..." >> "$LOG_FILE"
-    curl -s -X POST "http://localhost:7878/api/v3/command" \
-        -H "X-Api-Key: $RADARR_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"CheckHealth"}' >/dev/null 2>&1 || true
-    curl -s -X POST "http://localhost:7878/api/v3/command" \
-        -H "X-Api-Key: $RADARR_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"RssSync"}' >/dev/null 2>&1 || true
-fi
-
-# Trigger Sonarr health check & RSS sync
-if [ "$SONARR_API_KEY" != "YOUR_SONARR_API_KEY" ]; then
-    echo "[$(ts)] [RECOVERY] Triggering Sonarr health check and RSS sync..." >> "$LOG_FILE"
-    curl -s -X POST "http://localhost:8989/api/v3/command" \
-        -H "X-Api-Key: $SONARR_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"CheckHealth"}' >/dev/null 2>&1 || true
-    curl -s -X POST "http://localhost:8989/api/v3/command" \
-        -H "X-Api-Key: $SONARR_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"RssSync"}' >/dev/null 2>&1 || true
-fi
-
-echo "[$(ts)] [RECOVERY] Post-wake media pipeline recovery completed successfully." >> "$LOG_FILE"
+echo "[$(ts)] [RECOVERY] Post-wake recovery completed." >> "$LOG_FILE"

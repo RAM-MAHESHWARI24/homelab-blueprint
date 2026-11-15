@@ -6,7 +6,6 @@ and component READMEs exist and remain unbroken across git commits.
 
 import os
 import re
-import sys
 import unittest
 import subprocess
 from pathlib import Path

@@ -1,19 +1,28 @@
 [Unit]
-Description=Control Hub (Custom Dashboard & API Engine)
-After=network.target docker.service
-Wants=docker.service
+Description=Homelab Control Hub (dashboard and node management API)
+Documentation=https://github.com/RAM-MAHESHWARI24/homelab-blueprint
+After=network-online.target docker.service
+Wants=network-online.target docker.service
 
 [Service]
 Type=simple
+# Unprivileged service account created by the installer. It is a member of the
+# docker group, which is root-equivalent on the host; the bearer token in
+# CONTROL_HUB_TOKEN is the security boundary.
 User=homelab
 Group=homelab
 SupplementaryGroups=docker
-WorkingDirectory=/opt/homelab-blueprint/apps/control-hub
-EnvironmentFile=-/opt/homelab-blueprint/.env
-ExecStart=/opt/homelab-blueprint/apps/control-hub/venv/bin/python3 /opt/homelab-blueprint/apps/control-hub/server.py
+WorkingDirectory={{INSTALL_DIR}}/apps/control-hub
+EnvironmentFile=-{{ETC_DIR}}/control-hub.env
+ExecStart={{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+
+# Hardening
+NoNewPrivileges=false
+ProtectSystem=false
+PrivateTmp=true
 
 # Low-power resource bounds (prevents runaway processes)
 CPUQuota=20%

@@ -1,55 +1,63 @@
 #!/usr/bin/env python3
 """
-CleanYourTV - Automated Background App Updater for Android TVs
+TV auto-updater - background app updater for Android TVs
 Runs on the home server and silently maintains sideloaded apps over ADB:
-  - SmartTube (yuliskov/SmartTube stable releases)
-  - CloudStream Beta (recloudstream/cloudstream pre-releases)
-  - HD Streamz (official developer origin via https://hdstreamz.ru/get)
-  - Manual Sideload Drop folder: any APK placed in 'incoming_apks/' is silently pushed
+  - SmartTube (yuliskov/SmartTube stable releases on GitHub)
+  - CloudStream Beta (recloudstream/cloudstream pre-releases on GitHub)
+  - Manual sideload drop folder: any APK placed in 'incoming_apks/' is silently pushed
+
+Only official release sources are used. Every downloaded APK's signing certificate
+is checked against the SHA-256 fingerprints pinned in config.json (apk_signatures)
+before it is cached or installed; a mismatch is logged and the file discarded.
 
 Two-Tier State-Machine Architecture:
   Tier 1: Daily Upstream Sync (Once every 24h, or on --sync)
-    - Checks GitHub APIs and official HD Streamz endpoint.
+    - Checks the GitHub release APIs.
     - Caches latest genuine APKs in 'cache/'.
     - Updates target versionCodes in 'state.json'.
 
   Tier 2: Opportunistic Local Deployment & Quiescent Idle (15-min cron)
-    - If all 3 target TVs have all managed apps installed & up to date:
+    - If all target TVs have all managed apps installed & up to date:
         STOPS POLLING. Exits immediately in <5ms with 0 network or TV traffic.
     - If any TV is missing an app or has an older version:
         Probes ONLY the pending TV(s) (leaving already-updated TVs untouched).
         Freshly installs missing apps or upgrades existing ones.
         Safety guards: never installs if video/audio is playing or app is foreground.
-        Once all 3 TVs have all apps installed & updated, enters quiescent idle.
+        Once all TVs have all apps installed & updated, enters quiescent idle.
 """
 
 import os
-import re
 import sys
 import time
 import json
 import socket
+import struct
+import shutil
+import hashlib
 import logging
 import argparse
+import zipfile
 import subprocess
 import urllib.request
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-# Paths
+# Paths. Standalone: everything lives next to this script. Installed by the
+# blueprint: TV_AUTOUPDATER_STATE_DIR=/var/lib/homelab/tv-autoupdater (owned by
+# the unprivileged service user) and TV_AUTOUPDATER_CONFIG=/etc/homelab/tv-autoupdater.json.
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_FILE = BASE_DIR / "config.json"
-CACHE_DIR = BASE_DIR / "cache"
-INCOMING_DIR = BASE_DIR / "incoming_apks"
-INSTALLED_DIR = BASE_DIR / "installed_apks"
-LOG_FILE = BASE_DIR / "tv_updater.log"
-STATE_FILE = BASE_DIR / "state.json"
-DEVICES_CACHE_FILE = BASE_DIR / "devices_cache.json"
-INCOMPATIBLE_CACHE_FILE = BASE_DIR / "incompatible_apks.json"
+STATE_DIR = Path(os.getenv("TV_AUTOUPDATER_STATE_DIR", str(BASE_DIR)))
+CONFIG_FILE = Path(os.getenv("TV_AUTOUPDATER_CONFIG", str(BASE_DIR / "config.json")))
+CACHE_DIR = STATE_DIR / "cache"
+INCOMING_DIR = STATE_DIR / "incoming_apks"
+INSTALLED_DIR = STATE_DIR / "installed_apks"
+LOG_FILE = Path(os.getenv("TV_AUTOUPDATER_LOG", str(STATE_DIR / "tv_updater.log")))
+STATE_FILE = STATE_DIR / "state.json"
+DEVICES_CACHE_FILE = STATE_DIR / "devices_cache.json"
+INCOMPATIBLE_CACHE_FILE = STATE_DIR / "incompatible_apks.json"
 
-CACHE_DIR.mkdir(exist_ok=True)
-INCOMING_DIR.mkdir(exist_ok=True)
-INSTALLED_DIR.mkdir(exist_ok=True)
+for _d in (CACHE_DIR, INCOMING_DIR, INSTALLED_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
 # Upstream check cooldown (24 hours in seconds)
 UPSTREAM_CHECK_INTERVAL_SEC = 24 * 3600
@@ -84,12 +92,20 @@ MANAGED_APPS = [
         "package": "com.lagradost.cloudstream3.prerelease",
         "name": "CloudStream Beta",
     },
-    {
-        "id": "hdstreamz",
-        "package": "topic.election.sector",
-        "name": "HD Streamz",
-    },
 ]
+
+# Signing-certificate pins: package -> list of allowed SHA-256 fingerprints (lowercase hex,
+# no colons). Checked on every download and before every install. Print an APK's
+# fingerprint with `tv_updater.py --print-signature <file.apk>`. The defaults are the
+# certificates the upstream projects sign their GitHub releases with (verified 2026-11-14).
+APK_SIGNATURES = {
+    "org.smarttube.stable": ["109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a"],
+    "com.lagradost.cloudstream3.prerelease": ["c2755b1fbc6cefa6aa20739f527d09246525618a7e16edb2e2171c2c9de70c72"],
+    "com.lagradost.cloudstream3": ["9b4f6c87eeb70b257c7f968e65b15616824bce33e9cc74a07ad3dd26632a1db7"],
+}
+# Packages without a pin are refused unless this is true (manual drops in incoming_apks/ are
+# always allowed: placing a file there is the operator's explicit decision).
+ALLOW_UNPINNED_APPS = False
 
 DHCP_SUBNET_PREFIX = "192.168.1"
 DHCP_SCAN_RANGE = (32, 100)
@@ -105,17 +121,16 @@ if CONFIG_FILE.exists():
                 DHCP_SUBNET_PREFIX = _cfg["subnet_prefix"]
             if "dhcp_scan_range" in _cfg:
                 DHCP_SCAN_RANGE = tuple(_cfg["dhcp_scan_range"])
+            if isinstance(_cfg.get("apk_signatures"), dict):
+                for _pkg, _pins in _cfg["apk_signatures"].items():
+                    if isinstance(_pins, list):
+                        APK_SIGNATURES[_pkg] = [str(p).replace(":", "").lower() for p in _pins]
+            if "allow_unpinned_apps" in _cfg:
+                ALLOW_UNPINNED_APPS = bool(_cfg["allow_unpinned_apps"])
     except Exception as _e:
         pass
 
-HEADERS = {"User-Agent": "CleanYourTV-AppUpdater/1.0"}
-HDSTREAMZ_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-HDSTREAMZ_PAGE_URLS = [
-    "https://hdstreamz.ru/get",
-    "https://hdstreamz.ru/",
-    "https://hdstreamzin.com/",
-    "https://hdstreamz2.com.co/download-apk-latest-version/",
-]
+HEADERS = {"User-Agent": "tv-autoupdater/2.0 (+https://github.com/RAM-MAHESHWARI24/homelab-blueprint)"}
 
 # Configure logging
 logging.basicConfig(
@@ -263,7 +278,7 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
         ips_to_scan = [ip for ip in ips_to_scan if ip not in already_checked]
 
         with ThreadPoolExecutor(max_workers=30) as executor:
-            active_ips = [ip for ip, open_port in zip(ips_to_scan, executor.map(is_port_open, ips_to_scan)) if open_port]
+            active_ips = [ip for ip, open_port in zip(ips_to_scan, executor.map(is_port_open, ips_to_scan), strict=False) if open_port]
 
         for ip in active_ips:
             model = get_device_model(ip, 5555)
@@ -391,7 +406,124 @@ def get_installed_version_name(device_ip: str, package_name: str) -> str:
             return line.split("=", 1)[1].strip()
     return ""
 
+# -------------------------------------------------------------
+# APK SIGNING CERTIFICATE VERIFICATION (no build-tools needed)
+# -------------------------------------------------------------
+
+_APK_SIG_BLOCK_MAGIC = b"APK Sig Block 42"
+_APK_SIG_SCHEME_IDS = {0x7109871A: "v2", 0xF05368C0: "v3", 0x1B93AD61: "v3.1"}
+
+
+def _u32(buf: bytes, offset: int) -> int:
+    return struct.unpack_from("<I", buf, offset)[0]
+
+
+def _len_prefixed_items(buf: bytes) -> list:
+    items, o = [], 0
+    while o + 4 <= len(buf):
+        n = _u32(buf, o)
+        o += 4
+        items.append(buf[o:o + n])
+        o += n
+    return items
+
+
+def _apk_signing_block_pairs(data: bytes):
+    """Returns the ID-value area of the APK Signing Block, or None (v1-only or not an APK)."""
+    eocd = data.rfind(b"PK\x05\x06", max(0, len(data) - 65557))
+    if eocd < 0:
+        return None
+    cd_offset = _u32(data, eocd + 16)
+    if cd_offset < 32 or data[cd_offset - 16:cd_offset] != _APK_SIG_BLOCK_MAGIC:
+        return None
+    size = struct.unpack_from("<Q", data, cd_offset - 24)[0]
+    start = cd_offset - size - 8
+    if start < 0 or struct.unpack_from("<Q", data, start)[0] != size:
+        return None
+    return data[start + 8:cd_offset - 24]
+
+
+def _signing_certs_v2_v3(data: bytes) -> list:
+    pairs = _apk_signing_block_pairs(data)
+    if pairs is None:
+        return []
+    certs = []
+    o = 0
+    while o + 12 <= len(pairs):
+        length = struct.unpack_from("<Q", pairs, o)[0]
+        ident = _u32(pairs, o + 8)
+        value = pairs[o + 12:o + 8 + length]
+        o += 8 + length
+        if ident not in _APK_SIG_SCHEME_IDS:
+            continue
+        for signer in _len_prefixed_items(value[4:4 + _u32(value, 0)]):
+            signed_data = signer[4:4 + _u32(signer, 0)]
+            certs_start = 4 + _u32(signed_data, 0)  # skip digests sequence
+            certs_seq = signed_data[certs_start + 4:certs_start + 4 + _u32(signed_data, certs_start)]
+            for cert in _len_prefixed_items(certs_seq):
+                if cert and cert not in certs:
+                    certs.append(cert)
+    return certs
+
+
+def _signing_certs_v1(apk_path: Path) -> list:
+    """Fallback for v1-only APKs: META-INF/*.RSA|DSA|EC (PKCS#7) via openssl, when installed."""
+    if not shutil.which("openssl"):
+        return []
+    certs = []
+    try:
+        with zipfile.ZipFile(apk_path) as z:
+            for name in z.namelist():
+                if name.startswith("META-INF/") and name.upper().endswith((".RSA", ".DSA", ".EC")):
+                    res = subprocess.run(["openssl", "pkcs7", "-inform", "DER", "-print_certs", "-outform", "PEM"],
+                                         input=z.read(name), capture_output=True, timeout=20)
+                    import base64
+                    for block in res.stdout.decode(errors="replace").split("-----END CERTIFICATE-----")[:-1]:
+                        body = block.split("-----BEGIN CERTIFICATE-----")[-1]
+                        der = base64.b64decode("".join(body.split()))
+                        if der and der not in certs:
+                            certs.append(der)
+    except (zipfile.BadZipFile, OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return certs
+
+
+def apk_signing_fingerprints(apk_path: Path) -> list:
+    """SHA-256 fingerprints (lowercase hex) of the APK's signing certificates."""
+    try:
+        data = Path(apk_path).read_bytes()
+    except OSError:
+        return []
+    certs = _signing_certs_v2_v3(data) or _signing_certs_v1(Path(apk_path))
+    return [hashlib.sha256(c).hexdigest() for c in certs]
+
+
+def verify_apk_signature(apk_path: Path, package: str, manual: bool = False) -> tuple:
+    """
+    (ok, reason). Official downloads must match a pin for their package; unknown packages
+    are refused unless ALLOW_UNPINNED_APPS. Manual drops are allowed without a pin but are
+    still checked when a pin exists for their package.
+    """
+    fps = apk_signing_fingerprints(apk_path)
+    if not fps:
+        return False, "could not read a signing certificate (unsigned or unsupported APK)"
+    pins = APK_SIGNATURES.get(package or "", [])
+    if not pins:
+        if manual or ALLOW_UNPINNED_APPS:
+            return True, f"no pin for {package}; accepting (fingerprint {fps[0][:16]}...)"
+        return False, (f"no signing-certificate pin for {package}; add it to config.json apk_signatures "
+                       f"(fingerprint {fps[0]}) or set allow_unpinned_apps")
+    if any(fp in pins for fp in fps):
+        return True, "signing certificate matches pin"
+    return False, f"signing certificate {fps[0]} does not match the pinned key for {package}"
+
+
 def silent_install(device_ip: str, device_name: str, apk_path: Path, package_name: str = None, force: bool = False) -> bool:
+    manual = INCOMING_DIR in apk_path.parents
+    sig_ok, sig_reason = verify_apk_signature(apk_path, package_name or get_apk_details(apk_path).get("package", ""), manual=manual)
+    if not sig_ok:
+        logging.error(f"Refusing to install {apk_path.name} on {device_name}: {sig_reason}")
+        return False
     if force:
         fg_pkg = get_foreground_package(device_ip)
         reason = f"FORCE OVERRIDE: Deploying immediately (Foreground is {fg_pkg or 'launcher/idle'})"
@@ -442,6 +574,20 @@ def download_file(url: str, dest_path: Path) -> bool:
 # TIER 1: UPSTREAM SYNC (DAILY / ON-DEMAND)
 # -------------------------------------------------------------
 
+def _verified_download(cached_apk: Path, package: str) -> bool:
+    """Discards a downloaded APK whose signing certificate does not match the pin."""
+    ok, reason = verify_apk_signature(cached_apk, package)
+    if ok:
+        logging.info(f"{cached_apk.name}: {reason}")
+        return True
+    logging.error(f"{cached_apk.name}: {reason}; discarding download")
+    try:
+        cached_apk.unlink()
+    except OSError:
+        pass
+    return False
+
+
 def fetch_upstream_smarttube() -> dict:
     """Fetch latest SmartTube release info and download APK if needed."""
     pkg = "org.smarttube.stable"
@@ -473,6 +619,8 @@ def fetch_upstream_smarttube() -> dict:
     if not cached_apk.exists():
         if not download_file(asset.get("browser_download_url"), cached_apk):
             return {}
+    if not _verified_download(cached_apk, pkg):
+        return {}
 
     info = get_apk_details(cached_apk)
     return {
@@ -506,6 +654,8 @@ def fetch_upstream_cloudstream() -> dict:
     if not cached_apk.exists():
         if not download_file(asset.get("browser_download_url"), cached_apk):
             return {}
+    if not _verified_download(cached_apk, pkg):
+        return {}
 
     info = get_apk_details(cached_apk)
     return {
@@ -513,61 +663,6 @@ def fetch_upstream_cloudstream() -> dict:
         "version_code": info.get("version_code", -1),
         "version_name": info.get("version_name", ""),
         "apk_filename": apk_filename,
-    }
-
-def fetch_upstream_hdstreamz() -> dict:
-    """Scrape official HD Streamz websites and mirrors for genuine APK."""
-    pkg = "topic.election.sector"
-    found_apk_urls = set()
-    for page_url in HDSTREAMZ_PAGE_URLS:
-        try:
-            req = urllib.request.Request(page_url, headers={"User-Agent": HDSTREAMZ_USER_AGENT})
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                final_url = resp.geturl()
-                if ".apk" in final_url:
-                    found_apk_urls.add(final_url)
-                else:
-                    html = resp.read().decode("utf-8", errors="ignore")
-                    links = re.findall(r'https?://[^\s"\'<>#]+\.apk', html)
-                    for link in links:
-                        found_apk_urls.add(link)
-        except Exception as e:
-            logging.warning(f"Could not check HD Streamz site ({page_url}): {e}")
-
-    if not found_apk_urls:
-        return {}
-
-    incompatible_list = load_incompatible_cache()
-    valid_candidates = []
-
-    for apk_url in sorted(found_apk_urls, reverse=True):
-        apk_filename = apk_url.rstrip("/").split("/")[-1]
-        if not apk_filename.endswith(".apk"):
-            apk_filename = f"hdstreamz_{int(time.time())}.apk"
-
-        if apk_filename in incompatible_list:
-            continue
-
-        cached_apk = CACHE_DIR / apk_filename
-        if not cached_apk.exists():
-            if not download_file(apk_url, cached_apk):
-                continue
-
-        apk_info = get_apk_details(cached_apk)
-        if apk_info.get("version_code", -1) > 0:
-            valid_candidates.append((apk_info["version_code"], apk_filename, apk_info))
-
-    if not valid_candidates:
-        return {}
-
-    valid_candidates.sort(key=lambda c: c[0], reverse=True)
-    best_code, best_file, best_info = valid_candidates[0]
-
-    return {
-        "package": best_info.get("package") or pkg,
-        "version_code": best_code,
-        "version_name": best_info.get("version_name", ""),
-        "apk_filename": best_file,
     }
 
 def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
@@ -586,11 +681,11 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
             cached_files_exist = False
             break
 
-    if not force and elapsed < UPSTREAM_CHECK_INTERVAL_SEC and cached_files_exist and len(state.get("upstream_apps", {})) >= 3:
+    if not force and elapsed < UPSTREAM_CHECK_INTERVAL_SEC and cached_files_exist and len(state.get("upstream_apps", {})) >= len(MANAGED_APPS):
         # No sync needed
         return False
 
-    logging.info("Initiating Daily Upstream Sync (Checking GitHub & Official Release Endpoints)...")
+    logging.info("Initiating Daily Upstream Sync (GitHub release APIs; signing keys pinned)...")
     updated = False
 
     st_meta = fetch_upstream_smarttube()
@@ -601,11 +696,6 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
     cs_meta = fetch_upstream_cloudstream()
     if cs_meta and cs_meta.get("version_code", -1) > 0:
         state["upstream_apps"]["com.lagradost.cloudstream3.prerelease"] = cs_meta
-        updated = True
-
-    hds_meta = fetch_upstream_hdstreamz()
-    if hds_meta and hds_meta.get("version_code", -1) > 0:
-        state["upstream_apps"]["topic.election.sector"] = hds_meta
         updated = True
 
     state["last_upstream_check"] = now
@@ -693,7 +783,6 @@ def process_manual_incoming(online_tvs: list):
         info = get_apk_details(apk_path)
         pkg = info.get("package")
         code = info.get("version_code", -1)
-        name = info.get("version_name", "")
 
         if not pkg:
             logging.warning(f"Could not read package name from {apk_path.name}; skipping.")
@@ -1007,7 +1096,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
 
 def print_status(state: dict):
     print("=" * 80)
-    print("CleanYourTV - Automated Sideload Updater Status")
+    print("TV auto-updater - status")
     print("=" * 80)
 
     last_check = state.get("last_upstream_check", 0)
@@ -1052,8 +1141,10 @@ def print_status(state: dict):
 # -------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="CleanYourTV Background TV App Updater")
-    parser.add_argument("--sync", action="store_true", help="Force immediate daily upstream sync from GitHub & websites")
+    parser = argparse.ArgumentParser(description="TV auto-updater: background Android TV app updater (official sources, pinned signing keys)")
+    parser.add_argument("--sync", action="store_true", help="Force an immediate upstream sync from the GitHub release APIs")
+    parser.add_argument("--print-signature", type=str, metavar="APK", default=None,
+                        help="Print the SHA-256 signing-certificate fingerprint(s) of an APK (for config.json apk_signatures) and exit")
     parser.add_argument("--status", action="store_true", help="Display cluster update status and exit")
     parser.add_argument("--status-json", action="store_true", help="Output full cluster telemetry as JSON and exit")
     parser.add_argument("--force", action="store_true", help="Force install even if the app is currently in foreground")
@@ -1062,6 +1153,15 @@ def main():
     parser.add_argument("--package", type=str, default=None, help="Target specific app package or ID")
     parser.add_argument("--push-incoming", action="store_true", help="Deploy manual drops from incoming_apks/ to online TVs")
     args = parser.parse_args()
+
+    if args.print_signature:
+        fps = apk_signing_fingerprints(Path(args.print_signature))
+        if not fps:
+            print("No signing certificate found (unsigned APK or unsupported signature scheme).")
+            sys.exit(1)
+        for fp in fps:
+            print(fp)
+        return
 
     state = load_state()
 

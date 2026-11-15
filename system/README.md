@@ -11,7 +11,6 @@
 4. [Power Management & Sleep Guard (`system/power/`)](#-power-management--sleep-guard-systempower)
 5. [Cron Job Automation (`system/cron.d/`)](#-cron-job-automation-systemcrond)
 6. [Host Networking & File Sharing (`system/networking/`)](#-host-networking--file-sharing-systemnetworking)
-7. [Maintenance Routines (`system/maintenance/`)](#-maintenance-routines-systemmaintenance)
 8. [Cross-References & Documentation Links](#-cross-references--documentation-links)
 
 ---
@@ -21,8 +20,8 @@
 While application workloads (Jellyfin, qBittorrent, Immich, Radarr) run inside isolated Docker containers, **host-level responsibilities** require native Linux kernel access:
 * **ACPI S3 Suspend & RTC Wakeup:** Lowers server power consumption to ~1.2W during idle nighttime windows and awakens automatically at 06:00 AM via hardware CMOS RTC alarms.
 * **Control Hub Daemon (`control-hub.service`):** Native systemd service running the Flask telemetry sampler and configuration REST API outside container networking namespaces.
-* **Maintenance & Cleanups:** Scheduled Docker container image pruning, Watchtower updates, and Smart TV fleet ADB provisioning.
-* **Kernel & File Sharing Configuration:** Tailscale UDP optimization (`99-tailscale.conf`) and dual-share Samba permissions (`smb.conf.example`).
+* **Maintenance:** Smart TV fleet ADB provisioning. Container images are pinned and updated through Dependabot pull requests (no Watchtower).
+* **Kernel & File Sharing Configuration:** Tailscale UDP optimization (`99-tailscale.conf`) and LAN shares for the media and photo folders (`homelab-shares.conf.example`).
 
 ---
 
@@ -36,18 +35,14 @@ system/
 ├── power/
 │   ├── server-suspend.sh                 # Intelligent ACPI S3 sleep & self-healing wake script
 │   ├── server-suspend.conf.example       # Threshold configuration (SMB, downloads, network limits)
-│   └── immich-ml-control.sh              # Dynamically pauses Immich ML container before sleep
 ├── cron.d/
 │   ├── server-suspend                    # Nightly sleep-check trigger (e.g., 00:00 midnight)
 │   ├── immich-backup                     # Daily photo database & XMP sidecar backup trigger
 │   ├── immich-ml                         # Schedule for ML face detection & CLIP indexing
 │   ├── tv-updater                        # Weekly Android TV fleet ADB update routine
-│   └── watchtower                        # Weekly container image update sweep
 ├── networking/
 │   ├── 99-tailscale.conf                 # Sysctl kernel tuning (UDP buffers, IP forwarding)
-│   └── smb.conf.example                  # Samba multi-mount definition (MediaDrive + RootFS)
-└── maintenance/
-    └── watchtower-run.sh                 # Docker container update execution wrapper
+│   └── homelab-shares.conf.example       # Samba share definitions (Media + Photos), included from smb.conf
 ```
 
 ---
@@ -121,7 +116,6 @@ Cron configurations reside in standard `/etc/cron.d/` syntax:
 | `immich-backup` | `0 3 * * *` (03:00 AM) | Dumps PostgreSQL DB and mirrors photos/XMPs |
 | `immich-ml` | `0 4 * * *` (04:00 AM) | Runs batch face clustering & CLIP embeddings |
 | `tv-updater` | `0 5 * * 0` (Sunday 05:00 AM) | Synchronizes smart TV apps via ADB over WiFi |
-| `watchtower` | `0 4 * * 1` (Monday 04:00 AM) | Executes one-shot image update check via `watchtower-run.sh` |
 
 #### Deployment:
 ```bash
@@ -148,22 +142,14 @@ sudo cp system/networking/99-tailscale.conf /etc/sysctl.d/
 sudo sysctl --system
 ```
 
-### Samba Dual-Share Configuration (`smb.conf.example`)
-Defines the two primary LAN network shares:
-1. `[MediaDrive]`: Read/Write access to `/mnt/hdd/data` for daily file management and movie drop-offs.
-2. `[RootFS]`: Secured administrative access to `/` for developer configuration from remote workstations.
+### Samba Shares (`homelab-shares.conf.example`)
+Share definitions only; the distribution's `[global]` section is left alone. The installer renders the
+placeholders, writes `/etc/samba/homelab-shares.conf` and appends `include = /etc/samba/homelab-shares.conf`
+to `smb.conf`:
+1. `[Media]`: read/write access to the media root (`DATA_DIR`) for the host user.
+2. `[Photos]`: read/write access to the photo library (`MEMORIES_DIR`) with macOS `vfs_fruit` extras.
 
 * **Detailed Runbook:** [Networking: Tailscale & Samba](../docs/NETWORKING_TAILSCALE_SAMBA.md)
-
----
-
-## 🛠️ Maintenance Routines (`system/maintenance/`)
-
-### `watchtower-run.sh`
-Performs a safe, non-destructive Docker container image update sweep:
-* Pulls newest container tags for active services.
-* Automatically prunes dangling images and unused build caches.
-* Preserves database volumes and pinned container tags.
 
 ---
 

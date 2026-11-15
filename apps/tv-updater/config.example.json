@@ -1,11 +1,19 @@
 {
-  "_README": "CleanYourTV Android TV Fleet Configuration Template. Copy to 'config.json' and customize for your home network.",
+  "_README": "TV auto-updater configuration template. Copy to 'config.json' (the blueprint installer renders /etc/homelab/tv-autoupdater.json) and customize for your home network.",
   "_GUIDE": {
     "subnet_prefix": "First 3 octets of your local LAN (e.g. '192.168.1' or '10.0.0'). Used by the ARP/ADB dynamic IP resolver.",
     "dhcp_scan_range": "[start_host, end_host] range to sweep when a TV's IP changes under DHCP lease renewals.",
     "how_to_find_model": "Run 'adb -s <TV_IP>:5555 shell getprop ro.product.model' or 'getprop ro.product.device' to find your TV identifier.",
-    "how_to_enable_adb": "On your Android TV, go to Settings -> Device Preferences -> About -> Click 'Build' 7 times. Then go to Developer Options -> Enable 'USB / Network Debugging'."
+    "how_to_enable_adb": "On your Android TV, go to Settings -> Device Preferences -> About -> Click 'Build' 7 times. Then go to Developer Options -> Enable 'USB / Network Debugging'.",
+    "apk_signatures": "Per package: SHA-256 fingerprints of the signing certificates allowed for that app. Downloads and installs with any other key are refused. Get a fingerprint with: python3 tv_updater.py --print-signature file.apk",
+    "allow_unpinned_apps": "false (default): refuse apps that have no pin above. Manual drops in incoming_apks/ are always allowed."
   },
+  "apk_signatures": {
+    "org.smarttube.stable": ["109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a"],
+    "com.lagradost.cloudstream3.prerelease": ["c2755b1fbc6cefa6aa20739f527d09246525618a7e16edb2e2171c2c9de70c72"],
+    "com.lagradost.cloudstream3": ["9b4f6c87eeb70b257c7f968e65b15616824bce33e9cc74a07ad3dd26632a1db7"]
+  },
+  "allow_unpinned_apps": false,
   "subnet_prefix": "192.168.1",
   "dhcp_scan_range": [30, 120],
   "target_profiles": [

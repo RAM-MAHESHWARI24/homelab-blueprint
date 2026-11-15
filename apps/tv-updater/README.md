@@ -18,7 +18,7 @@ Running updaters (Obtainium, Shizuku, auto-update daemons) directly on low-spec 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  Tier 1: Daily Upstream Sync (Once every 24h, or on --sync)      │
-│  • Checks GitHub APIs (SmartTube, CloudStream) & HD Streamz      │
+│  • Checks GitHub release APIs (SmartTube, CloudStream)           │
 │  • Caches new genuine APKs in cache/                             │
 │  • Updates target versionCodes in state.json                     │
 └─────────────────────────────────┬────────────────────────────────┘
@@ -46,7 +46,7 @@ Running updaters (Obtainium, Shizuku, auto-update daemons) directly on low-spec 
 
 1. **SmartTube Stable** (`org.smarttube.stable`): Automated tracking of `yuliskov/SmartTube` GitHub releases (ARMv7a).
 2. **CloudStream Beta** (`com.lagradost.cloudstream3.prerelease`): Automated tracking of `recloudstream/cloudstream` GitHub pre-releases with server-side versionCode diffing.
-3. **HD Streamz** (`topic.election.sector`): Automated fetching with developer keystore verification (`5E:AA:CA:0A:...`) to prevent signature mismatch errors.
+3. **Signing-key pinning**: every APK's signing certificate must match the SHA-256 fingerprint pinned in `config.json` (`apk_signatures`); anything else is refused. Print a fingerprint with `python3 tv_updater.py --print-signature file.apk`.
 4. **Manual Sideload Drops**: Any APK dropped into `incoming_apks/` is silently pushed across all TVs and archived to `installed_apks/`.
 
 ---
