@@ -235,7 +235,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 5: Host Daemons, Cron, & Power Management
 
-* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`system/power/`](../system/power), [`apps/tv-autoupdater/`](../apps/tv-autoupdater)
+* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`apps/control-hub/host/`](../apps/control-hub/host), [`apps/tv-autoupdater/`](../apps/tv-autoupdater)
 * **Goal:** Verify ultra-low power consumption, host health telemetry, and autonomous Android TV maintenance.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
@@ -355,7 +355,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 9: Simulated Cloud Backup, Database Dumps & Rclone Mirror
 
-* **Target Source:** [`system/cron.d/immich-backup`](../system/cron.d/immich-backup), [`apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)
+* **Target Source:** [`apps/immich-face-xmp-exporter/host/cron/immich-backup`](../apps/immich-face-xmp-exporter/host/cron/immich-backup), [`apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)
 * **Goal:** Conclusively verify that nightly database snapshots, exported XMP sidecars, and the Memories photo library are mirrored to simulated Google Drive storage using `rclone` with server-side move tracking and accidental deletion protection.
 
 ```

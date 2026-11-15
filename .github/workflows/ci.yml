@@ -39,7 +39,7 @@ jobs:
             teardown.sh \
             apps/control-hub/run.sh \
             apps/immich-face-xmp-exporter/scripts/immich-ml-control.sh \
-            system/power/server-suspend.sh \
+            apps/control-hub/host/server-suspend.sh \
             apps/tv-autoupdater/setup_cron.sh \
             apps/mediaserver/host/post-wake-arr.sh \
             apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example

@@ -36,7 +36,7 @@ Every agent proposing modifications must honor these five non-negotiable invaria
 * **Implementation:** Always validate with `netplan generate` first, then apply through `config_core/netplan_manager.py`, which arms the `homelab-netplan-revert` timer and restores the backup unless the change is confirmed from the new address.
 
 ### 1.5. Sleep Guard & Power Deferral ([`ADR-0003`](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md))
-* **The Rule:** Never remove or bypass active condition guards in `system/power/server-suspend.sh`.
+* **The Rule:** Never remove or bypass active condition guards in `apps/control-hub/host/server-suspend.sh`.
 * **Guards:** Active qBittorrent downloads, active LAN SMB file streams, and `/run/server-suspend.skip` UI flags must defer S3 suspend.
 
 ---

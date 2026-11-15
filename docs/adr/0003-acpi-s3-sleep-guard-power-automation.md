@@ -39,6 +39,6 @@ We adopt **ACPI S3 Suspend-to-RAM orchestrated by a multi-guard daemon script (`
 
 ## References
 * [Power Management & RTC Wake Guide](../POWER_MANAGEMENT_RTCWAKE.md)
-* [Server Suspend Script](../../system/power/server-suspend.sh)
+* [Server Suspend Script](../../apps/control-hub/host/server-suspend.sh)
 * [System Host Daemons](../../system/README.md)
 
