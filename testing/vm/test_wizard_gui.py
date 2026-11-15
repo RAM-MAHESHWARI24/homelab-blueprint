@@ -67,15 +67,31 @@ class GuiTest:
         if not ok:
             raise Step(f"{name}: {detail}")
 
-    def multipass(self, *args: str, timeout: int = 600, check: bool = True) -> subprocess.CompletedProcess:
-        res = subprocess.run([self.mp, *args], capture_output=True, text=True, timeout=timeout,
-                             encoding="utf-8", errors="replace")
+    def multipass(self, *args: str, timeout: int = 600, check: bool = True, cwd: str = None) -> subprocess.CompletedProcess:
+        # stdin=DEVNULL: `multipass exec` forwards stdin and otherwise waits on a pipe that never closes.
+        res = subprocess.run([self.mp, *args], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                             timeout=timeout, encoding="utf-8", errors="replace", cwd=cwd)
         if check and res.returncode != 0:
             raise Step(f"multipass {' '.join(args[:3])} failed: {res.stderr.strip() or res.stdout.strip()}")
         return res
 
     def vm_sh(self, script: str, timeout: int = 600, check: bool = True) -> subprocess.CompletedProcess:
+        """Short commands only: on Windows, `multipass exec` stalls once stdout passes 4 KB. Use vm_read for files."""
         return self.multipass("exec", self.vm, "--", "sudo", "bash", "-c", script, timeout=timeout, check=check)
+
+    def vm_read(self, path: str) -> str:
+        """Reads a VM file through `multipass transfer` (no output-size limit). Empty string if missing."""
+        self.vm_sh(f"test -f {path} && install -m 0644 {path} /tmp/hb-read.tmp || rm -f /tmp/hb-read.tmp", check=False, timeout=60)
+        with tempfile.TemporaryDirectory() as td:
+            dst = Path(td) / "read.tmp"
+            # Relative destination: multipass would read "C:" in a Windows path as an instance name.
+            res = self.multipass("transfer", f"{self.vm}:/tmp/hb-read.tmp", "read.tmp", check=False, timeout=120, cwd=td)
+            # On Windows multipass exits 2 after copying ("cannot set permissions for local file"); the file is fine.
+            if dst.exists():
+                return dst.read_text(encoding="utf-8", errors="replace")
+            if res.returncode != 0 and "No such file" not in res.stderr:
+                self.log(f"(transfer of {path} failed: {res.stderr.strip()[:200]})")
+            return ""
 
     def shot(self, page, label: str) -> None:
         self.shot_no += 1
@@ -113,8 +129,22 @@ class GuiTest:
         ips = info["info"][self.vm].get("ipv4", [])
         return next((ip for ip in ips if not ip.startswith(("172.17.", "172.18.", "172.19."))), ips[0] if ips else "")
 
+    def read_wizard_log(self) -> str:
+        """multipass exec occasionally hangs on Windows; keep each read short and retry."""
+        try:
+            return self.vm_read("/var/log/hb-wizard.log")
+        except subprocess.TimeoutExpired:
+            self.log("(multipass exec timed out reading the wizard log; retrying)")
+            return ""
+
     def start_wizard(self) -> str:
         """Starts bootstrap (or setup.sh for --source local) detached, returns the printed wizard URL."""
+        if self.args.reuse_vm:
+            m = WIZARD_URL_RE.search(self.read_wizard_log())
+            running = self.vm_sh("systemctl is-active hb-wizard || true", check=False, timeout=60).stdout.strip()
+            if m and running == "active":
+                self.record("Reusing the wizard already running in the VM", True)
+                return m.group(0).replace(m.group(1), self.vm_ip)
         env = "--setenv=SUDO_USER=ubuntu --setenv=DEBIAN_FRONTEND=noninteractive"
         out = "--property=StandardOutput=file:/var/log/hb-wizard.log --property=StandardError=file:/var/log/hb-wizard.log"
         if self.args.source == "github":
@@ -127,14 +157,14 @@ class GuiTest:
             with tempfile.TemporaryDirectory() as td:
                 tar = Path(td) / "blueprint.tar.gz"
                 subprocess.run(["git", "-C", str(REPO_ROOT), "archive", "--format=tar.gz", "-o", str(tar), "HEAD"], check=True)
-                self.multipass("transfer", str(tar), f"{self.vm}:/tmp/blueprint.tar.gz")
+                self.multipass("transfer", tar.name, f"{self.vm}:/tmp/blueprint.tar.gz", cwd=td)
             self.vm_sh("mkdir -p /opt/homelab-blueprint && tar -xzf /tmp/blueprint.tar.gz -C /opt/homelab-blueprint && "
                        f"cd /opt/homelab-blueprint && systemd-run --unit hb-wizard --working-directory=/opt/homelab-blueprint "
                        f"{env} {out} bash ./setup.sh")
 
         deadline = time.time() + 1200
         while time.time() < deadline:
-            log = self.vm_sh("cat /var/log/hb-wizard.log 2>/dev/null || true", check=False).stdout
+            log = self.read_wizard_log()
             m = WIZARD_URL_RE.search(log)
             if m:
                 url = m.group(0)
@@ -151,7 +181,7 @@ class GuiTest:
 
     def save_wizard_log(self) -> None:
         try:
-            log = self.vm_sh("cat /var/log/hb-wizard.log 2>/dev/null || true", check=False, timeout=60).stdout
+            log = self.vm_read("/var/log/hb-wizard.log")
             token_re = re.compile(r"(token=|token: *|Control Hub token: *)[A-Za-z0-9_\-]{12,}")
             (self.report_dir / "wizard.log").write_text(token_re.sub(r"\1<redacted>", log), encoding="utf-8")
         except Exception as e:
@@ -186,8 +216,12 @@ class GuiTest:
                 self.dashboard_flow(page)
             finally:
                 (self.report_dir / "browser-console.log").write_text("\n".join(console), encoding="utf-8")
-                ctx.close()
-                browser.close()
+                self.log("Closing the browser (finalising the video)...")
+                for closer in (ctx.close, browser.close):
+                    try:
+                        closer()
+                    except Exception as e:
+                        self.log(f"(browser close failed: {e})")
 
     def wizard_flow(self, page) -> None:
         url = self._wizard_url
@@ -295,12 +329,15 @@ class GuiTest:
         self.record("Revert timer is gone", not timers.stdout.strip(), timers.stdout.strip())
 
     def verify_wiring(self) -> None:
-        self.multipass("transfer", str(REPO_ROOT / "testing" / "vm" / "check_wiring.sh"), f"{self.vm}:/tmp/check_wiring.sh")
-        res = self.vm_sh("bash /tmp/check_wiring.sh --photos 2>&1", check=False, timeout=300)
-        (self.report_dir / "check_wiring.txt").write_text(res.stdout, encoding="utf-8")
-        failed = next((ln for ln in reversed(res.stdout.splitlines()) if ln.startswith("+ ")), "")
-        self.record("Apps wired inside the VM (check_wiring.sh)", res.returncode == 0 and "WIRING OK" in res.stdout,
-                    "" if res.returncode == 0 else f"last check: {failed}")
+        self.multipass("transfer", "check_wiring.sh", f"{self.vm}:/tmp/check_wiring.sh", cwd=str(REPO_ROOT / "testing" / "vm"))
+        # The Windows checkout has CRLF line endings; bash needs LF.
+        res = self.vm_sh("sed -i 's/\\r$//' /tmp/check_wiring.sh && bash /tmp/check_wiring.sh --photos > /tmp/check_wiring.txt 2>&1; echo rc=$?",
+                         check=False, timeout=300)
+        out = self.vm_read("/tmp/check_wiring.txt")
+        (self.report_dir / "check_wiring.txt").write_text(out, encoding="utf-8")
+        failed = next((ln for ln in reversed(out.splitlines()) if ln.startswith("+ ")), "")
+        passed = "rc=0" in res.stdout and "WIRING OK" in out
+        self.record("Apps wired inside the VM (check_wiring.sh)", passed, "" if passed else f"last check: {failed}")
 
     # ------------------------------------------------------------------ run
     def run(self) -> int:
