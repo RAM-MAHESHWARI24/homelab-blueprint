@@ -67,3 +67,6 @@ Thumbs.db
 
 # GUI end-to-end test output (screenshots, logs)
 testing/vm/reports/gui/
+
+# Personal Claude Code settings
+.claude/settings.local.json

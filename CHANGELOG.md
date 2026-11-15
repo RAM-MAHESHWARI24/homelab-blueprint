@@ -4,7 +4,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
-## [2.0.0]
+## [2.0.0] - 2026-11-15
 
 A rewrite of the installer around a single goal: a fresh Ubuntu server installed from the browser comes up fully wired.
 

@@ -19,7 +19,7 @@ On modern systems (Intel Skylake 6th Gen+, Alder Lake-N N100/N200/N305, or discr
 ```yaml
   jellyfin:
     container_name: jellyfin
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: lscr.io/linuxserver/jellyfin:12.4ubu2604-ls59  # pinned, as in apps/mediaserver/docker-compose.yml
     devices:
       - /dev/dri:/dev/dri # Enables Intel QuickSync & VAAPI inside the container
     environment:

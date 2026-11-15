@@ -29,7 +29,7 @@ This document establishes the **Target Maturity Model** for the Homelab Blueprin
 
 | Engineering Discipline | Recognized Industry Standard | Our Current Implementation | Current Grade | What We Must Build (Gaps) |
 | :--- | :--- | :--- | :---: | :--- |
-| **Packaging & Distribution** | **SemVer 2.0.0**, GitHub Releases, Checksums | Pinned release tags (`v1.1.0`), version-pinned `bootstrap.sh`, clean uninstaller `teardown.sh` | **A-** | Offline tarball bundle, SHA-256 installer verification, official GitHub Releases pages. |
+| **Packaging & Distribution** | **SemVer 2.0.0**, GitHub Releases, Checksums | Pinned release tags (`v2.0.0`), version-pinned `bootstrap.sh`, clean uninstaller `teardown.sh` | **A-** | Offline tarball bundle, SHA-256 installer verification, official GitHub Releases pages. |
 | **Security & Supply Chain** | **CIS Linux Benchmark**, SLSA L1/2, Principle of Least Privilege | Unprivileged `homelab` systemd user, sudoers whitelist, Gitleaks, Trivy vulnerability scan in CI | **A-** | Docker socket proxy (`tecnativa/docker-socket-proxy`), Control Hub LAN authentication guard. |
 | **Configuration** | **The Twelve-Factor App (III. Config)**, Strict Schema | Master `.env` sync + automated schema migrator (`schema_migrator.py`) with backups | **A+** | Strict Pydantic/JSON schema validation for `.env` types. |
 | **API & Interfaces** | **OpenAPI 3.1**, RFC 7807 (Problem Details), REST | Full OpenAPI 3.1 spec, embedded Swagger UI (`:7575/api/docs`), `/livez` & `/readyz` probes | **A+** | RFC 7807 standard error schemas, Prometheus metrics endpoint (`/metrics`). |
@@ -42,14 +42,14 @@ This document establishes the **Target Maturity Model** for the Homelab Blueprin
 
 ### The Industry Standard
 * **[SemVer 2.0.0](https://semver.org/):** `MAJOR.MINOR.PATCH`. Major = breaking config/storage changes; Minor = new services/widgets; Patch = bugfixes.
-* **Reproducible Asset Distribution:** Deployers download immutable release bundles (`homelab-blueprint-v1.1.0.tar.gz`) accompanied by cryptographic SHA-256 checksums (`checksums.txt.sha256`).
+* **Reproducible Asset Distribution:** Deployers download immutable release bundles (`homelab-blueprint-v2.0.0.tar.gz`) accompanied by cryptographic SHA-256 checksums (`checksums.txt.sha256`).
 * **Safe 1-Line Bootstrap:** Installers must allow pinning a specific release or branch:
   ```bash
-  curl -sSL https://raw.githubusercontent.com/.../bootstrap.sh | sudo bash -s -- --version v1.1.0
+  curl -sSL https://raw.githubusercontent.com/.../bootstrap.sh | sudo bash -s -- --version v2.0.0
   ```
 
 ### Current Status (High Compliance: A-)
-* **Pass:** Inaugural production releases cut and tagged on `main`: `v1.0.0`, `v1.0.1`, and `v1.1.0`.
+* **Pass:** Releases cut and tagged on `main`: `v1.0.0`, `v1.0.1`, `v1.1.0` and `v2.0.0` (2026-11-15, published with source tarballs by the release workflow).
 * **Pass:** `bootstrap.sh` supports `--version <tag>` and `--branch <name>` pinning.
 * **Pass:** Clean cluster uninstaller [`teardown.sh`](../teardown.sh) implemented with `--dry-run`, `--purge-data`, and `--force` flags.
 * **Pass:** Pre-flight diagnostic doctor CLI [`setup/doctor.py`](../setup/doctor.py) wired into `./setup.sh --doctor`.
@@ -177,12 +177,12 @@ PHASE 3 (Developer & Upgrade Experience) [100% COMPLETE]:
 └── [x] 12. Cut Git Release Tag: v1.1.0
 
 PHASE 4 (Zero-Trust Security & Disaster Recovery) [UPCOMING]:
-├── 13. Implement Control Hub LAN Auth Guard (PIN/Password via .env)
+├── [x] 13. Control Hub and Setup Wizard bearer-token authentication (v2.0.0)
 ├── 14. Build unified backup.sh & restore.sh disaster recovery engine
 └── 15. Introduce tecnativa/docker-socket-proxy for read-only Docker socket isolation
 
 PHASE 5 (Full E2E Integration & Observability) [UPCOMING]:
-├── 16. Ephemeral Docker container startup smoke test in GitHub Actions
+├── [x] 16. Real headless install, wiring checks and teardown in GitHub Actions; browser-driven VM test (v2.0.0, see V2_TEST_REPORT.md)
 ├── 17. Prometheus metrics exporter endpoint (/metrics) for Control Hub
-└── 18. Official GitHub Release notes publication with downloadable tarballs & SHA-256
+└── 18. GitHub Releases with tarballs (done in v2.0.0); SHA-256 checksums still to add
 ```

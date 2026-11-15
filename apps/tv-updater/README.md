@@ -1,4 +1,4 @@
-# CleanYourTV - Automated Background App Updater for Android TVs 📺
+# TV Auto-Updater - Background App Updater for Android TVs 📺
 
 > Zero-overhead, server-orchestrated background sideload updater for Android TVs over network ADB.  
 > Keeps SmartTube, CloudStream, and custom APKs updated silently without consuming TV memory or interrupting playback.
@@ -13,7 +13,7 @@
 
 Running updaters (Obtainium, Shizuku, auto-update daemons) directly on low-spec Android TV dongles (1GB–2GB RAM) consumes background resources, causing video stutters and sluggish menus. 
 
-**CleanYourTV** moves all downloading, version diffing, and scheduling to the server:
+The **TV auto-updater** moves all downloading, version diffing, and scheduling to the server:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐

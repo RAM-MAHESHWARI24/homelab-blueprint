@@ -27,7 +27,7 @@
 6. [GitHub Actions CI/CD Pipeline Strategy](#6-github-actions-cicd-pipeline-strategy)
    * [Can we test this in CI/CD? Is it advisable?](#can-we-test-this-in-cicd-is-it-advisable)
    * [The Two-Tier CI/CD Architecture](#the-two-tier-cicd-architecture)
-   * [Complete Ready-to-Use GitHub Actions Workflow](#complete-ready-to-use-github-actions-workflow)
+   * [The CI Workflow](#the-ci-workflow)
 7. [Automated Verification Checklist](#7-automated-verification-checklist)
 
 ---
@@ -88,7 +88,7 @@ To avoid disturbing the live production server (`Z:\` at `192.168.1.31`), testin
 │                               ▲                                           │
 │  [Layer 3: Ephemeral VM Sandboxes] (Multipass / Hyper-V on Host D:\)      │
 │  • 100% genuine Linux kernel, virtual BIOS, isolated IP                   │
-│  • True Netplan v2 netplan try --timeout test with safe rollback          │
+│  • Static-IP change with revert timer, confirmed from the new address     │
 │  • Multi-disk loop mounts (SSD root + ext4 HDD simulation)                │
 │  • Resource capping (2GB RAM low-power mini-PC stress testing)            │
 │                               ▲                                           │
@@ -244,7 +244,7 @@ multipass delete homelab-low-spec --purge
 | **`TC-SYS-02`** | Control Hub RAM Footprint | Probe Control Hub resident memory (`ps -o rss -p <pid>`). | Resident memory footprint strictly bounded. | **RSS < 25.0 MB**. |
 | **`TC-SYS-03`** | Sleep Guard Skip Flag | Touch `/run/server-suspend.skip` and invoke `/usr/local/sbin/server-suspend.sh`. | Suspend routine detects flag, deletes it, and exits safely without sleeping. | System remains online; exit code 0. |
 | **`TC-SYS-04`** | Active Job Deferral | Trigger `/usr/local/sbin/server-suspend.sh` while `immich_backup_gdrive.sh` is running. | Suspend routine detects active backup and defers sleep. | Sleep aborted; warning logged to `/var/log/server-suspend.log`. |
-| **`TC-SYS-05`** | CleanYourTV Quiescent Idle | Run `python3 tv_updater.py` when all target TVs are already up to date. | Detects all target versions match `state.json`. Exits immediately. | Runtime **< 15ms**; zero ADB network packets transmitted. |
+| **`TC-SYS-05`** | TV Auto-Updater Quiescent Idle | Run `python3 tv_updater.py` when all target TVs are already up to date. | Detects all target versions match `state.json`. Exits immediately. | Runtime **< 15ms**; zero ADB network packets transmitted. |
 | **`TC-SYS-06`** | Daemon Dry-Run Simulation Mode | Run `server-suspend.sh --dry-run` or with `DRY_RUN=1`. | Verifies calculation of sleep duration and logging without invoking hardware `rtcwake`. | Exit code 0; `[DRY_RUN]` logged; `rtcwake` skipped. |
 
 ---
@@ -437,144 +437,19 @@ To achieve 100% test coverage without broken CI builds, we use the standard **Tw
 
 ---
 
-### Complete Ready-to-Use GitHub Actions Workflow
+### The CI Workflow
 
-This workflow can be placed in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) to automatically validate every Pull Request:
+The workflow that runs on every push and pull request is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). An earlier copy kept here drifted from it, so this section now only lists its jobs:
 
-```yaml
-name: Homelab Blueprint CI
+| Job | What it checks |
+| :--- | :--- |
+| Linting & Secret Sanitization | ruff, ShellCheck, Gitleaks |
+| Setup Wizard Matrix Test | The wizard suite on Ubuntu 22.04 and 24.04 with Python 3.10 to 3.12 |
+| Docker Compose & Multi-Arch Verification | Compose files validate, no floating tags, every pinned image exists for amd64 and arm64 |
+| Real Headless Install, Health Probes & Teardown | A real install on a fresh runner, the apps wired together, then a teardown that leaves nothing |
+| Trivy Security & Vulnerability Scan | Known vulnerabilities in the repository and its dependencies |
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-
-jobs:
-  lint-and-security:
-    name: Linting & Secret Sanitization
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Verify No Secrets Committed
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: ShellCheck Static Analysis
-        run: |
-          shellcheck --severity=warning \
-            bootstrap.sh \
-            setup.sh \
-            teardown.sh \
-            apps/control-hub/run.sh \
-            system/power/immich-ml-control.sh \
-            system/power/server-suspend.sh \
-            apps/tv-updater/setup_cron.sh \
-            apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example
-
-  setup-wizard-test-matrix:
-    name: Setup Wizard Matrix Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-        python-version: ["3.10", "3.11", "3.12"]
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Control Hub Test Dependencies
-        run: |
-          pip install -r apps/control-hub/requirements.txt
-
-      - name: Validate Documentation Integrity & Links
-        run: |
-          python testing/test_docs_integrity.py
-
-      - name: Validate Configuration Schema Integrity
-        run: |
-          python setup/installer/schema_migrator.py --check
-
-      - name: Execute Setup Wizard Verification Test Suite
-        run: |
-          python setup/test_setup.py
-
-      - name: Execute E2E Pipeline Regression Suite
-        run: |
-          python testing/test_e2e_regression.py
-
-      - name: Execute Full Lifecycle Handoff Regression Suite
-        run: |
-          python testing/test_lifecycle_handoff.py
-
-  docker-compose-validation:
-    name: Docker Compose & Multi-Arch Verification
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Validate Media Stack Compose Syntax
-        run: |
-          cd apps/mediaserver
-          cp .env.example .env
-          docker compose config --quiet
-          echo "✅ apps/mediaserver docker-compose.yml is valid."
-
-      - name: Validate Noodle Gallery Compose Syntax
-        run: |
-          cd apps/noodle-gallery
-          cp .env.example .env
-          docker compose config --quiet
-          echo "✅ apps/noodle-gallery docker-compose.yml is valid."
-
-      - name: Validate Control Hub Standalone Compose Syntax
-        run: |
-          cd apps/control-hub
-          cp .env.example .env
-          docker compose config --quiet
-          echo "✅ apps/control-hub docker-compose.yml is valid."
-
-      - name: Set up QEMU for Cross-Platform Simulation (ARM64)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Verify Multi-Arch Image Availability
-        run: |
-          docker manifest inspect ghcr.io/seerr-team/seerr:latest | grep -E "amd64|arm64"
-          docker manifest inspect ghcr.io/thephaseless/byparr:latest | grep -E "amd64|arm64"
-          docker manifest inspect lscr.io/linuxserver/jellyfin:latest | grep -E "amd64|arm64"
-          echo "✅ Multi-arch container images verified."
-
-  security-vulnerability-scan:
-    name: Trivy Security & Vulnerability Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Run Trivy Repository & Dependency Scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-          format: 'table'
-```
+Results of the v2.0.0 runs, and of the browser-driven VM test, are in the [v2.0.0 Test Report](../docs/V2_TEST_REPORT.md).
 
 ---
 
