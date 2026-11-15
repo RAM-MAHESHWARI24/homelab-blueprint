@@ -264,6 +264,12 @@ jobs:
             echo "::endgroup::"
           done
           sudo ls -la /srv/homelab/appdata/mediaserver/ || true
+          echo "::group::qBittorrent WebUI log + login probe"
+          sudo tail -n 40 /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/logs/qbittorrent.log || true
+          sudo grep -E '^WebUI' /srv/homelab/appdata/mediaserver/qbittorrent/qBittorrent/qBittorrent.conf | sed 's/Password_PBKDF2=.*/Password_PBKDF2=<set>/' || true
+          QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env || true)"
+          curl -si --data-urlencode "username=admin" --data-urlencode "password=$QB_PASS" http://127.0.0.1:8080/api/v2/auth/login || true
+          echo "::endgroup::"
 
       - name: Teardown removes everything it installed
         # Runs after a failed install too: a half-installed stack must still be removable

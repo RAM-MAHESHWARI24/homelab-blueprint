@@ -19,8 +19,10 @@ LOG_FILE="${POST_WAKE_LOG:-/var/log/server-suspend.log}"
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] [RECOVERY] $*" >> "$LOG_FILE" 2>/dev/null || true; }
 
 if [ -r "$ENV_FILE" ]; then
-    # shellcheck disable=SC1090
-    set -a; . "$ENV_FILE"; set +a
+    set -a
+    # shellcheck source=/dev/null
+    . "$ENV_FILE"
+    set +a
 fi
 
 PROWLARR_API_KEY="${PROWLARR_API_KEY:-}"

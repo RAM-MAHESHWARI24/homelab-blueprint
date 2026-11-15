@@ -145,7 +145,9 @@ class QBit:
 
     def _form(self, path: str, fields: Dict[str, str]) -> Tuple[int, str]:
         body = urllib.parse.urlencode(fields).encode()
-        req = urllib.request.Request(self.base + path, data=body, headers={"Content-Type": "application/x-www-form-urlencoded", "Referer": self.base}, method="POST")
+        # No Referer/Origin header: qBittorrent treats a missing one as a non-browser client
+        # (same as Radarr/Sonarr), while a present one must match the Host header exactly.
+        req = urllib.request.Request(self.base + path, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
         try:
             with self.opener.open(req, timeout=15) as r:
                 return r.status, r.read().decode()
@@ -154,12 +156,19 @@ class QBit:
         except (urllib.error.URLError, OSError) as e:
             return 0, str(e)
 
-    def login(self) -> bool:
-        st, body = self._form("/api/v2/auth/login", {"username": self.user, "password": self.password})
-        return st == 200 and "Ok" in body
+    def login(self, attempts: int = 4) -> Tuple[bool, str]:
+        """Returns (ok, detail); detail carries the HTTP status and body so a failure is diagnosable from the log."""
+        st, body = 0, ""
+        for i in range(attempts):
+            st, body = self._form("/api/v2/auth/login", {"username": self.user, "password": self.password})
+            if st == 200 and "Ok" in body:
+                return True, f"HTTP {st}"
+            if i + 1 < attempts:
+                time.sleep(3)
+        return False, f"HTTP {st} {body.strip()[:160]!r} (user={self.user})"
 
     def ensure_categories(self) -> bool:
-        req = urllib.request.Request(self.base + "/api/v2/torrents/categories", headers={"Referer": self.base})
+        req = urllib.request.Request(self.base + "/api/v2/torrents/categories")
         try:
             with self.opener.open(req, timeout=15) as r:
                 existing = json.loads(r.read().decode() or "{}")
@@ -511,7 +520,8 @@ def cmd_wire(args) -> int:
         return 1
 
     qb = QBit(host, args.qbit_user, args.qbit_pass)
-    if step("qBittorrent: login", qb.login()):
+    qb_ok, qb_detail = qb.login()
+    if step("qBittorrent: login", qb_ok, qb_detail):
         step("qBittorrent: categories movies/tv", qb.ensure_categories())
 
     radarr = Arr("radarr", host, keys["radarr"], "v3")
