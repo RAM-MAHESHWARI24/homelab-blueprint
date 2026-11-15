@@ -224,20 +224,21 @@ jobs:
 
       - name: Apps are wired together (fully configured, not just running)
         run: |
+          set -x
           RADARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/radarr/config.xml)"
           SONARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/sonarr/config.xml)"
           PROWLARR_KEY="$(sudo grep -oP '(?<=<ApiKey>)[^<]+' /srv/homelab/appdata/mediaserver/prowlarr/config.xml)"
-          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/downloadclient | grep -q '"name":"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/downloadclient | grep -qE '"name": *"qBittorrent"'
           curl -fsS -H "X-Api-Key: $RADARR_KEY" http://127.0.0.1:7878/api/v3/rootfolder | grep -q '/data/media/movies'
-          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/downloadclient | grep -q '"name":"qBittorrent"'
+          curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/downloadclient | grep -qE '"name": *"qBittorrent"'
           curl -fsS -H "X-Api-Key: $SONARR_KEY" http://127.0.0.1:8989/api/v3/rootfolder | grep -q '/data/media/tv'
-          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Radarr"'
-          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -q '"name":"Sonarr"'
-          curl -fsS http://127.0.0.1:8096/System/Info/Public | grep -q '"StartupWizardCompleted":true'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -qE '"name": *"Radarr"'
+          curl -fsS -H "X-Api-Key: $PROWLARR_KEY" http://127.0.0.1:9696/api/v1/applications | grep -qE '"name": *"Sonarr"'
+          curl -fsS http://127.0.0.1:8096/System/Info/Public | grep -qE '"StartupWizardCompleted": *true'
           # Indexer picker: Control Hub sees Prowlarr, nothing pre-selected, Prowlarr's own list is served
           TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/status | tee /tmp/ix.json
-          grep -q '"installed":true' /tmp/ix.json && grep -q '"reachable":true' /tmp/ix.json && grep -q '"configured":0' /tmp/ix.json
+          python3 -c 'import json; d=json.load(open("/tmp/ix.json")); assert d.get("installed") and d.get("reachable") and d.get("configured") == 0, d'
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/indexers/available | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"] > 50, d; print("indexer definitions:", d["count"])'
           # qBittorrent accepts the generated password (read from the root-only env file)
           QB_PASS="$(sudo grep -oP '(?<=^QBITTORRENT_PASS=).*' /etc/homelab/mediaserver.env)"
