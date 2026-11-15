@@ -282,7 +282,7 @@ class TestSystemPowerAndHostDaemons(unittest.TestCase):
         self.skip_file = self.test_dir / "server-suspend.skip"
         self.override_file = self.test_dir / "server-suspend.override"
         self.conf_file = self.test_dir / "server-suspend.conf"
-        self.suspend_script = REPO_ROOT / "system" / "power" / "server-suspend.sh"
+        self.suspend_script = REPO_ROOT / "apps" / "control-hub" / "host" / "server-suspend.sh"
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)

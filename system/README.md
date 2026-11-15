@@ -8,10 +8,9 @@
 1. [Overview & Architecture](#-overview--architecture)
 2. [Component Directory Structure](#-component-directory-structure)
 3. [Systemd Service Units (`system/systemd/`)](#-systemd-service-units-systemsystemd)
-4. [Power Management & Sleep Guard (`system/power/`)](#-power-management--sleep-guard-systempower)
-5. [Cron Job Automation (`system/cron.d/`)](#-cron-job-automation-systemcrond)
-6. [Host Networking & File Sharing (`system/networking/`)](#-host-networking--file-sharing-systemnetworking)
-8. [Cross-References & Documentation Links](#-cross-references--documentation-links)
+4. [Module Host Files (moved)](#-module-host-files-moved)
+5. [Host Networking & File Sharing (`system/networking/`)](#-host-networking--file-sharing-systemnetworking)
+6. [Cross-References & Documentation Links](#-cross-references--documentation-links)
 
 ---
 
@@ -32,14 +31,6 @@ system/
 ├── systemd/
 │   ├── control-hub.service               # Systemd daemon for Control Hub Flask runtime (unprivileged)
 │   └── homelab-sudoers.example           # Least-privilege sudoers whitelist (/etc/sudoers.d/)
-├── power/
-│   ├── server-suspend.sh                 # Intelligent ACPI S3 sleep & self-healing wake script
-│   ├── server-suspend.conf.example       # Threshold configuration (SMB, downloads, network limits)
-├── cron.d/
-│   ├── server-suspend                    # Nightly sleep-check trigger (e.g., 00:00 midnight)
-│   ├── immich-backup                     # Daily photo database & XMP sidecar backup trigger
-│   ├── immich-ml                         # Schedule for ML face detection & CLIP indexing
-│   ├── tv-updater                        # Weekly Android TV fleet ADB update routine
 ├── networking/
 │   ├── 99-tailscale.conf                 # Sysctl kernel tuning (UDP buffers, IP forwarding)
 │   └── homelab-shares.conf.example       # Samba share definitions (Media + Photos), included from smb.conf
@@ -84,44 +75,21 @@ sudo journalctl -u control-hub.service -f -n 50
 
 ---
 
-## ⚡ Power Management & Sleep Guard (`system/power/`)
+## 📦 Module Host Files (moved)
 
-### 1. `server-suspend.sh`
-The primary power orchestrator. Executes intelligent pre-sleep condition checks before suspending the machine into **ACPI S3** state via `rtcwake`:
-1. **Skip Flag Check:** If `/run/server-suspend.skip` exists (toggled via Control Hub UI), sleep is cancelled for tonight.
-2. **Override Check:** If `/run/server-suspend.override` exists, suspend is delayed by +1 or +2 hours.
-3. **Active Downloads:** Probes qBittorrent Web API; delays sleep if downloads exceed minimum bandwidth threshold.
-4. **Active LAN SMB Sessions:** Inspects `smbstatus` to ensure no clients are actively streaming or transferring files.
-5. **Dynamic Wakeup Alarm:** Calculates seconds until next scheduled wake (default 06:00 AM) and executes:
-   ```bash
-   rtcwake -m mem -s "$SECONDS_UNTIL_WAKE"
-   ```
-6. **Post-Wake Self-Healing:** After resuming, restarts Docker daemon if needed, resets network adapters, and logs the full wake cycle.
+Host scripts and cron templates now live with the module they belong to, so each module's published repo carries them. The installer renders the cron templates (`{{INSTALL_DIR}}`, `{{STATE_DIR}}` and similar placeholders) and installs them to `/etc/cron.d/`.
 
-### 2. `immich-ml-control.sh`
-Pauses the resource-intensive machine learning container (`immich-machine-learning`) prior to sleep to prevent high CPU wakeups and memory lockups.
+| File | Module folder | Installed as | Schedule |
+| :--- | :--- | :--- | :--- |
+| `server-suspend.sh` | `apps/control-hub/host/` | `/usr/local/sbin/server-suspend.sh` | Run by the cron below |
+| `server-suspend.conf.example` | `apps/control-hub/host/` | `/etc/server-suspend.conf` | Sleep and wake times |
+| `cron/server-suspend` | `apps/control-hub/host/` | `/etc/cron.d/server-suspend` | 00:00, checks whether the server can sleep |
+| `cron/immich-ml` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-ml` | Starts the photo ML container at 06:00, stops it at 10:00 |
+| `cron/immich-backup` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-backup` | 22:00, database dump, XMP export and rclone mirror |
+| `cron/tv-autoupdater` | `apps/tv-autoupdater/host/` | `/etc/cron.d/tv-autoupdater` | Every 15 minutes from 06:00 to 23:45 |
+| `post-wake-arr.sh` | `apps/mediaserver/host/` | `/etc/server-suspend.d/50-mediaserver.sh` | After every resume |
 
-* **Documentation Deep Dive:** [Power Management & RTC Wake Guide](../docs/POWER_MANAGEMENT_RTCWAKE.md)
-* **Architecture Decision:** [ADR-0003: ACPI S3 Sleep Guard](../docs/adr/0003-acpi-s3-sleep-guard-power-automation.md)
-
----
-
-## ⏰ Cron Job Automation (`system/cron.d/`)
-
-Cron configurations reside in standard `/etc/cron.d/` syntax:
-
-| File | Schedule | Task Description |
-| :--- | :--- | :--- |
-| `server-suspend` | `0 0 * * *` (Midnight) | Evaluates sleep conditions and enters S3 sleep if idle |
-| `immich-backup` | `0 3 * * *` (03:00 AM) | Dumps PostgreSQL DB and mirrors photos/XMPs |
-| `immich-ml` | `0 4 * * *` (04:00 AM) | Runs batch face clustering & CLIP embeddings |
-| `tv-updater` | `0 5 * * 0` (Sunday 05:00 AM) | Synchronizes smart TV apps via ADB over WiFi |
-
-#### Deployment:
-```bash
-sudo cp system/cron.d/* /etc/cron.d/
-sudo chmod 644 /etc/cron.d/*
-```
+The suspend script's checks and post-wake hooks are described in the [Power Management & RTC Wake Guide](../docs/POWER_MANAGEMENT_RTCWAKE.md) and [ADR-0003](../docs/adr/0003-acpi-s3-sleep-guard-power-automation.md).
 
 ---
 
