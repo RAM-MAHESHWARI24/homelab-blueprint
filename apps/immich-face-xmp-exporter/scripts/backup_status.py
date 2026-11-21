@@ -5,6 +5,8 @@ Helper for immich_backup_gdrive.sh (standard library only).
     backup_status.py status ...      write status.json atomically (0644), keep run history
     backup_status.py retention ...   decide which nightly dumps to keep or delete
     backup_status.py stats FILE...   print transfer totals parsed from rclone output (JSON)
+    backup_status.py count-assets F  count photos/videos (not deleted) in a pg_dumpall .sql.gz
+    backup_status.py restore-result  record a restore test in status.json
 
 The Control Hub reads only status.json, so the dashboard never needs `sudo rclone`.
 """
@@ -12,6 +14,7 @@ The Control Hub reads only status.json, so the dashboard never needs `sudo rclon
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import re
@@ -119,6 +122,58 @@ def cmd_retention(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- restore test
+
+def count_assets_in_dump(path: str, table: str = "public.asset") -> Optional[int]:
+    """Rows of `table` whose "deletedAt" is NULL in a plain pg_dumpall file (.sql or .sql.gz)."""
+    opener = gzip.open if str(path).endswith(".gz") else open
+    header = f"COPY {table} ("
+    count, deleted_idx, in_copy = 0, None, False
+    with opener(path, "rt", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if not in_copy:
+                if line.startswith(header):
+                    cols = [c.strip().strip('"') for c in line[len(header):line.index(")")].split(",")]
+                    deleted_idx = cols.index("deletedAt") if "deletedAt" in cols else None
+                    in_copy = True
+                continue
+            if line.startswith("\\."):
+                return count
+            if deleted_idx is None:
+                count += 1
+            else:
+                fields = line.rstrip("\n").split("\t")
+                if len(fields) > deleted_idx and fields[deleted_idx] == "\\N":
+                    count += 1
+    return None
+
+
+def cmd_count_assets(args: argparse.Namespace) -> int:
+    n = count_assets_in_dump(args.dump)
+    if n is None:
+        print("asset table not found", file=sys.stderr)
+        return 1
+    print(n)
+    return 0
+
+
+def cmd_restore_result(a: argparse.Namespace) -> int:
+    path = Path(a.file)
+    data = _read_json(str(path))
+    data = data if isinstance(data, dict) else {}
+    entry = {
+        "ok": a.result == "ok", "message": a.message, "started_at": a.started_at, "completed_at": a.completed_at,
+        "dump_file": a.dump_file or None,
+        "expected": int(a.expected) if (a.expected or "").isdigit() else None,
+        "restored": int(a.restored) if (a.restored or "").isdigit() else None,
+        "duration_s": _duration(a.started_at, a.completed_at),
+    }
+    data["restore_test"] = entry
+    data["restore_history"] = ([entry] + list(data.get("restore_history") or []))[:12]
+    write_atomic(path, data)
+    return 0
+
+
 # ---------------------------------------------------------------- status.json
 
 def _read_json(path: Optional[str]):
@@ -190,6 +245,9 @@ def build_status(prev: dict, a: argparse.Namespace) -> dict:
         "transfer": transfer,
         "retention": retention,
         "history": history,
+        # Written by the monthly restore test; kept across backup runs.
+        "restore_test": prev.get("restore_test"),
+        "restore_history": prev.get("restore_history") or [],
     }
     if final:
         entry = {
@@ -246,6 +304,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     r.add_argument("--protect", help="never delete this name (the dump just uploaded)")
     r.add_argument("--json-out")
     r.set_defaults(func=cmd_retention)
+
+    c = sub.add_parser("count-assets", help="count photos/videos (not deleted) in a pg_dumpall file")
+    c.add_argument("dump")
+    c.set_defaults(func=cmd_count_assets)
+
+    rr = sub.add_parser("restore-result", help="record a restore test in status.json")
+    rr.add_argument("--file", required=True)
+    rr.add_argument("--result", required=True, choices=["ok", "fail"])
+    rr.add_argument("--message", default="")
+    rr.add_argument("--started-at", required=True)
+    rr.add_argument("--completed-at", default="")
+    rr.add_argument("--dump-file", default="")
+    rr.add_argument("--expected", default="")
+    rr.add_argument("--restored", default="")
+    rr.set_defaults(func=cmd_restore_result)
 
     t = sub.add_parser("stats", help="sum transfer totals from rclone output files")
     t.add_argument("files", nargs="+")
