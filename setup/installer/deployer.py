@@ -652,6 +652,9 @@ class Deployment:
             self.fail("sleep_guard", "server-suspend.sh or its cron template is missing")
             return
         install_helper_script(script, self.manifest)
+        override = script.with_name("server-suspend-override.sh")
+        if override.exists():
+            install_helper_script(override, self.manifest)
         conf_dst = Path("/etc/server-suspend.conf")
         if conf_example.exists() and not conf_dst.exists():
             shutil.copy2(conf_example, conf_dst)

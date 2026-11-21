@@ -194,3 +194,10 @@ services:
       TZ: ${TZ:-UTC}
     ports:
       - "8191:8191"
+    # The image checks every 15 minutes, longer than the installer waits for health.
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://127.0.0.1:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
