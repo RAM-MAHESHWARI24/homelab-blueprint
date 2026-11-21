@@ -202,7 +202,11 @@ def run_doctor():
     env_outdated = 0
     for env_file, example_file in env_targets:
         rel = env_file.relative_to(REPO_ROOT) if env_file.is_relative_to(REPO_ROOT) else env_file
-        diff = detect_schema_diff(env_file, example_file)
+        try:
+            diff = detect_schema_diff(env_file, example_file)
+        except PermissionError:
+            print(f"   • {rel}: {YELLOW}[PROTECTED]{RESET} Root-owned (run with sudo to verify schema)")
+            continue
         if not env_file.exists():
             print(f"   • {rel}: {YELLOW}[PENDING]{RESET} Not created yet (will seed from template)")
         elif diff["is_up_to_date"]:
