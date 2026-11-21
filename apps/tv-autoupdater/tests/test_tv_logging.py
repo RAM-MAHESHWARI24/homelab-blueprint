@@ -38,6 +38,17 @@ class TestTvUpdaterLogging(unittest.TestCase):
                  mock.patch.object(Path, "stat", return_value=fake_stat):
                 self.assertFalse(tv_updater._stdout_is_log_file(log_path))
 
+    def test_import_leaves_root_logger_alone(self) -> None:
+        """The Control Hub imports this module; its own logs must not land in the TV log."""
+        import logging
+
+        self.assertFalse(tv_updater.log.propagate)
+        self.assertTrue(tv_updater.log.handlers)
+        for handler in logging.getLogger().handlers:
+            self.assertNotIsInstance(handler, logging.FileHandler)
+        # Imported (not run as a script): no stdout echo.
+        self.assertFalse(any(type(h) is logging.StreamHandler for h in tv_updater.log.handlers))
+
 
 if __name__ == "__main__":
     unittest.main()
