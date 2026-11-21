@@ -104,13 +104,13 @@ cd /opt/homelab-blueprint
 sudo ./setup.sh --headless --config /root/pre-v2/profile.json
 ```
 
-The output ends with the credentials and the Control Hub token. Save them.
+The output ends with the credentials. You sign in to the Control Hub with the master password (`media_admin_pass`, or `qbittorrent_pass` when that is not set); set `control_hub_password` in the profile to use a different one.
 
 ## 6. Check
 
 - Immich at `http://<ip>:2283` shows your existing library and users.
 - `docker inspect immich_server --format '{{.Config.Image}}'` matches the image from step 1.
-- The Control Hub at `http://<ip>:7575` accepts the token from `sudo ./setup.sh token`.
+- The Control Hub at `http://<ip>:7575` accepts the master password. Change it under Account, or with `sudo ./setup.sh password`.
 - `sudo -l -U server_ff` no longer shows a blanket rule once you remove the old sudoers file.
 
 When everything works, remove the old pieces:

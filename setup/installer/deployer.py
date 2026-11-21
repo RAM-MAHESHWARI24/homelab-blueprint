@@ -28,6 +28,9 @@ from core.config_core import (
     ETC_DIR,
     STATE_DIR,
     CONTROL_HUB_TOKEN_FILE,
+    PASSWORD_FILE,
+    read_password_hash,
+    set_password,
     SERVICE_USER,
     module_appdata_dir,
     is_linux_host,
@@ -533,6 +536,30 @@ class Deployment:
         self.services_launched.append("tailscale")
         self.log("IP forwarding enabled for Tailscale subnet routing.")
 
+    def _set_dashboard_password(self) -> None:
+        """
+        People sign in to the dashboard with a password: control_hub_password when given,
+        otherwise the master password (media_admin_pass, which defaults to the qBittorrent
+        password). A password already set (perhaps changed in the dashboard) is kept
+        unless the profile names control_hub_password explicitly.
+        """
+        explicit = str(self.config.get("control_hub_password") or "")
+        if read_password_hash() and not explicit:
+            self.log("Dashboard password already set; kept.")
+            return
+        password = explicit or str(self.config.get("media_admin_pass") or self.config.get("qbittorrent_pass") or "")
+        try:
+            set_password(password, owner=SERVICE_USER)
+        except ValueError as exc:
+            self.warn(f"Dashboard password not set ({exc}); set one with `sudo ./setup.sh password`.")
+            return
+        except OSError as exc:
+            self.fail("control_hub", f"could not write {PASSWORD_FILE}: {exc}")
+            return
+        self.manifest.add_file(PASSWORD_FILE)
+        source = "control_hub_password" if explicit else "the master password"
+        self.log(f"Dashboard password set from {source}; change it in the dashboard (Account) or with `sudo ./setup.sh password`.")
+
     def module_control_hub(self) -> None:
         ch_dir = self.root / "apps" / "control-hub"
         unit_src = self.root / "system" / "systemd" / "control-hub.service"
@@ -583,6 +610,7 @@ class Deployment:
             self.fail("control_hub", "no Control Hub token was generated")
             return
         write_private_file(CONTROL_HUB_TOKEN_FILE, token + "\n", self.manifest, mode=0o640, owner_group=SERVICE_USER)
+        self._set_dashboard_password()
         # The daemon reads /etc/homelab/control-hub.env; make it group-readable for the service user.
         env_file = self.etc_dir / "control-hub.env"
         if env_file.exists():
