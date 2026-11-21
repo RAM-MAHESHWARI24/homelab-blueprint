@@ -182,17 +182,17 @@ class TestHonestData(_IsolatedEnvMixin, unittest.TestCase):
                 payload_text = json.dumps(resp.get_json())
                 self._assert_no_banned_literals(payload_text, ep)
 
-        backup = self.client.get("/api/backup/status", headers=self.headers).get_json()
-        self.assertEqual(backup["status"], "unknown")
-        self.assertIsNone(backup["last_sync"])
-        self.assertIsNone(backup["total_assets"])
-        self.assertIsNone(backup["assets_with_named_faces"])
-        self.assertIsNone(backup["named_people"])
-        self.assertIsNone(backup["gdrive_used_gb"])
+            backup = self.client.get("/api/backup/status", headers=self.headers).get_json()
+            self.assertEqual(backup["status"], "unknown")
+            self.assertIsNone(backup["last_sync"])
+            self.assertIsNone(backup["total_assets"])
+            self.assertIsNone(backup["assets_with_named_faces"])
+            self.assertIsNone(backup["named_people"])
+            self.assertIsNone(backup["gdrive_used_gb"])
 
-        lib = self.client.get("/api/backup/library-stats", headers=self.headers).get_json()
-        self.assertIsNone(lib["assets"])
-        self.assertIsNone(lib["gdrive"])
+            lib = self.client.get("/api/backup/library-stats", headers=self.headers).get_json()
+            self.assertIsNone(lib["assets"])
+            self.assertIsNone(lib["gdrive"])
 
         speed = self.client.get("/api/speedtest/latest", headers=self.headers).get_json()
         self.assertFalse(speed["available"])
@@ -292,14 +292,15 @@ class TestHonestData(_IsolatedEnvMixin, unittest.TestCase):
         (bak_root / "dump.sql").write_bytes(b"d" * 256)
 
         cache_file = str(self.root / "sizes_cache.json")
-        res = storage_sizes.get_storage_sizes(
-            cache_file=cache_file,
-            media_path=str(data_root),
-            photos_path=str(photos_root),
-            appdata_path=str(appdata_root),
-            backup_path=str(bak_root),
-            blocking=True,
-        )
+        with mock.patch("shutil.which", return_value=None):
+            res = storage_sizes.get_storage_sizes(
+                cache_file=cache_file,
+                media_path=str(data_root),
+                photos_path=str(photos_root),
+                appdata_path=str(appdata_root),
+                backup_path=str(bak_root),
+                blocking=True,
+            )
         self.assertTrue(res["measured"])
         self.assertEqual(res["media_bytes"], 1024)
         self.assertEqual(res["photos_bytes"], 2048)
@@ -329,6 +330,262 @@ class TestHonestData(_IsolatedEnvMixin, unittest.TestCase):
             byte_count, warn = storage_sizes._dir_size_bytes(str(existing_dir))
             self.assertEqual(byte_count, 48585989231)
             self.assertIsNotNone(warn)
+
+    def test_qbit_v5_stop_start_and_fails_login_rejected(self) -> None:
+        from core import telemetry_sampler
+        from widgets import current_downloads
+
+        # 1. qBittorrent 200 "Fails." must be rejected (not treated as logged in)
+        bad_resp = mock.Mock(status_code=200, text="Fails.")
+        with mock.patch.object(telemetry_sampler, "QBITTORRENT_PASS", "secret"), \
+             mock.patch.object(telemetry_sampler.qb_session, "post", return_value=bad_resp):
+            ok = telemetry_sampler.qb_login()
+            self.assertFalse(ok)
+            self.assertEqual(telemetry_sampler.qb_status, "auth_failed")
+
+        # 2. qBittorrent 5.x stoppedDL formats cleanly in format_eta
+        self.assertEqual(telemetry_sampler.format_eta(8640000, state="stoppedDL"), "Paused")
+
+        # 3. toggle_all_torrents tries v5 /stop first and falls back to v4 /pause on 404
+        calls = []
+
+        def fake_post(url, data=None, timeout=None):
+            calls.append(url)
+            if url.endswith("/stop"):
+                return mock.Mock(status_code=404, text="Not Found")
+            return mock.Mock(status_code=200, text="")
+
+        with mock.patch.object(current_downloads, "qb_login", return_value=True), \
+             mock.patch.object(current_downloads.qb_session, "post", side_effect=fake_post):
+            res = self.client.post(
+                "/api/torrents/toggle-all",
+                headers=self.headers,
+                json={"action": "pause"},
+            )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(res.get_json()["success"])
+            self.assertTrue(any(u.endswith("/stop") for u in calls))
+            self.assertTrue(any(u.endswith("/pause") for u in calls))
+
+    def test_cpu_temp_ignores_acpitz_and_reads_hwmon_coretemp(self) -> None:
+        from core import telemetry_sampler
+
+        hwmon_root = self.root / "hwmon"
+        thermal_root = self.root / "thermal"
+        # Fake acpitz thermal zone (should be ignored)
+        tz0 = thermal_root / "thermal_zone0"
+        tz0.mkdir(parents=True)
+        (tz0 / "type").write_text("acpitz\n", encoding="utf-8")
+        (tz0 / "temp").write_text("27800\n", encoding="utf-8")
+        self.assertIsNone(telemetry_sampler.read_cpu_temp(hwmon_root=hwmon_root, thermal_root=thermal_root))
+
+        # Add hwmon coretemp sensor (should be picked)
+        hm1 = hwmon_root / "hwmon1"
+        hm1.mkdir(parents=True)
+        (hm1 / "name").write_text("coretemp\n", encoding="utf-8")
+        (hm1 / "temp1_label").write_text("Package id 0\n", encoding="utf-8")
+        (hm1 / "temp1_input").write_text("47500\n", encoding="utf-8")
+        self.assertEqual(telemetry_sampler.read_cpu_temp(hwmon_root=hwmon_root, thermal_root=thermal_root), 47.5)
+
+    def test_detect_active_nic_and_link_info_never_fabricate_100m(self) -> None:
+        from core import telemetry_sampler
+
+        proc_net = self.root / "proc_net_dev"
+        proc_route = self.root / "proc_net_route"
+        sys_net = self.root / "sys_class_net"
+        (sys_net / "enp3s0").mkdir(parents=True)
+        (sys_net / "wlp2s0" / "wireless").mkdir(parents=True)
+        (sys_net / "enp3s0" / "operstate").write_text("down\n", encoding="utf-8")
+        (sys_net / "wlp2s0" / "operstate").write_text("up\n", encoding="utf-8")
+        proc_net.write_text(
+            "Inter-|\n face |bytes\n"
+            "  lo: 0\n"
+            "  docker0: 0\n"
+            "  enp3s0: 0\n"
+            "  wlp2s0: 100\n",
+            encoding="utf-8",
+        )
+        proc_route.write_text(
+            "Iface\tDestination\tGateway\n"
+            "wlp2s0\t00000000\t0101A8C0\n",
+            encoding="utf-8",
+        )
+        nic = telemetry_sampler.detect_active_nic(
+            preferred_nic="",
+            proc_net=proc_net,
+            proc_route=proc_route,
+            sys_net=sys_net,
+        )
+        self.assertEqual(nic, "wlp2s0")
+
+        speed, duplex, spec = telemetry_sampler.get_nic_link_info("wlp2s0", sys_net=sys_net)
+        self.assertIsNone(speed)
+        self.assertIsNone(duplex)
+        self.assertIn("Wi-Fi", spec)
+        self.assertNotIn("100 Mbps", spec)
+
+    def test_storage_manager_parses_proc_mounts_without_skipping(self) -> None:
+        from core.config_core import storage_manager
+
+        fake_mounts_file = self.root / "proc_mounts"
+        fake_mounts_file.write_text(
+            "/dev/nvme0n1p2 / ext4 rw 0 0\n"
+            "/dev/sda1 /mnt/hdd ext4 rw 0 0\n"
+            "/dev/md0 /mnt/raid ext4 rw 0 0\n"
+            "tmpfs /run tmpfs rw 0 0\n",
+            encoding="utf-8",
+        )
+        Usage = type("Usage", (), {"total": 500 * 1024**3, "used": 200 * 1024**3, "free": 300 * 1024**3})
+        dev_ids = {"/": 1, "/mnt/hdd": 2, "/mnt/raid": 3}
+
+        orig_stat = os.stat
+
+        def fake_stat(p, **kw):
+            key = str(p)
+            if key in dev_ids:
+                return mock.Mock(st_dev=dev_ids[key])
+            return orig_stat(p, **kw)
+
+        with mock.patch("os.name", "posix"), \
+             mock.patch("os.path.exists", side_effect=lambda p: str(p) in dev_ids or str(p) == str(fake_mounts_file)), \
+             mock.patch("os.stat", side_effect=fake_stat), \
+             mock.patch("shutil.disk_usage", return_value=Usage()):
+            parts = storage_manager.get_disk_partitions(proc_mounts=fake_mounts_file)
+            mounts = [p["mount_point"] for p in parts]
+            self.assertIn("/", mounts)
+            self.assertIn("/mnt/hdd", mounts)
+            self.assertIn("/mnt/raid", mounts)
+
+    def test_sleep_guard_disabled_and_midnight_wrap(self) -> None:
+        from widgets import sleep_guard
+
+        segs = sleep_guard.compute_window_segments("23:00", 7.0)
+        self.assertEqual(len(segs), 2)
+        self.assertAlmostEqual(segs[0]["left_pct"] + segs[0]["width_pct"], 100.0, places=0)
+        self.assertEqual(segs[1]["left_pct"], 0.0)
+
+        conf_path = self.root / "server-suspend.conf"
+        conf_path.write_text(
+            json.dumps({"enabled": False, "sleep_time": "23:00", "wake_time": "06:00", "duration_hours": 7.0}),
+            encoding="utf-8",
+        )
+        with mock.patch.object(sleep_guard, "SUSPEND_CONFIG_FILE", str(conf_path)), \
+             mock.patch.object(sleep_guard, "SUSPEND_SCRIPT", str(self.root / "missing.sh")), \
+             mock.patch.object(sleep_guard, "SUSPEND_CRON_FILE", str(self.root / "missing.cron")), \
+             mock.patch.object(sleep_guard, "SUSPEND_SKIP_FILE", str(self.root / "missing.skip")), \
+             mock.patch.object(sleep_guard, "SUSPEND_OVERRIDE_FILE", str(self.root / "missing.ov")):
+            data = self.client.get("/api/sleep/status", headers=self.headers).get_json()
+            self.assertTrue(data["installed"])
+            self.assertEqual(data["state_mode"], "disabled")
+            self.assertEqual(data["seconds_until_sleep"], 0)
+
+    def test_service_matrix_parses_health_and_published_ports(self) -> None:
+        from widgets import service_matrix
+
+        self.assertEqual(service_matrix.parse_container_health("Up 2 hours (unhealthy)"), "unhealthy")
+        self.assertEqual(service_matrix.parse_container_health("Up 2 hours (healthy)"), "healthy")
+        self.assertEqual(service_matrix.parse_published_port("0.0.0.0:8097->8096/tcp", 8096), 8097)
+
+        docker_out = "\n".join([
+            json.dumps({
+                "ID": "abcdef1234567890",
+                "Names": "jellyfin",
+                "State": "running",
+                "Status": "Up 2 hours (unhealthy)",
+                "Ports": "0.0.0.0:8097->8096/tcp",
+                "Image": "jellyfin/jellyfin:10.10",
+            }),
+            json.dumps({
+                "ID": "1122334455667788",
+                "Names": "my_custom_app",
+                "State": "running",
+                "Status": "Up 10 minutes",
+                "Ports": "0.0.0.0:3000->3000/tcp",
+                "Image": "nginx:alpine",
+            }),
+        ])
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["docker", "ps"]:
+                return mock.Mock(returncode=0, stdout=docker_out, stderr="")
+            return mock.Mock(returncode=1, stdout="", stderr="")
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            res = self.client.get("/api/services/status", headers=self.headers).get_json()
+            self.assertEqual(res["other_count"], 1)
+            jf = res["services"][0]
+            self.assertEqual(jf["port"], 8097)
+            self.assertEqual(jf["health"], "unhealthy")
+            self.assertFalse(jf["is_up"])
+
+            res_all = self.client.get("/api/services/status?include_other=true", headers=self.headers).get_json()
+            names = [s["id"] for s in res_all["services"]]
+            self.assertIn("my_custom_app", names)
+
+    def test_cron_omits_phantom_recyclarr_when_uninstalled(self) -> None:
+        with mock.patch.object(cron_tasks, "BACKUP_SCRIPT", str(self.root / "missing_bak.sh")), \
+             mock.patch.object(cron_tasks, "BACKUP_CRON_FILE", str(self.root / "missing_bak.cron")), \
+             mock.patch.object(cron_tasks, "RECYCLARR_LOG_FILE", str(self.root / "missing_rc.log")), \
+             mock.patch.object(cron_tasks, "IMMICH_ML_CRON_FILE", str(self.root / "missing_ml.cron")), \
+             mock.patch("shutil.which", return_value=None), \
+             mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="", stderr="")):
+            res = self.client.get("/api/cron/status", headers=self.headers).get_json()
+            ids = [j["id"] for j in res["jobs"]]
+            self.assertNotIn("recyclarr", ids)
+
+    def test_system_prober_n100_and_amd_gpu_classification(self) -> None:
+        from core.config_core import system_prober
+
+        n100 = system_prober.probe_cpu_info(model_override="Intel(R) N100")
+        self.assertFalse(n100["is_low_power"])
+        haswell = system_prober.probe_cpu_info(model_override="Intel(R) Core(TM) i3-4010U CPU @ 1.70GHz")
+        self.assertTrue(haswell["is_low_power"])
+
+        dri = self.root / "dri"
+        drm = self.root / "drm"
+        dri.mkdir()
+        (dri / "renderD128").write_text("", encoding="utf-8")
+        card0_dev = drm / "card0" / "device"
+        card0_dev.mkdir(parents=True)
+        (card0_dev / "vendor").write_text("0x1002\n", encoding="utf-8")
+        with mock.patch("shutil.which", return_value=None):
+            hw = system_prober.probe_hardware_acceleration(dri_root=dri, drm_sys_root=drm)
+            self.assertEqual(hw["vendor"], "amd")
+            self.assertEqual(hw["recommended_mode"], "vaapi")
+            self.assertIn("AMD VAAPI", hw["details"][0])
+            self.assertNotIn("Intel", hw["details"][0])
+
+    def test_config_center_falls_back_to_readable_control_hub_env(self) -> None:
+        from widgets import config_center
+
+        etc_dir = self.root / "etc_homelab"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        root_only = etc_dir / "homelab.env"
+        hub_env = etc_dir / "control-hub.env"
+        root_only.write_text("HDD_DATA=/secret\n", encoding="utf-8")
+        hub_env.write_text(
+            "HDD_DATA=/mnt/hdd/data\nHDD_MEMORIES=/mnt/hdd/Memories\nTZ=Asia/Kolkata\nQBITTORRENT_PASS=supersecret\n",
+            encoding="utf-8",
+        )
+
+        orig_access = os.access
+
+        def fake_access(path, mode):
+            if Path(path) == root_only:
+                return False
+            if Path(path) == etc_dir and mode == os.W_OK:
+                return False
+            return orig_access(path, mode)
+
+        with mock.patch.object(config_center, "ETC_DIR", etc_dir), \
+             mock.patch("os.access", side_effect=fake_access):
+            resp = self.client.get("/api/config/current", headers=self.headers)
+            self.assertEqual(resp.status_code, 200)
+            payload = resp.get_json()
+            self.assertTrue(payload["read_only"])
+            self.assertEqual(payload["config"]["hdd_data"], "/mnt/hdd/data")
+            self.assertEqual(payload["config"]["timezone"], "Asia/Kolkata")
+            self.assertEqual(payload["config"]["qbittorrent_pass"], "********")
 
 
 if __name__ == "__main__":

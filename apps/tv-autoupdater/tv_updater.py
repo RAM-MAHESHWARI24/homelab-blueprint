@@ -113,7 +113,21 @@ APK_SIGNATURES = {
 # always allowed: placing a file there is the operator's explicit decision).
 ALLOW_UNPINNED_APPS = False
 
-DHCP_SUBNET_PREFIX = "192.168.1"
+def _detect_default_subnet_prefix() -> str:
+    """Derives the local /24 subnet prefix from the host's outbound LAN IPv4 address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("1.1.1.1", 80))
+            ip = s.getsockname()[0]
+        parts = ip.split(".")
+        if len(parts) == 4 and not ip.startswith("127."):
+            return ".".join(parts[:3])
+    except OSError:
+        pass
+    return "192.168.1"
+
+
+DHCP_SUBNET_PREFIX = _detect_default_subnet_prefix()
 DHCP_SCAN_RANGE = (32, 100)
 
 # Optional user configuration override via config.json
@@ -216,8 +230,7 @@ def load_state() -> dict:
 
 def save_state(state: dict):
     try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2)
+        _write_json_atomic(STATE_FILE, state)
     except Exception as e:
         log.error(f"Failed to save state.json: {e}")
 
@@ -228,7 +241,7 @@ def save_state(state: dict):
 def load_cached_ips() -> dict:
     if DEVICES_CACHE_FILE.exists():
         try:
-            with open(DEVICES_CACHE_FILE, "r") as f:
+            with open(DEVICES_CACHE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
@@ -236,8 +249,7 @@ def load_cached_ips() -> dict:
 
 def save_cached_ips(cache: dict):
     try:
-        with open(DEVICES_CACHE_FILE, "w") as f:
-            json.dump(cache, f, indent=2)
+        _write_json_atomic(DEVICES_CACHE_FILE, cache)
     except Exception:
         pass
 
@@ -1081,7 +1093,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         
         dev_installed = state.setdefault("devices", {}).setdefault(pid, {}).setdefault("installed", {})
         fg_pkg = ""
-        fg_app_name = "Home Screen / Launcher"
+        fg_app_name = "Home Screen / Launcher" if is_online else None
         media_playing = False
 
         info = device_info.setdefault(pid, {})

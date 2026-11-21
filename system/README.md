@@ -48,6 +48,8 @@ rclone config; it is passed to rclone as a single argument, never through a shel
 system/
 ├── systemd/
 │   ├── control-hub.service               # Systemd daemon for Control Hub Flask runtime (unprivileged)
+│   ├── homelab-storage-sizes.service     # Root oneshot unit that measures folder sizes accurately (0644 JSON)
+│   ├── homelab-storage-sizes.timer       # Hourly timer for homelab-storage-sizes.service
 │   └── homelab-sudoers.example           # Least-privilege sudoers whitelist (/etc/sudoers.d/)
 ├── networking/
 │   ├── 99-tailscale.conf                 # Sysctl kernel tuning (UDP buffers, IP forwarding)
@@ -102,7 +104,7 @@ Host scripts and cron templates now live with the module they belong to, so each
 | `server-suspend.sh` | `apps/control-hub/host/` | `/usr/local/sbin/server-suspend.sh` | Run by the cron below |
 | `server-suspend.conf.example` | `apps/control-hub/host/` | `/etc/server-suspend.conf` | Sleep and wake times |
 | `cron/server-suspend` | `apps/control-hub/host/` | `/etc/cron.d/server-suspend` | 00:00, checks whether the server can sleep |
-| `cron/immich-ml` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-ml` | Starts the photo ML container at 06:00, stops it at 10:00 |
+| `cron/immich-ml` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-ml` | Starts the photo ML container at 06:05, stops it at 10:00 |
 | `cron/immich-backup` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-backup` | 22:00, database dump, XMP export and rclone mirror |
 | `cron/tv-autoupdater` | `apps/tv-autoupdater/host/` | `/etc/cron.d/tv-autoupdater` | Every 15 minutes from 06:00 to 23:45 |
 | `post-wake-arr.sh` | `apps/mediaserver/host/` | `/etc/server-suspend.d/50-mediaserver.sh` | After every resume |

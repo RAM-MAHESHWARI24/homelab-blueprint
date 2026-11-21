@@ -148,6 +148,26 @@ python testing/test_version_consistency.py
 1. **Never mock out failing assertions** to make tests pass artificially. Always solve the root-cause bug in the production code.
 2. If introducing a new feature or endpoint, write corresponding test cases in `testing/` or `setup/test_setup.py`.
 3. If creating or moving `.md` files, run `python testing/test_docs_integrity.py` before completing the turn.
+4. For UI changes in `apps/control-hub/`, run `python -m unittest discover -s apps/control-hub/tests -p "test_*.py" -v` (including Playwright + `axe-core` WCAG 2.2 AA across all workspace views, viewports, and Dark/Light themes).
+
+### 4.1. Live Production Server Testing & Safety Protocol
+
+When an agent is asked to deploy, test, or verify changes against a live homelab server (via SSH alias `<ssh-host>` and LAN dashboard `http://<server-lan-ip>:7575`), **data safety is paramount—the server holds real family photos, media libraries, backups, and active streams**:
+
+1. **Read-Only Network Mounts:** If the server filesystem is mounted on the dev workstation over SMB/NFS for inspection, treat that mount as **strictly read-only**. Never edit files, run Git commands, or execute scripts across the network mount.
+2. **Local & Pre-Push Gates First:** All 6 monorepo verification gates and the Control Hub unit + Playwright + `axe-core` suite must pass locally before deploying to the server.
+3. **Git-Driven Deployment Only (Instant Rollback):** Never hand-edit tracked files inside `/opt/homelab-blueprint` on the server. Push the verified branch to `origin` (passing Tier 1 pre-commit and Tier 2 pre-push hooks), then update the server via SSH (`sudo git -C /opt/homelab-blueprint fetch origin` and checkout/pull). This guarantees a 1-command rollback to `develop`.
+4. **Real-Data & Secret Protection Invariants:**
+   * **Never** run destructive commands (`teardown.sh`, `docker compose down -v`, `rm -rf`, database drops) on a live server or touch `/var/lib/homelab/*`, `/etc/homelab/*`, photo libraries, or media pools destructively.
+   * **Never** print or log secret values (`CONTROL_HUB_TOKEN`, passwords, API keys, `rclone.conf`) in command output, commit messages, or docs. Remember `/etc/homelab/homelab.env` is `0600 root:root` while `/etc/homelab/control-hub.env` is `0640 root:homelab` (readable by the `homelab` daemon).
+   * **Never** apply unconfirmed network changes or restart media/database containers while active streams, downloads, or backups are running.
+   * **Never** sanitize or hardcode personal server identifiers (LAN IPs, hostnames, rclone remote names, drive letters, usernames) into tracked repository files.
+5. **Systemd Unit & Host Script Sync:** When `system/systemd/*`, cron definitions, or host scripts (`apps/control-hub/host/server-suspend.sh`) change, render/install them with proper permissions (`0755` scripts, `0644` units), run `sudo systemctl daemon-reload`, and restart `control-hub.service`.
+6. **Live On-Server & Browser Verification:**
+   * Run the Linux-native test suites directly on the Ubuntu host using `/opt/homelab-blueprint/apps/control-hub/venv/bin/python3` (`test_e2e_regression.py` including Linux bash/systemd tests, `test_lifecycle_handoff.py`, `test_docs_integrity.py`, `test_version_consistency.py`, `setup/test_setup.py`, and `apps/control-hub/tests/test_*.py`).
+   * Probe all live Control Hub API endpoints (`/api/health`, `/api/livez`, `/api/readyz`, `/api/system/vitals`, `/api/network/speed`, `/api/storage/operations`, `/api/downloads/active`, `/api/backup/status`, `/api/services/status`, `/api/tv-updater/status`, `/api/sleep/status`, `/api/cron/status`, `/api/alerts`, `/api/config/current`, `/api/config/ports`, `/api/config/ai-diagnostics`, `/api/config/netplan-status`) and inspect `sudo journalctl -u control-hub.service -n 30 --no-pager` for zero tracebacks or `sudo` polling spam.
+   * Run a live Playwright + `axe-core` WCAG 2.2 AA visual and accessibility check against `http://<server-lan-ip>:7575` across all views and Dark/Light themes.
+7. **GitHub Actions CI & Post-Merge Sync:** Confirm all GitHub Actions CI checks pass on the PR before merging into `develop`. Immediately after merging, switch `/opt/homelab-blueprint` on the server to `develop` (`sudo git -C /opt/homelab-blueprint checkout develop && sudo git -C /opt/homelab-blueprint pull --ff-only origin develop`) and restart `control-hub.service` so the live server stays cleanly aligned with `origin/develop`.
 
 ---
 
