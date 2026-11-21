@@ -31,13 +31,24 @@ A module's `.github/workflows/ci.yml` does nothing inside the monorepo, because 
 ## Cutting a release
 
 1. Merge everything for the release into `develop`, then merge `develop` into `main`. Both branches are protected: changes arrive through pull requests with green CI.
-2. Add the version and date to [`CHANGELOG.md`](../CHANGELOG.md) in that pull request.
+2. In that pull request, set the new version everywhere it is reported, and date it in the changelog:
+
+   | File | What to change |
+   | :--- | :--- |
+   | [`CHANGELOG.md`](../CHANGELOG.md) | Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a new empty `## [Unreleased]` above it |
+   | [`setup/installer/deployer.py`](../setup/installer/deployer.py) | `BLUEPRINT_VERSION` |
+   | [`setup/server.py`](../setup/server.py) | the `version` in the wizard's `/api/health` reply |
+   | [`apps/control-hub/server.py`](../apps/control-hub/server.py) | the `version` in the Control Hub's `/api/health` reply |
+   | [`apps/control-hub/docs/openapi.yaml`](../apps/control-hub/docs/openapi.yaml) | `info.version` and the health example |
+   | [`apps/control-hub/README.md`](../apps/control-hub/README.md) | the release badge |
+
+   [`testing/test_version_consistency.py`](../testing/test_version_consistency.py) fails in CI, and in the pre-push hook, while the four version strings and the newest dated changelog heading disagree. That check exists because v2.1.0 shipped reporting 2.0.0.
 3. Tag `main` and push the tag:
 
    ```bash
    git fetch origin
-   git tag -a v2.1.0 origin/main -m "v2.1.0"
-   git push origin v2.1.0
+   git tag -a v2.1.1 origin/main -m "v2.1.1"
+   git push origin v2.1.1
    ```
 
 Pushing a `v*` tag starts two workflows:
