@@ -4,6 +4,8 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-21
+
 ### Added
 - Four modules are published as their own read-only repositories on every release: [control-hub](https://github.com/RAM-MAHESHWARI24/control-hub), [homelab-mediaserver](https://github.com/RAM-MAHESHWARI24/homelab-mediaserver), [noodle-gallery-tools](https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools) and [tv-autoupdater](https://github.com/RAM-MAHESHWARI24/tv-autoupdater). See [docs/RELEASING.md](docs/RELEASING.md).
 - Each published module has its own `install.sh` for use without the blueprint, a `ci.sh` and a `module.json`.
