@@ -99,11 +99,12 @@ def ensure_system_user(
 
     exists = run_command(["id", "-u", username], timeout=10)
     if not exists.ok:
-        cmd = ["useradd", "--system", "--shell", "/usr/sbin/nologin"]
+        # Never --create-home: it copies /etc/skel, which is huge on some hosts (GitHub
+        # runners keep toolchains there) and only adds dotfiles a nologin account never
+        # reads. The home directory is created below instead.
+        cmd = ["useradd", "--system", "--shell", "/usr/sbin/nologin", "--no-create-home"]
         if home_dir is not None:
-            cmd += ["--home-dir", str(home_dir), "--create-home"]
-        else:
-            cmd.append("--no-create-home")
+            cmd += ["--home-dir", str(home_dir)]
         cmd.append(username)
         if extra_groups:
             cmd += ["--groups", ",".join(extra_groups)]
@@ -115,7 +116,13 @@ def ensure_system_user(
         for grp in extra_groups:
             run_command(["usermod", "-aG", grp, username], timeout=30)
         if home_dir is not None:
-            run_command(["usermod", "--home", str(home_dir), username], timeout=30)
+            current = run_command(["getent", "passwd", username], timeout=10)
+            fields = current["stdout"].split(":") if current.ok else []
+            current_home = fields[5] if len(fields) >= 7 else ""
+            if current_home != str(home_dir):
+                # usermod refuses while the account has running processes (Control Hub,
+                # adb). That is harmless: the unit and cron file set HOME explicitly.
+                run_command(["usermod", "--home", str(home_dir), username], timeout=30)
 
     if home_dir is not None:
         try:

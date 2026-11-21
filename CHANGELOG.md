@@ -5,6 +5,13 @@ All notable changes to this project are listed here. The format follows [Keep a 
 ## [Unreleased]
 
 ### Fixed
+- The Control Hub no longer shows invented numbers. Backup, Google Drive, photo library, speed test, storage split, service ping and TV figures come from real data, or say "Unknown" with the reason. Backup status starts as unknown and turns green only from a real result: the photo backup script now writes `status.json` (0644, atomic) next to its log, and the dashboard reads it without `sudo rclone`.
+- The Control Hub reads the photo backup from `/var/lib/homelab/photo-backups` by default, matches the v2 log line `Starting Immich Backup:`, and gets `GDRIVE_REMOTE`, `HDD_MEMORIES` and `TZ` from the installer. Times use the host time zone instead of a fixed IST.
+- Media and photo folder sizes are measured with `du` at low priority in the background, cached to disk and refreshed hourly, instead of a fixed 75/20/5 split.
+- The Service Matrix, its filter counts and the footer list only the containers that exist on the host. Restarting a container no longer calls `sudo docker`, which the sudoers file does not allow.
+- The service user `homelab` gets a home directory (`/var/lib/homelab/home`) so its ADB key survives a reboot, and the Control Hub unit and TV cron job set `HOME` to it. The installer creates the directory itself rather than copying `/etc/skel`.
+- The TV auto-updater no longer writes each log line twice under cron, and names the configured TVs instead of three fixed models.
+- qBittorrent 5.3 logins (HTTP 204) and the v2 Samba shares are recognised by the live telemetry; the static IP dialog says 120 s, matching the revert timer.
 - The installer crashed on Python 3.14 (Ubuntu 26.04): `setup/token.py` shadowed the standard `token` module once argparse started importing it. The file is now `setup/token_cli.py`, a test refuses files named after standard modules, and CI also runs on Python 3.14.
 - The Control Hub could not be installed on Ubuntu 26.04, whose sudo-rs rejects the wildcard in `--on-calendar=*`. Tonight's sleep override now runs through `/usr/local/sbin/server-suspend-override.sh`, which validates the time, and a test checks the sudoers template against sudo-rs rules.
 - The optional Byparr container never turned healthy during install: its image checks every 15 minutes. The compose file now checks every 30 seconds.
@@ -14,6 +21,8 @@ All notable changes to this project are listed here. The format follows [Keep a 
 - Install profile keys `photo_external_mount_path` and `photo_external_mount_mode` set where and how the photo server mounts the external library. Defaults stay `/mnt/media` and read-only. A library moved from another install keeps the paths its database recorded.
 
 ### Changed
+- The Control Hub works on phones and with a keyboard or screen reader: one responsive layout with three breakpoints and no `!important` rules, a compact header with a menu, bottom tabs on phones, collapsible cards, 44 px tap targets, 12 px minimum text, accessible dialogs (focus trap, Esc, focus return), landmarks, a skip link, a visible focus ring, a live region for toasts and reduced motion. "Hover Only" refresh is gone: visible cards refresh on a timer and hidden tabs pause.
+- CI runs the Control Hub in a browser at 360, 820 and 1366 px and fails on sideways scrolling, clipped controls, small tap targets or serious axe-core findings, and a test fails if any endpoint returns one of the old invented figures.
 - The Control Hub asks for a password instead of the access token. By default it is the master password from setup (profile key `control_hub_password` sets another), each browser signs in once with a long-lived HttpOnly cookie, and it can be changed under Account in the dashboard or with `sudo ./setup.sh password`. Changing it signs other devices out. The API token still works for scripts and CI, and is accepted at the sign-in prompt.
 - Pinned images now match what the existing server already runs, so moving that server to v2 does not downgrade any app: Radarr 7.0.3, Prowlarr 3.0.2, Seerr 3.5.2 and Noodle Gallery 5.11.1. These apps migrate their databases forward and cannot open them after a downgrade.
 - The optional Byparr proxy is pinned to 3.1.1. The old 1.0.7 pin had no amd64 image, so the profile could not start on a PC.

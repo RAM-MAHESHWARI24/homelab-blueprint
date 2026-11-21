@@ -22,7 +22,7 @@ Administrators can now inspect, live-test, and update their entire homelab topol
   | - 📁 Storage & Atomic Hardlinks     |             | - CPU & Haswell Architecture Profile|
   | - 🔌 13-Service Port Matrix Prober  |             | - Memory Headroom (Total vs Free)   |
   | - 🔐 PUID/PGID & Crypto Secrets Gen |             | - GPU /dev/dri/renderD128 (VAAPI)   |
-  | - 🌐 Safe Netplan Static IP (45s)   |             | - 1-Click Compact Prompt (~300 tok) |
+  | - 🌐 Safe Netplan Static IP (120s)  |             | - 1-Click Compact Prompt (~300 tok) |
   | - 🚀 Fast Launch Setup Wizard (8000)|             | - Links to Repository Runbooks      |
   +------------------+------------------+             +-------------------------------------+
                      |
@@ -70,7 +70,7 @@ Administrators can now inspect, live-test, and update their entire homelab topol
 - **Auto-Detect User:** 1-click detection of host Linux `PUID` and `PGID` to ensure container volumes match host permissions.
 - **Crypto Secrets Generator:** 1-click generation of strong alphanumeric passwords (safe for PostgreSQL and shell interpolation) and 32-character API keys for Radarr, Sonarr, and Prowlarr.
 
-### 🌐 4. Safe Netplan Static IP with 45s Auto-Rollback
+### 🌐 4. Safe Netplan Static IP with 120s Auto-Rollback
 - Auto-detects active network interfaces, gateway, and DNS servers.
 - Generates standard Netplan v2 YAML configuration.
 - **Safety Guarantee:** Applies with an armed revert timer (120 s by default). Unless the change is confirmed from the new address, the previous Netplan files are restored automatically, protecting remote sessions.
