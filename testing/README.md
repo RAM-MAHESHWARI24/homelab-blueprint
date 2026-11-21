@@ -450,7 +450,7 @@ The workflow that runs on every push and pull request is [`.github/workflows/ci.
 | Real Headless Install, Health Probes & Teardown | A real install on a fresh runner, the apps wired together, then a teardown that leaves nothing |
 | Trivy Security & Vulnerability Scan | Known vulnerabilities in the repository and its dependencies |
 
-Results of the v2.0.0 runs, and of the browser-driven VM test, are in the [v2.0.0 Test Report](../docs/V2_TEST_REPORT.md).
+Results of the v2 runs, the browser-driven VM test and the v2.1.0 module checks are in the [v2 Test Report](../docs/V2_TEST_REPORT.md).
 
 ---
 
