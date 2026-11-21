@@ -1,30 +1,33 @@
 # Control Hub: Node Configuration & AI Copilot Integration
 
-The modular configuration engine originally built for the onboarding Setup Wizard has been seamlessly integrated directly into the custom dashboard (**Control Hub** at port `7575`).
+The modular configuration engine (`core/config_core/`) shared with the onboarding Setup Wizard is integrated directly into the **Control Hub 5-View Operations Console** at port `7575`.
 
-Administrators can now inspect, live-test, and update their entire homelab topology in real time without manually editing `.env` files or risking SSH lockouts.
+Administrators can inspect their node topology, run live atomic hardlink probes, check the 13-service port matrix, preview and apply safe Netplan static IP changes with a live 120-second confirmation countdown, and export token-optimized AI Copilot diagnostics without leaving the browser.
 
 ---
 
 ## 1. Architecture Overview
 
 ```
-                                +-----------------------------+
-                                | Control Hub Web Dashboard   |
-                                |     (http://<host>:7575)    |
-                                +--------------+--------------+
-                                               |
-                     +-------------------------+-------------------------+
-                     |                                                   |
-        [⚙️ Node Settings Modal]                              [🤖 AI Copilot Modal]
-                     |                                                   |
-  +------------------+------------------+             +------------------+------------------+
-  | - 📁 Storage & Atomic Hardlinks     |             | - CPU & Haswell Architecture Profile|
-  | - 🔌 13-Service Port Matrix Prober  |             | - Memory Headroom (Total vs Free)   |
-  | - 🔐 PUID/PGID & Crypto Secrets Gen |             | - GPU /dev/dri/renderD128 (VAAPI)   |
-  | - 🌐 Safe Netplan Static IP (120s)  |             | - 1-Click Compact Prompt (~300 tok) |
-  | - 🚀 Fast Launch Setup Wizard (8000)|             | - Links to Repository Runbooks      |
-  +------------------+------------------+             +-------------------------------------+
+                                +-----------------------------------+
+                                |  Control Hub Operations Console   |
+                                |        (http://<host>:7575)       |
+                                |  Overview · Apps · Backups · TVs  |
+                                |               System              |
+                                +-----------------+-----------------+
+                                                  |
+                     +----------------------------+----------------------------+
+                     |                                                         |
+        [⚙️ Node Settings Modal]                                  [🤖 AI Copilot Modal]
+                     |                                                         |
+  +------------------+------------------+                   +------------------+------------------+
+  | - 📁 Storage & Identity (Read-Only  |                   | - Dynamic CPU & GPU DRM Vendor Probe|
+  |      Banner on Blueprint Installs)  |                   |   (Intel QSV / AMD / NVIDIA / Play) |
+  | - 🔌 13-Service Port Matrix Prober  |                   | - Memory Headroom (Total vs Free)   |
+  | - 🔐 PUID/PGID & Crypto Secrets Gen |                   | - Real Mounts & Block Device Matrix |
+  | - 🌐 Safe Netplan Static IP (120s   |                   | - 1-Click Compact Prompt (~300 tok) |
+  |      Revert + Live Confirm Banner)  |                   |   with HTTP LAN Clipboard Fallback  |
+  +------------------+------------------+                   +-------------------------------------+
                      |
                      v
    +------------------------------------+
@@ -35,8 +38,8 @@ Administrators can now inspect, live-test, and update their entire homelab topol
        |                           |
        v                           v
 +----------------+      +---------------------+
-| setup/         |      | Master Root .env &  |
-| config_core    |      | Blueprint App .envs |
+| core/          |      | /etc/homelab/*.env  |
+| config_core    |      | or Standalone .env  |
 +----------------+      +---------------------+
 ```
 
@@ -45,12 +48,12 @@ Administrators can now inspect, live-test, and update their entire homelab topol
 ## 2. Key Integrated Features
 
 ### 📁 1. Single-Mount Storage & Atomic Hardlink Tester
-- **Path Config:** Live modification of `HDD_DATA` (`/mnt/hdd/data`) and `HDD_MEMORIES` (`/mnt/hdd/Memories`).
+- **Path & Permission Honesty:** Displays `HDD_DATA` (`/mnt/hdd/data`) and `HDD_MEMORIES` (`/mnt/hdd/Memories`). On root-managed blueprint installs (`/etc/homelab`), the dialog clearly displays a **View Only (root-managed blueprint install)** banner with the exact CLI command instead of failing silently with `403`.
 - **Live Hardlink Verification:** Runs real `os.link()` checks directly on host filesystem mounts to verify single-mount ext4/xfs compliance (returns Inode number, link count, and latency in ms).
 - **Rule Enforcement:** Warns against cross-device (`EXDEV`) link issues where downloads and media are on separate mounts, preventing slow duplicate file copying.
 
 ### 🔌 2. Real-Time 13-Service Port Conflict Prober
-- Probes IPv4 socket bindings for all 13 services:
+- Probes IPv4 socket bindings and configured overrides for all 13 services:
   - `7575` Control Hub Dashboard
   - `8096` Jellyfin HTTP
   - `8920` Jellyfin HTTPS
@@ -63,28 +66,29 @@ Administrators can now inspect, live-test, and update their entire homelab topol
   - `6767` Bazarr Subtitle Manager
   - `8191` Byparr Cloudflare Solver
   - `2283` Noodle Gallery / Immich Web
-  - `8000` Homelab Setup Wizard
-- Displays live status pills (`Active / Bound` or `Available`) and direct **"Open Web UI ↗"** buttons for active services.
+  - `8099` Homelab Setup Wizard (or custom `SETUP_PORT`)
+- Displays truthful status pills (`In Use` with owning service vs `Available`) and protocol-aware **"Open Web UI"** links for active web services.
 
 ### 🔐 3. User Permissions & High-Entropy Credentials
-- **Auto-Detect User:** 1-click detection of host Linux `PUID` and `PGID` to ensure container volumes match host permissions.
+- **Auto-Detect Host User:** Detects the container/human `PUID` and `PGID` (preferring configured env or UID `1000` over the unprivileged `homelab` daemon UID) so container volumes match host permissions.
 - **Crypto Secrets Generator:** 1-click generation of strong alphanumeric passwords (safe for PostgreSQL and shell interpolation) and 32-character API keys for Radarr, Sonarr, and Prowlarr.
 
-### 🌐 4. Safe Netplan Static IP with 120s Auto-Rollback
-- Auto-detects active network interfaces, gateway, and DNS servers.
+### 🌐 4. Safe Netplan Static IP with 120s Auto-Rollback & Live Confirmation
+- Auto-detects active network interfaces (via `/proc/net/route`), gateway, and DNS servers.
 - Generates standard Netplan v2 YAML configuration.
-- **Safety Guarantee:** Applies with an armed revert timer (120 s by default). Unless the change is confirmed from the new address, the previous Netplan files are restored automatically, protecting remote sessions.
+- **End-to-End Safety Guarantee:** Applies with an armed revert timer (`homelab-netplan-revert`, 120 s by default) and immediately surfaces a live **120-second confirmation countdown banner** (in both the modal and the Overview Attention Strip) with a direct link to the new IP and a **"Confirm New IP"** button (`/api/config/netplan-confirm`). Unless confirmed before the timer expires, the previous Netplan configuration is restored automatically.
 
 ### 🤖 5. AI Copilot Diagnostics & Compact Prompt Exporter
-- Probes CPU model, architecture, thread count, and low-power / Direct Play profile.
-- Probes RAM headroom and `/dev/dri/renderD128` hardware acceleration status.
+- Probes CPU model, architecture, thread count, and transcode capability (accurately distinguishing modern Intel N100/Alder Lake-N QuickSync CPUs from legacy Haswell Direct Play nodes).
+- Probes RAM headroom and `/sys/class/drm/card*/device/vendor` (`0x8086` Intel QSV/VAAPI, `0x1002` AMD VAAPI, `0x10de` NVIDIA NVENC) alongside `/dev/dri/renderD128`.
 - Generates a **token-optimized diagnostic prompt (~300 tokens)** tailored for ChatGPT, Claude, and Antigravity:
-  - Includes real-time hardware specs, mount paths, network settings, and key blueprint architectural rules.
-  - Features 1-click **"📋 Copy AI Prompt"** with visual clipboard confirmation.
+  - Includes real-time hardware specs, actual configured mount paths, network settings, and key blueprint architectural rules.
+  - Features 1-click **"Copy AI Prompt"** with an HTTP-safe clipboard fallback so copying works over plain `http://<lan-ip>:7575` LAN origins.
 
-### 📊 6. Universal Hardware Telemetry Display
-- **Dynamic Vitals Card:** Automatically populates host CPU model, core/thread count, physical memory headroom, and root/storage partition sizes dynamically without hardcoded machine assumptions.
-- **Dynamic Block Device Throughput:** Dynamically identifies active root and storage block devices (`nvme*`, `sd*`, `vd*`, `mmcblk*`) and renders read/write I/O telemetry in real time.
+### 📊 6. Universal Hardware Telemetry & Per-Filesystem Storage Truth
+- **Dynamic Vitals & Thermal Probing:** Populates host CPU model, core/thread count, CPU package temperature via `/sys/class/hwmon` (`coretemp`, `k10temp`, `zenpower`, `cpu_thermal`), and physical memory headroom without hardcoded machine assumptions.
+- **Per-Filesystem Storage Breakdown (`st_dev` + Root Hourly Timer):** Groups measured directory sizes by the actual filesystem (`st_dev`) they reside on (separating OS Root `/` SSD appdata/backups from Data Pool HDD media/photos), powered by the root hourly `homelab-storage-sizes.timer` (`0644` atomic JSON cache) outside Control Hub's `100M` cgroup.
+- **Universal Block Device Throughput:** Resolves mountpoints through `/proc/mounts`, `/sys/block`, and `lsblk` (supporting LVM `dm-*`, NVMe, SATA, eMMC `mmcblk*`, MDADM `md*`, and single-disk hosts without duplicating disks).
 
 ---
 
@@ -92,7 +96,7 @@ Administrators can now inspect, live-test, and update their entire homelab topol
 
 | Feature | Screenshot |
 | :--- | :--- |
-| **Top Cyber-HUD Header** | ![Header](assets/control-hub/hub_header_settings_ai.png) |
-| **Storage & Hardlink Tester** | ![Hardlinks](assets/control-hub/hub_settings_hardlink_test.png) |
+| **5-View Operations Console (`Overview`)** | ![Overview](assets/control-hub/hub_header_settings_ai.png) |
+| **Storage & Atomic Hardlink Tester** | ![Hardlinks](assets/control-hub/hub_settings_hardlink_test.png) |
 | **13-Service Port Matrix** | ![Ports](assets/control-hub/hub_settings_port_matrix.png) |
 | **AI Copilot Diagnostics** | ![AI Copilot](assets/control-hub/hub_ai_copilot_diagnostics.png) |

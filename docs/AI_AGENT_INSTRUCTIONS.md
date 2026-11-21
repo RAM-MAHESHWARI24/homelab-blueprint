@@ -22,7 +22,7 @@
 
 4. **S3 RAM Suspend Safety Guards ([`POWER_MANAGEMENT_RTCWAKE.md`](POWER_MANAGEMENT_RTCWAKE.md))**:
    - Automated midnight sleep (00:00 -> 06:00, 1.2W).
-   - Script checks `pgrep -f "rclone sync"` and `pgrep -f "immich_backup"`. Never remove these deferral guards.
+   - `apps/control-hub/host/server-suspend.sh` checks active qBittorrent downloads, active LAN SMB streams, active Jellyfin sessions, photo/media backup processes (`rclone sync`, `immich_backup`, `media_config_backup.py`, `photo_restore_test`), and `/run/server-suspend.skip`. Never remove these deferral guards.
 
 5. **PUID/PGID Alignment ([`DOCKER_PERMISSIONS_PUID_PGID.md`](DOCKER_PERMISSIONS_PUID_PGID.md))**:
    - All containers run as `PUID=1000`, `PGID=1000` with `UMASK=002`.

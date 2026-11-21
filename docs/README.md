@@ -111,7 +111,9 @@ Find the most efficient entry point based on your current task:
 * **[Control Hub Alerts: Channels and Setup](CONTROL_HUB_ALERTS.md)**
   * *Why it matters:* What triggers an alert and step-by-step setup for ntfy (public, account or self-hosted with a password), Telegram, Discord and email, with quiet hours and error fixes.
 * **[Control Hub Configuration Center](CONTROL_HUB_CONFIGURATION_CENTER.md)**
-  * *Why it matters:* Architectural guide to the live node dashboard at `:7575`, real-time port polling, live `os.link` storage testing, and secret regeneration.
+  * *Why it matters:* Architectural guide to the 5-view Operations Console at `:7575`, real-time 13-service port polling, live `os.link` storage testing, 120-second Netplan static IP confirmation, and AI Copilot diagnostics.
+* **[Control Hub Improvement & De-AI Redesign Plan](../Control%20Hub%20Improvement%20Plan.md)**
+  * *Why it matters:* Complete audit history, Pivot Phases A & B implementation record, and the Pivot Phase C full-depth Hallmark `Console` (`console: graphite` / `console: paper`) + Impeccable redesign specification.
 * **[Master Verification & Test Report](HOMELAB_VERIFICATION_AND_TEST_REPORT.md)**
   * *Why it matters:* Complete test documentation including 13 visual proof screenshots, risk matrices, and deployment verification artifacts.
 * **[Early Setup Wizard Test Results](SETUP_WIZARD_TEST_RESULTS.md)**

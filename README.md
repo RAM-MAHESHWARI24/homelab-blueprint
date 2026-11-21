@@ -108,6 +108,9 @@ Teardown reads the install manifest and removes only what the installer created.
 
 - [Documentation hub](docs/README.md)
 - [Installing on a server that already runs these apps](docs/INSTALL_ON_EXISTING_SERVER.md)
+- [Control Hub configuration center & AI Copilot](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)
+- [Control Hub alerts: channels and setup](docs/CONTROL_HUB_ALERTS.md)
+- [Control Hub improvement & De-AI redesign plan](Control%20Hub%20Improvement%20Plan.md)
 - [Static IP changes and rollback](docs/NETPLAN_STATIC_IP_QUIRKS.md)
 - [Storage and hardlinks](docs/STORAGE_AND_HARDLINKS.md)
 - [Releasing and the module repositories](docs/RELEASING.md)
