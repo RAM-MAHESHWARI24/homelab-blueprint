@@ -1,0 +1,10 @@
+# Nightly off-site backup of the media apps' settings: databases and config, no logs or caches.
+# Rendered by the installer: {{MEDIA_APPDATA_DIR}}, {{STATE_DIR}}, {{GDRIVE_REMOTE}}, {{INSTALL_DIR}}, {{KEEP_*}}
+# A run started by hand reads these same lines, so edit them here (or re-run setup).
+MEDIA_APPDATA={{MEDIA_APPDATA_DIR}}
+MEDIA_BACKUP_DIR={{STATE_DIR}}/media-backups
+GDRIVE_REMOTE={{GDRIVE_REMOTE}}
+KEEP_LOCAL=3
+KEEP_REMOTE={{KEEP_DRIVE_DUMPS}}
+KEEP_MONTHLY={{KEEP_DRIVE_MONTHLY}}
+30 21 * * * root /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/media_config_backup.py >> {{STATE_DIR}}/media-backups/cron.log 2>&1

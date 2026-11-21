@@ -90,6 +90,40 @@ recyclarr sync
 
 ---
 
+## 💾 Settings Backup (`scripts/media_config_backup.py`)
+
+Rebuilding Sonarr, Radarr, Prowlarr, Bazarr, Seerr and Jellyfin by hand after a disk failure
+takes a day. The settings backup saves what cannot be downloaded again:
+
+* every app's configuration and database (series and movie lists, quality profiles, indexers,
+  Jellyfin users, libraries and watch history), qBittorrent's settings and torrent list;
+* **not** logs, caches, transcodes, cover art (`MediaCover`) or Jellyfin's downloaded metadata
+  images, which come back by themselves (set `INCLUDE_JELLYFIN_METADATA=1` to keep those too).
+
+Databases are copied with SQLite's online backup API, so the apps keep running. A typical
+install compresses to about 20 MB (`media_config_YYYYMMDD_HHMMSS.tar.zst`).
+
+Each run: pre-flight (folder, rclone, the remote answers, `Media_Backup/` still exists after a
+first good run, free space) → snapshot → archive → `rclone copy` to `<remote>Media_Backup/` and a
+check that it arrived → retention: 3 archives locally; on the remote the newest 14 plus the first
+of each of the last 12 months. Only `media_config_*` archives are ever deleted.
+
+Progress and the last 30 runs are written to `status.json` next to the archives
+(default `/var/lib/homelab/media-backups`). The Control Hub's backup card shows them, offers
+**Back up now**, and alerts when a run fails or no good run happened for 26 hours.
+
+Inside homelab-blueprint it is installed with the photo backup (same rclone remote) and runs
+daily at 21:30 from `/etc/cron.d/media-backup`. On its own:
+
+```bash
+sudo GDRIVE_REMOTE=gdrive: MEDIA_APPDATA=/srv/homelab/appdata/mediaserver \
+     python3 scripts/media_config_backup.py
+```
+
+**Restore:** stop the stack (`docker compose down`), unpack the archive over the settings folder
+as root (`tar -I zstd -xpf media_config_....tar.zst -C /srv/homelab/appdata/mediaserver`, which
+keeps the owner), start the stack again.
+
 ## 🖥️ Live Monitoring & Management
 Once launched, the entire media pipeline is monitored in real-time by [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub):
 * **Live Downloads:** qBittorrent ingest speeds, queue progress, and 1-click pause.

@@ -5,6 +5,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 ## [Unreleased]
 
 ### Added
+- Nightly off-site backup of the media apps' settings (21:30, with the photo backup's remote): Sonarr, Radarr, Prowlarr, Bazarr, Seerr and Jellyfin databases and configuration plus qBittorrent's settings and torrent list, copied with SQLite's online backup API so nothing stops. Logs, caches and re-downloadable artwork are left out (about 20 MB instead of 1.8 GB). Same pre-flight checks, retention, history and alerts as the photo backup, and a **Back up now** button on the backup card.
 - Photo backup health (Control Hub Phase 2A). The backup script runs pre-flight checks before anything else and stops with a clear reason if the remote does not answer, a backup folder on it went missing, the photo folder is empty (an unmounted disk), or there is not enough space. It records transfer totals, retention and the last 30 runs in `status.json`, and never runs twice at once.
 - Retention for database dumps: 3 on the server, and on the remote the newest 14 plus the first of each of the last 12 months (profile keys `photo_backup_keep_local`, `photo_backup_keep_remote`, `photo_backup_keep_monthly`). Only files the nightly script names are deleted.
 - The backup card shows the last good run and its age, the next run, the last 7 runs, the failed pre-flight checks and what retention will delete next. It turns red when the last run failed or was interrupted, or the last good run is older than 26 hours, and the log refreshes live during a run.
