@@ -206,6 +206,8 @@ class Status:
             "status": "syncing", "stage": 0, "stage_label": "0. Pre-flight", "message": "Checking the remote and free space...",
             "started_at": datetime.now().astimezone().isoformat(timespec="seconds"), "completed_at": None,
             "last_good_at": self.prev.get("last_good_at"), "remote": remote,
+            "last_good_remote": self.prev.get("last_good_remote")
+            or (self.prev.get("remote") if self.prev.get("last_good_at") else None),
             "dump_file": self.prev.get("dump_file"), "dump_bytes": self.prev.get("dump_bytes"),
             "preflight": {"ok": True, "checks": []}, "transfer": None,
             "retention": self.prev.get("retention"), "snapshot": None,
@@ -227,6 +229,7 @@ class Status:
         d.update(status="synced" if ok else "error", message=message, completed_at=now)
         if ok:
             d["last_good_at"] = now
+            d["last_good_remote"] = d["remote"]
         try:
             duration = int((datetime.fromisoformat(now) - datetime.fromisoformat(d["started_at"])).total_seconds())
         except ValueError:
@@ -329,7 +332,8 @@ def run(settings: Dict) -> int:
             raise PreflightError(f"Pre-flight: the remote {settings['remote']} did not answer ({detail}).")
         status.check("remote", True, f"{settings['remote']} answers")
         has_folder = any(line.split()[-1] == "Media_Backup" for line in res.stdout.splitlines() if line.strip())
-        if not has_folder and status.data["last_good_at"]:
+        # Only for the same remote: after switching remotes the first run creates the folder.
+        if not has_folder and status.data["last_good_at"] and status.data["last_good_remote"] == settings["remote"]:
             status.check("folder Media_Backup", False, "missing although earlier runs wrote to it")
             raise PreflightError(f"Pre-flight: {settings['remote_dir']} is missing although earlier runs wrote to it. Was it moved or renamed?")
         status.check("folder Media_Backup", True, "present" if has_folder else "not there yet; this run creates it")

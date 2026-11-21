@@ -474,6 +474,10 @@ class Deployment:
         self.services_launched.append("photo_backup")
         self.log(f"Nightly photo backup installed (22:00, rclone remote '{remote}').")
         self._install_restore_test()
+        helper = self.root / "system" / "helpers" / "homelab-backup-remote"
+        if helper.exists():
+            # "Change remote" in the Control Hub (list/test/set through one sudoers entry).
+            install_helper_script(helper, self.manifest)
         if "media" in self.modules and self.config.get("media_backup", True):
             self._install_media_backup(remote)
 

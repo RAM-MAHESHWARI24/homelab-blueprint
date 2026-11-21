@@ -33,6 +33,8 @@ homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh start
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh stop
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich_backup_gdrive.sh
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl start --no-block photo-restore-test.service
+# Backup remote: list | test REMOTE | set REMOTE (the helper validates REMOTE itself)
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/homelab-backup-remote *
 homelab ALL=(ALL) NOPASSWD: /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/media_config_backup.py
 
 # Self-restart after configuration changes

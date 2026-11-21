@@ -7,6 +7,7 @@ Helper for immich_backup_gdrive.sh (standard library only).
     backup_status.py stats FILE...   print transfer totals parsed from rclone output (JSON)
     backup_status.py count-assets F  count photos/videos (not deleted) in a pg_dumpall .sql.gz
     backup_status.py restore-result  record a restore test in status.json
+    backup_status.py had-good-run    print 1 if a run to this remote succeeded before, else 0
 
 The Control Hub reads only status.json, so the dashboard never needs `sudo rclone`.
 """
@@ -157,6 +158,14 @@ def cmd_count_assets(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_had_good_run(a: argparse.Namespace) -> int:
+    """Pre-flight: folders must exist only if an earlier run to *this* remote succeeded."""
+    data = _read_json(a.file) or {}
+    remote = data.get("last_good_remote") or (data.get("remote") if data.get("last_good_at") else None)
+    print("1" if data.get("last_good_at") and remote == a.remote else "0")
+    return 0
+
+
 def cmd_restore_result(a: argparse.Namespace) -> int:
     path = Path(a.file)
     data = _read_json(str(path))
@@ -213,6 +222,11 @@ def build_status(prev: dict, a: argparse.Namespace) -> dict:
 
     final = a.status in ("synced", "error")
     last_good = a.completed_at if a.status == "synced" and a.completed_at else prev.get("last_good_at")
+    if a.status == "synced":
+        last_good_remote = a.remote
+    else:
+        # status.json from before this field: the remote of the last run that had a good result.
+        last_good_remote = prev.get("last_good_remote") or (prev.get("remote") if prev.get("last_good_at") else None)
     same_run = prev.get("started_at") == a.started_at
     transfer = _read_json(a.transfer_json) or (prev.get("transfer") if same_run else None)
     preflight = _read_preflight(a.preflight_file) or (prev.get("preflight") if same_run else None)
@@ -237,6 +251,7 @@ def build_status(prev: dict, a: argparse.Namespace) -> dict:
         "started_at": a.started_at,
         "completed_at": a.completed_at or None,
         "last_good_at": last_good,
+        "last_good_remote": last_good_remote,
         "remote": a.remote,
         "dump_file": a.dump_file or prev.get("dump_file"),
         "dump_bytes": dump_bytes if dump_bytes is not None else prev.get("dump_bytes"),
@@ -308,6 +323,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     c = sub.add_parser("count-assets", help="count photos/videos (not deleted) in a pg_dumpall file")
     c.add_argument("dump")
     c.set_defaults(func=cmd_count_assets)
+
+    hg = sub.add_parser("had-good-run", help="print 1 if a run to this remote succeeded before")
+    hg.add_argument("--file", required=True)
+    hg.add_argument("--remote", required=True)
+    hg.set_defaults(func=cmd_had_good_run)
 
     rr = sub.add_parser("restore-result", help="record a restore test in status.json")
     rr.add_argument("--file", required=True)

@@ -132,6 +132,35 @@ class TestRestoreTest(unittest.TestCase):
             self.assertEqual(len(d["restore_history"]), 1)
 
 
+class TestRemoteSwitch(unittest.TestCase):
+    def had(self, path, remote):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            backup_status.main(["had-good-run", "--file", str(path), "--remote", remote])
+        return buf.getvalue().strip()
+
+    def test_folders_are_required_only_for_the_remote_that_worked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "status.json"
+            self.assertEqual(self.had(path, "gdrive:"), "0")
+            # Written before last_good_remote existed: the old run's remote counts.
+            path.write_text(json.dumps({"status": "synced", "remote": "gdrive:", "last_good_at": "2026-11-20T22:06:01"}))
+            self.assertEqual(self.had(path, "gdrive:"), "1")
+            self.assertEqual(self.had(path, "newdrive:"), "0")
+            # A failed run to the new remote keeps the old remote as the last good one.
+            backup_status.main(["status", "--file", str(path), "--status", "error", "--stage", "0",
+                                "--started-at", "2026-11-22T22:00:01", "--remote", "newdrive:"])
+            self.assertEqual(json.loads(path.read_text())["last_good_remote"], "gdrive:")
+            self.assertEqual(self.had(path, "newdrive:"), "0")
+            backup_status.main(["status", "--file", str(path), "--status", "synced", "--stage", "4",
+                                "--started-at", "2026-11-23T22:00:01", "--completed-at", "2026-11-23T23:00:01",
+                                "--remote", "newdrive:"])
+            self.assertEqual(self.had(path, "newdrive:"), "1")
+            self.assertEqual(self.had(path, "gdrive:"), "0")
+
+
 class TestStatusHistory(unittest.TestCase):
     def run_status(self, path, status, started, completed="", **extra):
         argv = ["status", "--file", str(path), "--status", status, "--stage", extra.pop("stage", "4"),
