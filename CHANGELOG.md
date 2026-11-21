@@ -4,6 +4,9 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+- Install profile keys `photo_external_mount_path` and `photo_external_mount_mode` set where and how the photo server mounts the external library. Defaults stay `/mnt/media` and read-only. A library moved from another install keeps the paths its database recorded.
+
 ### Changed
 - Pinned images now match what the existing server already runs, so moving that server to v2 does not downgrade any app: Radarr 7.0.3, Prowlarr 3.0.2, Seerr 3.5.2 and Noodle Gallery 5.11.1. These apps migrate their databases forward and cannot open them after a downgrade.
 - The gallery machine-learning service sets `MACHINE_LEARNING_MODEL_REVISION: v2`, as the upstream v5 compose file does.

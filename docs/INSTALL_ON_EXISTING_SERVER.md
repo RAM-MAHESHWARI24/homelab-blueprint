@@ -70,12 +70,15 @@ Create `/root/pre-v2/profile.json`. Reuse the existing database password and pin
   "postgres_db": "<DB_DATABASE_NAME>",
   "photo_upload_dir": "<UPLOAD_LOCATION>",
   "photo_db_dir": "<DB_DATA_LOCATION>",
+  "photo_external_mount_path": "<container path of the external library, e.g. /mnt/hdd/Memories>",
+  "photo_external_mount_mode": "rw",
   "photos_server_image": "ghcr.io/immich-app/immich-server:<exact tag or @sha256 digest>",
   "photos_ml_image": "ghcr.io/immich-app/immich-machine-learning:<same version>"
 }
 ```
 
 - `photo_db_dir` points at the existing Postgres data, so the database is reused in place.
+- External library assets store absolute paths, so `photo_external_mount_path` must be the path the old compose file mounted the library at inside the container (the right-hand side of its volume line). The blueprint default is `/mnt/media`; a different path makes every external asset go offline. Use `rw` if the old mount was read-write, so the server can keep writing XMP sidecars. Check with `docker inspect immich_server --format '{{json .Mounts}}'` before you stop it.
 - The two image keys keep the version the database was migrated to. Without them, the blueprint's own pinned images start, and those are Open-Noodle Gallery, a fork, at a different version.
 - Media apps start fresh under `/srv/homelab/appdata/mediaserver` by default. To keep the existing Arr configs, set `"config_dir"` to the folder that holds them and `"qbittorrent_pass"` to qBittorrent's current WebUI password. An existing `qBittorrent.conf` is never overwritten, so a different password makes the wiring step fail.
 

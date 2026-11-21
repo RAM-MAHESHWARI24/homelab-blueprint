@@ -98,6 +98,36 @@ def test_photos_image_override():
     print("  [OK] pins accepted, floating tags refused")
 
 
+def test_photo_external_mount():
+    """An existing library can keep the container path and mode its database recorded."""
+    import shutil
+    import tempfile
+    sys.path.insert(0, str(REPO_ROOT / "apps" / "control-hub"))
+    from core.config_core.env_manager import load_env_file, sync_all_blueprint_envs
+
+    print("Testing photo external library mount settings...")
+    cases = [
+        ({}, "/mnt/media", "ro"),
+        ({"photo_external_mount_path": "/mnt/hdd/Memories/", "photo_external_mount_mode": "rw"}, "/mnt/hdd/Memories", "rw"),
+        ({"photo_external_mount_path": "relative:bad", "photo_external_mount_mode": "yes"}, "/mnt/media", "ro"),
+    ]
+    for extra, want_path, want_mode in cases:
+        tmp = Path(tempfile.mkdtemp(prefix="photo_mount_"))
+        try:
+            module = tmp / "apps" / "noodle-gallery"
+            module.mkdir(parents=True)
+            shutil.copy(REPO_ROOT / "apps" / "noodle-gallery" / ".env.example", module / ".env.example")
+            out = sync_all_blueprint_envs(str(tmp), dict(extra))
+            env = load_env_file(out["noodle_gallery_env"])
+            assert env.get("EXTERNAL_LIBRARY_MOUNT_PATH") == want_path, (extra, env.get("EXTERNAL_LIBRARY_MOUNT_PATH"))
+            assert env.get("EXTERNAL_LIBRARY_MOUNT_MODE") == want_mode, (extra, env.get("EXTERNAL_LIBRARY_MOUNT_MODE"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    compose = (REPO_ROOT / "apps" / "noodle-gallery" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${EXTERNAL_LIBRARY_MOUNT_PATH:-/mnt/media}:${EXTERNAL_LIBRARY_MOUNT_MODE:-ro}" in compose
+    print("  [OK] defaults /mnt/media:ro, overrides kept, bad values fall back")
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -197,6 +227,7 @@ def run_tests():
 
         test_exit_waits_for_netplan_confirm()
         test_photos_image_override()
+        test_photo_external_mount()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:

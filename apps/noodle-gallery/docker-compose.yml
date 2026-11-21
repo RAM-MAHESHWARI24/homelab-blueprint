@@ -23,7 +23,9 @@ services:
       - ${UPLOAD_LOCATION:-./data/uploads}:/data
       - ${THUMBS_LOCATION:-./data/thumbs}:/data/thumbs
       - ${ENCODED_VIDEO_LOCATION:-./data/encoded-video}:/data/encoded-video
-      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro
+      # Path and mode inside the container are configurable so an existing library keeps
+      # the paths its database recorded (external library assets store absolute paths).
+      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:${EXTERNAL_LIBRARY_MOUNT_PATH:-/mnt/media}:${EXTERNAL_LIBRARY_MOUNT_MODE:-ro}
       - /etc/localtime:/etc/localtime:ro
     env_file:
       - .env
@@ -51,7 +53,7 @@ services:
           - immich_machine_learning
     volumes:
       - model-cache:/cache
-      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:/mnt/media:ro
+      - ${EXTERNAL_LIBRARY_LOCATION:-/mnt/hdd/Memories}:${EXTERNAL_LIBRARY_MOUNT_PATH:-/mnt/media}:ro
     env_file:
       - .env
     environment:
