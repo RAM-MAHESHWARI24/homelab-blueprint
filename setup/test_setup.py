@@ -143,6 +143,20 @@ def test_no_stdlib_shadowing():
     print(f"  [OK] {len(files)} files checked")
 
 
+def test_sudoers_template_sudo_rs():
+    """sudo-rs (Ubuntu 26.04) accepts a wildcard only as a whole last argument."""
+    print("Testing the sudoers template against sudo-rs rules...")
+    tpl = (REPO_ROOT / "system" / "systemd" / "homelab-sudoers.example").read_text(encoding="utf-8")
+    for line in tpl.splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or "NOPASSWD:" not in line:
+            continue
+        args = line.split("NOPASSWD:", 1)[1].split()
+        for i, arg in enumerate(args):
+            if any(c in arg for c in "*?[") and not (arg == "*" and i == len(args) - 1):
+                raise AssertionError(f"sudo-rs rejects this wildcard: {line.strip()}")
+    print("  [OK] wildcards only as a whole trailing argument")
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -244,6 +258,7 @@ def run_tests():
         test_photos_image_override()
         test_photo_external_mount()
         test_no_stdlib_shadowing()
+        test_sudoers_template_sudo_rs()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:

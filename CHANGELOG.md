@@ -6,6 +6,9 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ### Fixed
 - The installer crashed on Python 3.14 (Ubuntu 26.04): `setup/token.py` shadowed the standard `token` module once argparse started importing it. The file is now `setup/token_cli.py`, a test refuses files named after standard modules, and CI also runs on Python 3.14.
+- The Control Hub could not be installed on Ubuntu 26.04, whose sudo-rs rejects the wildcard in `--on-calendar=*`. Tonight's sleep override now runs through `/usr/local/sbin/server-suspend-override.sh`, which validates the time, and a test checks the sudoers template against sudo-rs rules.
+- The optional Byparr container never turned healthy during install: its image checks every 15 minutes. The compose file now checks every 30 seconds.
+- `docs/INSTALL_ON_EXISTING_SERVER.md` explains how to keep an existing photo database whose password was a default.
 
 ### Added
 - Install profile keys `photo_external_mount_path` and `photo_external_mount_mode` set where and how the photo server mounts the external library. Defaults stay `/mnt/media` and read-only. A library moved from another install keeps the paths its database recorded.

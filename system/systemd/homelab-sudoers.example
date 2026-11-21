@@ -2,6 +2,7 @@
 # Homelab Blueprint - sudoers drop-in for the Control Hub service account
 # Installed to /etc/sudoers.d/homelab-blueprint (0440) by the installer after
 # validation with `visudo -c`. {{INSTALL_DIR}} is rendered at install time.
+# A wildcard may only be a whole last argument: sudo-rs rejects it inside one.
 #
 # Honest note: the 'homelab' user is in the docker group so it can manage
 # containers, and docker-group membership is root-equivalent on the host.
@@ -18,7 +19,7 @@ homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /run/server-suspend.override
 homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/server-suspend.conf
 homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/cron.d/server-suspend
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop server-suspend-override.timer
-homelab ALL=(ALL) NOPASSWD: /usr/bin/systemd-run --on-calendar=* --unit=server-suspend-override /usr/local/sbin/server-suspend.sh --override
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/server-suspend-override.sh *
 homelab ALL=(ALL) NOPASSWD: /usr/sbin/rtcwake *
 
 # Host telemetry (active SMB sessions defer suspend)
