@@ -259,6 +259,12 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7575/api/system/vitals)" = "401"
           TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/system/vitals >/dev/null
+          # Browsers sign in with the master password (here the generated qBittorrent password) and get a cookie
+          sudo stat -c '%U %a' /var/lib/homelab/control-hub/password | grep -q '^homelab 600$'
+          PW="$(sudo grep -m1 '^QBITTORRENT_PASS=' /etc/homelab/mediaserver.env | cut -d= -f2-)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"password":"wrong-password"}' http://127.0.0.1:7575/api/auth/login)" = "401"
+          curl -fsS -c /tmp/hub.jar -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$PW\"}" http://127.0.0.1:7575/api/auth/login >/dev/null
+          curl -fsS -b /tmp/hub.jar http://127.0.0.1:7575/api/system/vitals >/dev/null
           # Media stack
           docker ps --format '{{.Names}}\t{{.Status}}'
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8096/health && break; sleep 3; done

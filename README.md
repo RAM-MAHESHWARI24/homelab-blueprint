@@ -83,9 +83,9 @@ Already running your own homelab? Each module marked with a repository installs 
 
 ## Security
 
-- **Token-protected.** The Setup Wizard prints a one-time token. The Control Hub requires a bearer token, shown by `sudo ./setup.sh token`. Only health endpoints are open.
+- **Password-protected.** The Setup Wizard prints a one-time token. The Control Hub asks for a password, by default the master password from setup; each browser signs in once, and you can change it under Account or with `sudo ./setup.sh password`. Scripts can use the API token from `sudo ./setup.sh token`. Only health endpoints are open.
 - **No default passwords.** Blank fields mean a generated secret, shown once after install.
-- **The Control Hub is root-equivalent.** It runs as the `homelab` user, which is in the `docker` group. Anyone with the token controls the host. Treat the token like a root password.
+- **The Control Hub is root-equivalent.** It runs as the `homelab` user, which is in the `docker` group. Anyone who signs in (or holds the API token) controls the host. Treat the dashboard password and the token like a root password.
 - **LAN only.** Do not port-forward 7575, 8000 or the app ports. Use Tailscale for remote access.
 
 See [SECURITY.md](SECURITY.md) to report a problem.
