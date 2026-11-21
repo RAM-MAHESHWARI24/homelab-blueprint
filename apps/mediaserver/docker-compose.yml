@@ -53,7 +53,7 @@ services:
   prowlarr:
     <<: *common
     container_name: prowlarr
-    image: lscr.io/linuxserver/prowlarr:2.7.0.5723-ls168
+    image: lscr.io/linuxserver/prowlarr:3.0.2.5780-ls169
     ports:
       - "9696:9696"
     volumes:
@@ -69,7 +69,7 @@ services:
   radarr:
     <<: *common
     container_name: radarr
-    image: lscr.io/linuxserver/radarr:6.4.4.10685-ls326
+    image: lscr.io/linuxserver/radarr:7.0.3.10918-ls328
     ports:
       - "7878:7878"
     volumes:
@@ -148,7 +148,7 @@ services:
 
   seerr:
     container_name: seerr
-    image: ghcr.io/seerr-team/seerr:v3.4.1
+    image: ghcr.io/seerr-team/seerr:v3.5.2
     init: true
     restart: unless-stopped
     # The Seerr image has no PUID/PGID support: it is built with `USER node` (uid 1000)
