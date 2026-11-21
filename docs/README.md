@@ -169,10 +169,10 @@ Every primary module in this monorepo includes a dedicated, colocated `README.md
 ├── ARCHITECTURE.md                          # Full Monorepo Architecture & Hardware Tiers
 ├── setup/README.md                          # Phase 1 Zero-Dependency Setup Wizard
 ├── apps/
-│   ├── control-hub/README.md                # Cyber-HUD Dashboard & Host Telemetry Daemon
+│   ├── control-hub/README.md                # 5-View Operations Console & Host Telemetry Daemon
 │   ├── mediaserver/README.md                # Docker Compose Media Stack (Jellyfin, *arrs, qBit)
 │   ├── noodle-gallery/README.md             # Photo Cloud, PostgreSQL VectorChord & Face Recognition
-│   ├── tv-updater/README.md                 # Smart TV Fleet ADB Wireless App Synchronizer
+│   ├── tv_autoupdater/README.md             # Smart TV Fleet ADB Wireless App Synchronizer
 │   └── immich-face-xmp-exporter/README.md   # Non-Destructive Bidirectional Face XMP Sidecar Sync
 ├── system/README.md                         # Host Systemd Services, Cron Jobs & Sleep Daemons
 └── testing/README.md                        # Master QA Verification Plan & CI Automation
