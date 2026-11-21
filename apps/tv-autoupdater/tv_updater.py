@@ -378,6 +378,8 @@ def probe_device_info(device_ip: str) -> dict:
     """Asks the TV for its manufacturer, model, codename, Android version and device name."""
     script = "; ".join(f"getprop {prop}" for _, prop in _INFO_PROPS) + "; settings get global device_name"
     try:
+        # `adb -s ip:port` only works on an existing connection (none after a reboot).
+        subprocess.run(["adb", "connect", f"{device_ip}:5555"], capture_output=True, text=True, timeout=5)
         res = adb_cmd(device_ip, ["shell", script], timeout=6)
     except Exception:
         return {}
