@@ -38,9 +38,10 @@ No file editing or SSH is needed.
 
 | Rule | Severity | Default | Notes |
 | --- | --- | --- | --- |
-| Photo backup failed or was interrupted | Critical | on | From the backup's `status.json`. "Interrupted" means the run stopped without finishing (restart, power loss). |
+| Backup failed or was interrupted | Critical | on | Photo backup and media settings backup, each from its own `status.json`; the message says which. "Interrupted" means the run stopped without finishing (restart, power loss). |
 | Backup remote not reachable | Critical | on | The backup pre-flight could not reach the rclone remote: usually an expired Google Drive login or a renamed remote. Sent instead of "backup failed". |
-| No good photo backup for more than 26 hours | Warning | on | A nightly run was missed. The hour limit is `BACKUP_STALE_HOURS`. |
+| Photo backup restore test failed | Critical | on | The monthly test could not restore the newest remote dump, or fewer photos came back than the dump contains. |
+| No good backup for more than 26 hours | Warning | on | Photo backup or media settings backup: a nightly run was missed. The hour limit is `BACKUP_STALE_HOURS`. |
 | Disk almost full | Critical | 95% | Checks `/`, the media folder and the photo folder. A disk shared by several folders is reported once. |
 | Disk filling up | Warning | 85% | Same disks. Only one of the two disk alerts is open per disk. |
 | App stopped or unhealthy | Warning | 5 minutes | Containers of the installed apps (Jellyfin, Sonarr, Radarr, Prowlarr, qBittorrent, Seerr, Bazarr, the photo server and the optional ones that exist). Add containers you stop on purpose to **Ignore these containers**. |

@@ -85,11 +85,33 @@ The included backup script ([`scripts/immich_backup_gdrive.sh.example`](scripts/
 
 Each step updates `status.json` next to the log (0644, written atomically) with the outcome, pre-flight results, transfer totals, retention and the last 30 runs; [`scripts/backup_status.py`](scripts/backup_status.py) writes it. Only one run happens at a time. A run started by hand (for example from the Control Hub) reads its settings from `/etc/cron.d/immich-backup`, like the nightly job.
 
+### Monthly restore test
+
+A backup is only proven by restoring it. [`scripts/photo_restore_test.sh`](scripts/photo_restore_test.sh)
+runs on the first Sunday of every month at 11:00 (`photo-restore-test.timer`; a missed run
+happens at the next boot) and:
+
+1. downloads the newest `immich_db_*.sql.gz` **from the remote** (the copy a real restore would use);
+2. checks the gzip stream;
+3. loads it into a throwaway Postgres container started from the same image as the live
+   database (no network, 1 GB memory cap, random password, temporary folder);
+4. counts the photos and videos that are not deleted and compares the number with the rows of
+   the `asset` table in the dump itself;
+5. removes the container and every temporary file, whatever happened.
+
+The result goes into `status.json` (`restore_test`, plus the last 12 in `restore_history`). It
+never runs during a backup. Run it by hand with `sudo systemctl start photo-restore-test.service`
+or **Run restore test now** in the Control Hub; the log is `restore-test.log` next to the dumps.
+
+To restore for real, see the same steps in reverse: stop the photo server, create an empty
+database container from the same image, and feed it the dump with
+`gunzip -c immich_db_....sql.gz | docker exec -i <container> psql -U postgres -d postgres`.
+
 ### Enabling as a Daily Cron Job:
 ```bash
 sudo ./install.sh --cron
 ```
-This installs `/etc/cron.d/immich-backup` (22:00 nightly) and `/etc/cron.d/immich-ml`, which starts the ML container at 06:00 and stops it at 10:00. Paths come from `.env`.
+This installs `/etc/cron.d/immich-backup` (22:00 nightly), the monthly `photo-restore-test.timer` and `/etc/cron.d/immich-ml`, which starts the ML container at 06:00 and stops it at 10:00. Paths come from `.env`.
 
 ---
 

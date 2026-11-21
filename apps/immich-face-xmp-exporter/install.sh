@@ -43,6 +43,10 @@ if $WITH_CRON; then
     mkdir -p "$BACKUP_DIR"
     install -m 0755 scripts/immich-ml-control.sh /usr/local/sbin/immich-ml-control.sh
     install -m 0755 scripts/immich_backup_gdrive.sh.example /usr/local/sbin/immich_backup_gdrive.sh
+    install -m 0755 scripts/photo_restore_test.sh /usr/local/sbin/photo_restore_test.sh
+    install -m 0644 host/systemd/photo-restore-test.service host/systemd/photo-restore-test.timer /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now photo-restore-test.timer
     # The cron templates use the blueprint's placeholders; fill them for a standalone host.
     sed -e "s|{{INSTALL_DIR}}/apps/immich-face-xmp-exporter|$SCRIPT_DIR|g" \
         -e "s|{{STATE_DIR}}/photo-backups|$BACKUP_DIR|g" \

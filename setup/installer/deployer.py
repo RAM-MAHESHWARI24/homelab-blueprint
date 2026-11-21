@@ -46,6 +46,7 @@ from .host import (
     run_command_input,
     ensure_system_user,
     install_file,
+    SYSTEMD_DIR,
     install_systemd_unit,
     install_cron,
     install_sudoers,
@@ -472,8 +473,28 @@ class Deployment:
         install_cron(cron, "immich-backup", self.manifest, variables=self.template_vars())
         self.services_launched.append("photo_backup")
         self.log(f"Nightly photo backup installed (22:00, rclone remote '{remote}').")
+        self._install_restore_test()
         if "media" in self.modules and self.config.get("media_backup", True):
             self._install_media_backup(remote)
+
+    def _install_restore_test(self) -> None:
+        """Monthly restore test of the newest remote dump (systemd timer, outside the hub's cgroup)."""
+        base = self.root / "apps" / "immich-face-xmp-exporter"
+        script = base / "scripts" / "photo_restore_test.sh"
+        service = base / "host" / "systemd" / "photo-restore-test.service"
+        timer = base / "host" / "systemd" / "photo-restore-test.timer"
+        if not (script.exists() and service.exists() and timer.exists()):
+            self.warn("restore test files are missing; skipped")
+            return
+        install_helper_script(script, self.manifest, name="photo_restore_test.sh")
+        # The service is started by the timer (or "Run restore test now"); it is not enabled itself.
+        install_file(service, SYSTEMD_DIR / "photo-restore-test.service", self.manifest, mode=0o644)
+        self.manifest.add_unit("photo-restore-test.service")
+        res = install_systemd_unit(timer, "photo-restore-test.timer", self.manifest, variables=self.template_vars())
+        if res.ok:
+            self.log("Monthly photo backup restore test scheduled (first Sunday, 11:00).")
+        else:
+            self.warn(f"could not enable photo-restore-test.timer: {res['stderr']}")
 
     def _install_media_backup(self, remote: str) -> None:
         """The media apps' settings go to the same remote (Media_Backup/) at 21:30."""

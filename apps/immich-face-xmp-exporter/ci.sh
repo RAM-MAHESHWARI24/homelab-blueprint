@@ -15,7 +15,7 @@ python3 -m unittest tests.test_unit tests.test_backup_status
 
 if command -v shellcheck >/dev/null; then
     echo "== shellcheck"
-    shellcheck --severity=warning install.sh ci.sh scripts/immich-ml-control.sh scripts/immich_backup_gdrive.sh.example
+    shellcheck --severity=warning install.sh ci.sh scripts/immich-ml-control.sh scripts/immich_backup_gdrive.sh.example scripts/photo_restore_test.sh
 else
     echo "(shellcheck not installed, skipped)"
 fi

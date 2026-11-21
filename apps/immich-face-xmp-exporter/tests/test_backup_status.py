@@ -84,6 +84,54 @@ class TestStats(unittest.TestCase):
         self.assertEqual((stats["bytes"], stats["files"], stats["checks"]), (0, 0, 5))
 
 
+DUMP = """--
+-- PostgreSQL database cluster dump
+--
+CREATE ROLE postgres;
+\\connect immich
+COPY public.asset_face (id, "assetId", "deletedAt") FROM stdin;
+f1\ta1\t\\N
+f2\ta2\t\\N
+\\.
+COPY public.asset (id, "ownerId", type, "originalPath", "deletedAt", "isOffline") FROM stdin;
+a1\tu1\tIMAGE\t/p/a\\tb.jpg\t\\N\tf
+a2\tu1\tVIDEO\t/p/b.mp4\t2026-11-01 10:00:00+00\tf
+a3\tu1\tIMAGE\t/p/c.jpg\t\\N\tf
+\\.
+COPY public.album (id) FROM stdin;
+x
+\\.
+"""
+
+
+class TestRestoreTest(unittest.TestCase):
+    def test_counts_only_not_deleted_rows_of_the_asset_table(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as tmp:
+            dump = Path(tmp) / "immich_db_20261121_220001.sql.gz"
+            with gzip.open(dump, "wt", encoding="utf-8") as fh:
+                fh.write(DUMP)
+            self.assertEqual(backup_status.count_assets_in_dump(str(dump)), 2)
+            plain = Path(tmp) / "no_asset.sql"
+            plain.write_text("COPY public.album (id) FROM stdin;\nx\n\\.\n", encoding="utf-8")
+            self.assertIsNone(backup_status.count_assets_in_dump(str(plain)))
+
+    def test_result_is_recorded_and_survives_a_backup_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "status.json"
+            backup_status.main(["restore-result", "--file", str(path), "--result", "ok", "--message", "Restored",
+                                "--started-at", "2026-12-06T11:00:00+05:30", "--completed-at", "2026-12-06T11:07:30+05:30",
+                                "--dump-file", "immich_db_20261205_220001.sql.gz", "--expected", "35765", "--restored", "35765"])
+            d = json.loads(path.read_text(encoding="utf-8"))
+            self.assertTrue(d["restore_test"]["ok"])
+            self.assertEqual(d["restore_test"]["duration_s"], 450)
+            backup_status.main(["status", "--file", str(path), "--status", "synced", "--stage", "4",
+                                "--started-at", "2026-12-06T22:00:01+05:30", "--completed-at", "2026-12-06T22:05:01+05:30"])
+            d = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(d["restore_test"]["restored"], 35765, "a backup run keeps the restore result")
+            self.assertEqual(len(d["restore_history"]), 1)
+
+
 class TestStatusHistory(unittest.TestCase):
     def run_status(self, path, status, started, completed="", **extra):
         argv = ["status", "--file", str(path), "--status", status, "--stage", extra.pop("stage", "4"),
