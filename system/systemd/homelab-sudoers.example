@@ -32,6 +32,7 @@ homelab ALL=(ALL) NOPASSWD: {{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/core/net
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh start
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh stop
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich_backup_gdrive.sh
+homelab ALL=(ALL) NOPASSWD: /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/media_config_backup.py
 
 # Self-restart after configuration changes
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service

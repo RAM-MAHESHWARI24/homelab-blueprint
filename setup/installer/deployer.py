@@ -148,6 +148,7 @@ class Deployment:
             "KEEP_LOCAL_DUMPS": str(int(self.config.get("photo_backup_keep_local", 3))),
             "KEEP_DRIVE_DUMPS": str(int(self.config.get("photo_backup_keep_remote", 14))),
             "KEEP_DRIVE_MONTHLY": str(int(self.config.get("photo_backup_keep_monthly", 12))),
+            "MEDIA_APPDATA_DIR": str(self.config.get("config_dir") or module_appdata_dir("mediaserver")),
         }
 
     # ---------------------------------------------------------------- step 1
@@ -471,6 +472,27 @@ class Deployment:
         install_cron(cron, "immich-backup", self.manifest, variables=self.template_vars())
         self.services_launched.append("photo_backup")
         self.log(f"Nightly photo backup installed (22:00, rclone remote '{remote}').")
+        if "media" in self.modules and self.config.get("media_backup", True):
+            self._install_media_backup(remote)
+
+    def _install_media_backup(self, remote: str) -> None:
+        """The media apps' settings go to the same remote (Media_Backup/) at 21:30."""
+        cron = self.root / "apps" / "mediaserver" / "host" / "cron" / "media-backup"
+        script = self.root / "apps" / "mediaserver" / "scripts" / "media_config_backup.py"
+        if not cron.exists() or not script.exists():
+            self.warn("media settings backup files are missing; skipped")
+            return
+        backup_dir = self.state_dir / "media-backups"
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(backup_dir, 0o755)
+            self.manifest.add_dir(backup_dir)
+        except OSError as e:
+            self.fail("photo_backup", f"could not create {backup_dir}: {e}")
+            return
+        install_cron(cron, "media-backup", self.manifest, variables=self.template_vars())
+        self.services_launched.append("media_backup")
+        self.log(f"Nightly media settings backup installed (21:30, to '{remote}Media_Backup').")
 
     def module_samba(self) -> None:
         """Optional: LAN shares for the media and photo folders, included from the distro smb.conf."""
