@@ -4,7 +4,7 @@
 # Usage on fresh Ubuntu Server:
 #   curl -sSL https://raw.githubusercontent.com/RAM-MAHESHWARI24/homelab-blueprint/main/bootstrap.sh | sudo bash
 # Or with version pinning:
-#   curl -sSL https://.../bootstrap.sh | sudo bash -s -- --version v2.0.0
+#   curl -sSL https://.../bootstrap.sh | sudo bash -s -- --version v2.1.0
 # ==============================================================================
 
 set -euo pipefail
@@ -20,7 +20,7 @@ Usage: sudo ./bootstrap.sh [OPTIONS]
 Bootstrap and initialize the Homelab Blueprint on Ubuntu Server.
 
 Options:
-  --version <tag>     Pin to a specific immutable release tag (e.g. v2.0.0)
+  --version <tag>     Pin to a specific immutable release tag (e.g. v2.1.0)
   --branch <name>     Check out an active development branch (e.g. develop)
   --dir <path>        Custom installation target directory (default: /opt/homelab-blueprint)
   -h, --help          Show this help message and exit

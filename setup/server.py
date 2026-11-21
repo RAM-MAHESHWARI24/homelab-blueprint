@@ -126,7 +126,7 @@ class SetupApiHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
 
         if path == "/api/health":
-            self.send_json({"status": "healthy", "service": "Homelab Setup Wizard", "version": "2.0.0"})
+            self.send_json({"status": "healthy", "service": "Homelab Setup Wizard", "version": "2.1.0"})
             return
 
         if path.startswith("/api/"):
