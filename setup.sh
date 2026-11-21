@@ -47,7 +47,7 @@ case "${1:-}" in
         ;;
     token)
         shift
-        exec python3 "$SCRIPT_DIR/setup/token.py" "$@"
+        exec python3 "$SCRIPT_DIR/setup/token_cli.py" "$@"
         ;;
 esac
 

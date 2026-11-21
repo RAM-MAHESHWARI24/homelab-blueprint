@@ -4,6 +4,9 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+- The installer crashed on Python 3.14 (Ubuntu 26.04): `setup/token.py` shadowed the standard `token` module once argparse started importing it. The file is now `setup/token_cli.py`, a test refuses files named after standard modules, and CI also runs on Python 3.14.
+
 ### Added
 - Install profile keys `photo_external_mount_path` and `photo_external_mount_mode` set where and how the photo server mounts the external library. Defaults stay `/mnt/media` and read-only. A library moved from another install keeps the paths its database recorded.
 

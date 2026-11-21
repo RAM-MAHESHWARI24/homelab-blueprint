@@ -128,6 +128,21 @@ def test_photo_external_mount():
     print("  [OK] defaults /mnt/media:ro, overrides kept, bad values fall back")
 
 
+def test_no_stdlib_shadowing():
+    """Scripts run directly put their folder first on sys.path, so a file named after a
+    standard module (token.py, secrets.py, ...) breaks any stdlib import of it."""
+    import subprocess
+    print("Testing that no file shadows a standard library module...")
+    files = subprocess.run(["git", "ls-files", "*.py"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.split()
+    names = getattr(sys, "stdlib_module_names", None)
+    if not names:  # Python < 3.10
+        print("  [SKIP] sys.stdlib_module_names needs Python 3.10+")
+        return
+    bad = [f for f in files if Path(f).stem in names]
+    assert not bad, f"rename these files, they shadow standard modules: {bad}"
+    print(f"  [OK] {len(files)} files checked")
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -228,6 +243,7 @@ def run_tests():
         test_exit_waits_for_netplan_confirm()
         test_photos_image_override()
         test_photo_external_mount()
+        test_no_stdlib_shadowing()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:
