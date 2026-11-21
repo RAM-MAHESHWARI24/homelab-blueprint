@@ -702,8 +702,25 @@ class Deployment:
         if not res.ok:
             self.fail("control_hub", f"systemctl enable --now failed: {res['stderr']}")
             return
+        self._install_storage_sizes_timer()
         self.services_launched.append("control_hub")
         self.log(f"Control Hub service enabled on port {self.config.get('control_hub_port', 7575)}.")
+
+    def _install_storage_sizes_timer(self) -> None:
+        """Root hourly timer that measures folder sizes outside Control Hub's cgroup and writes 0644 JSON."""
+        svc = self.root / "system" / "systemd" / "homelab-storage-sizes.service"
+        tmr = self.root / "system" / "systemd" / "homelab-storage-sizes.timer"
+        if not (svc.exists() and tmr.exists()):
+            return
+        install_file(svc, SYSTEMD_DIR / "homelab-storage-sizes.service", self.manifest, mode=0o644, variables=self.template_vars())
+        self.manifest.add_unit("homelab-storage-sizes.service")
+        res = install_systemd_unit(tmr, "homelab-storage-sizes.timer", self.manifest, variables=self.template_vars())
+        if res.ok:
+            # Kick off one initial measurement asynchronously so the dashboard has accurate sizes quickly.
+            run_command(["systemctl", "start", "--no-block", "homelab-storage-sizes.service"], timeout=15)
+            self.log("Hourly storage-size measurement timer enabled (homelab-storage-sizes.timer).")
+        else:
+            self.warn(f"could not enable homelab-storage-sizes.timer: {res['stderr']}")
 
     def module_tv_autoupdater(self) -> None:
         cron_src = self.root / "apps" / "tv-autoupdater" / "host" / "cron" / "tv-autoupdater"

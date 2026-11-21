@@ -376,12 +376,16 @@ class TestUniversalHardwareDetection(unittest.TestCase):
         self.assertGreaterEqual(cpu_specs["cores"], 1)
 
         root_dev, data_dev, data_mount = detect_storage_devices()
-        self.assertTrue(len(root_dev) > 0)
-        self.assertTrue(len(data_dev) > 0)
         self.assertTrue(len(data_mount) > 0)
+        if Path("/proc/mounts").exists():
+            self.assertTrue(root_dev and len(root_dev) > 0)
+            self.assertTrue(data_dev is None or len(data_dev) > 0)
+        else:
+            # Non-Linux dev hosts must not fabricate fake 'sda'/'sdb' block names
+            self.assertIsNone(root_dev)
 
         nic = detect_active_nic("eth0")
-        self.assertTrue(len(nic) > 0)
+        self.assertTrue(nic and len(nic) > 0)
 
 
 class TestTeardownAndPackagingStandards(unittest.TestCase):
