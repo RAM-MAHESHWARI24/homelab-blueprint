@@ -1,0 +1,9 @@
+{
+  "name": "noodle-gallery",
+  "description": "Open-Noodle Gallery (Immich fork) compose file used by the blueprint's photos module.",
+  "publish": false,
+  "repo": null,
+  "split_secret": null,
+  "blueprint_modules": ["photos"],
+  "standalone": null
+}

@@ -1,0 +1,12 @@
+{
+  "name": "homelab-mediaserver",
+  "description": "qBittorrent, Prowlarr, Radarr, Sonarr, Bazarr, Jellyfin and Seerr in one compose file, wired together by wire_arr.py.",
+  "publish": true,
+  "repo": "RAM-MAHESHWARI24/homelab-mediaserver",
+  "split_secret": "SPLIT_KEY_MEDIASERVER",
+  "blueprint_modules": ["media"],
+  "standalone": {
+    "install": "install.sh",
+    "requires": ["Docker with Compose v2", "python3 >= 3.10"]
+  }
+}

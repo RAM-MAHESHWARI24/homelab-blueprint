@@ -1,0 +1,12 @@
+{
+  "name": "tv-autoupdater",
+  "description": "Keeps SmartTube and CloudStream current on Android TVs over network ADB, from official releases with pinned signing keys.",
+  "publish": true,
+  "repo": "RAM-MAHESHWARI24/tv-autoupdater",
+  "split_secret": "SPLIT_KEY_TV_AUTOUPDATER",
+  "blueprint_modules": ["tv_autoupdater"],
+  "standalone": {
+    "install": "install.sh",
+    "requires": ["python3 >= 3.10", "adb (android-tools-adb)"]
+  }
+}
