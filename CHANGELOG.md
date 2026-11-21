@@ -4,6 +4,9 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+- The Control Hub, Setup Wizard, installer and API spec reported version 2.0.0 in v2.1.0.
+
 ## [2.1.0] - 2026-11-21
 
 ### Added

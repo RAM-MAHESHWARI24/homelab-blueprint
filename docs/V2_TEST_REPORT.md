@@ -1,8 +1,8 @@
-# v2.0.0 Test Report
+# v2 Test Report
 
-This report records how v2.0.0 was tested before release, what passed, and which bugs the tests found. Evidence from the passing runs is stored in this repository so it stays with the code it describes.
+This report records how v2.0.0 and v2.1.0 were tested, what passed, and which bugs the tests found. Evidence from the passing runs is stored in this repository so it stays with the code it describes.
 
-**Status on 2026-11-15:** every automated check passes on both test paths below.
+**Status on 2026-11-21:** every automated check passes on both test paths below. v2.1.0 also passed the module checks in [section 6](#6-v210-module-repositories).
 
 ## 1. What was tested, and how
 
@@ -111,7 +111,35 @@ Each of these was found by one of the two tests, fixed, and confirmed fixed by a
 - **Upgrading an existing server.** That path is a manual runbook: [Installing v2 on an Existing Server](INSTALL_ON_EXISTING_SERVER.md).
 - **Look and feel.** The GUI test checks that things work. A person still needs to read the screens once. Reading this run's screenshots found two problems, fixed after the run: the credentials box appeared below the static-IP box that says "save the credentials above", and the page subtitle still promised "under 60 seconds".
 
-## 6. How to run the tests
+## 6. v2.1.0: module repositories
+
+v2.1.0 is the first release that publishes four module folders as their own repositories (see [RELEASING.md](RELEASING.md)). Four checks covered that path:
+
+| Check | Result |
+| :--- | :--- |
+| Module contract on every pull request ([`test_module_contract.py`](../testing/test_module_contract.py)) | Pass: required files present, no code or README link leaves its module |
+| Split simulation in CI: each module copied out alone, running its own `ci.sh` with ShellCheck and Docker | Pass for all four |
+| Split workflow dry run on `main` (run `44858521723`) | Pass: each module's history built, 13 to 82 files, nothing pushed |
+| Release `v2.1.0` (split run `44858733310`) | Pass: all four repositories received `main` and the tag; each repository's own CI then passed |
+
+**Clean-machine install.** On a fresh Ubuntu 24.04 VM, two published repositories were cloned from GitHub at `v2.1.0` and installed exactly as their READMEs say. 16 of 16 checks passed:
+
+- **homelab-mediaserver:** `install.sh` exited 0 with 26 wiring steps succeeding and none failing. All 7 containers became healthy. Radarr had qBittorrent as its download client, Prowlarr had Radarr and Sonarr, and Jellyfin had finished its setup. `.env` held generated passwords at mode 600, the credentials were printed at the end, and a second run was safe.
+- **control-hub:** `install.sh` generated a 48-character token in a mode-600 `.env`. `run.sh` started the dashboard, which accepted the token, refused an anonymous request with 401, and reported the TV card as not installed.
+
+`noodle-gallery-tools` and `tv-autoupdater` passed their own CI but were not installed on the VM: they need a running Immich library and real Android TVs.
+
+**Found on the way to v2.1.0:**
+
+| Problem | Fix |
+| :--- | :--- |
+| The Control Hub's backup card read the old `/opt/immich/backups` path, so v2 installs never showed backups | The installer points it at `/var/lib/homelab/photo-backups` |
+| The Control Hub container could not reach qBittorrent on the host | Compose uses `host.docker.internal` |
+| The Control Hub's TV card reached into a neighbouring module's folder | The card appears only when the TV module is installed |
+| The media stack and photo tools shipped a regional time zone and a server-specific backup path as defaults | Neutral defaults |
+| The code still reported version 2.0.0 after v2.1.0 was released | Fixed after the release; the next release reports its own version |
+
+## 7. How to run the tests
 
 CI runs on every push. To run the GUI test on Windows, macOS or Linux:
 

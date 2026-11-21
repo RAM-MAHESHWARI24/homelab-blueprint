@@ -128,7 +128,7 @@ Find the most efficient entry point based on your current task:
 
 * **[Releasing and the Module Repositories](RELEASING.md)**
   * *Why it matters:* How a release is cut, how each module folder is published to its own read-only repository, the split workflow's dry run, deploy keys, and what the module contract enforces.
-* **[v2.0.0 Test Report](V2_TEST_REPORT.md)**
+* **[v2 Test Report](V2_TEST_REPORT.md)**
   * *Why it matters:* How v2 was tested end to end (CI real install and a browser-driven install on a fresh VM), the results with stored evidence, and every bug those tests found.
 * **[Three-Tier Gatekeeping & Defect Prevention Architecture](THREE_TIER_PROTECTION_AND_GATEKEEPING_ARCHITECTURE.md)**
   * *Why it matters:* Industry-standard 3-tier defense-in-depth model (Local Pre-Commit, Local Pre-Push, Remote Branch Protection & CI) enforcing zero syntax errors, credential protection, documentation integrity, and schema verification before code reaches production.
