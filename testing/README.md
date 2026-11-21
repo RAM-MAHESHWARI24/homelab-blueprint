@@ -448,9 +448,20 @@ The workflow that runs on every push and pull request is [`.github/workflows/ci.
 | Setup Wizard Matrix Test | The wizard suite on Ubuntu 22.04 and 24.04 with Python 3.10 to 3.12 |
 | Docker Compose & Multi-Arch Verification | Compose files validate, no floating tags, every pinned image exists for amd64 and arm64 |
 | Real Headless Install, Health Probes & Teardown | A real install on a fresh runner, the apps wired together, then a teardown that leaves nothing |
+| Control Hub UI & WCAG 2.2 AA | Playwright + `axe-core` WCAG 2.2 AA verification across all 5 Control Hub views, 3 responsive viewports (`360px`, `820px`, `1366px`), Dark and Light themes, and modal keyboard focus traps |
 | Trivy Security & Vulnerability Scan | Known vulnerabilities in the repository and its dependencies |
 
 Results of the v2 runs, the browser-driven VM test and the v2.1.0 module checks are in the [v2 Test Report](../docs/V2_TEST_REPORT.md).
+
+### Live Server Safe Staging & Verification Workflow
+
+When validating a branch on a real homelab server with live user data (see [`AGENTS.md`](../AGENTS.md#41-live-production-server-testing--safety-protocol)):
+
+1. **Pre-Flight Local & Pre-Push Verification:** Pass all 6 monorepo gates and the full `apps/control-hub/tests` suite locally before pushing to `origin`.
+2. **Non-Destructive Git Checkout via SSH:** Deploy onto `/opt/homelab-blueprint` strictly via `git fetch origin` and branch checkout over SSH (`<ssh-host>`). Never edit files over a read-only SMB inspection mount and never run destructive teardown or volume-removal commands on a live host.
+3. **Host Unit & Service Refresh:** Render/install updated systemd units or host scripts (`homelab-storage-sizes.service` / `.timer`, `server-suspend.sh`), reload `systemd`, and restart `control-hub.service`.
+4. **Full Linux Suite & Live API Audit on Hardware:** Run `testing/test_e2e_regression.py` (all 17 tests including Linux bash/systemd checks), `testing/test_lifecycle_handoff.py`, `setup/test_setup.py`, and `apps/control-hub/tests/test_*.py` directly on the Ubuntu server, probe all `/api/*` endpoints (verifying `0600 root:root` vs `0640 root:homelab` permission handling and `journalctl -u control-hub.service` cleanliness), and run Playwright + `axe-core` against `http://<server-lan-ip>:7575`.
+5. **CI Gate & Return to `develop`:** Verify all 17 GitHub Actions CI jobs pass on the PR, merge into `develop`, and fast-forward `/opt/homelab-blueprint` on the server to `origin/develop`.
 
 ---
 
