@@ -13,6 +13,22 @@ set -euo pipefail
 #   GDRIVE_REMOTE   rclone remote (and optional path), e.g. "gdrive:" or "gdrive:homelab/"
 #   FACE_EXPORTER   path to export_faces_to_xmp.py (defaults to the copy next to this script)
 #   DB_CONTAINER    postgres container name (default immich_postgres)
+# A run started outside cron (the Control Hub's "Run backup now" goes through sudo,
+# which clears the environment) reads any unset value from that cron file, so both
+# runs use the same remote and paths. BACKUP_CRON_FILE overrides its location.
+BACKUP_CRON_FILE="${BACKUP_CRON_FILE:-/etc/cron.d/immich-backup}"
+if [ -r "$BACKUP_CRON_FILE" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            BACKUP_LOCAL|MEDIA_PATH|GDRIVE_REMOTE|FACE_EXPORTER|DB_CONTAINER)
+                if [ -z "${!key:-}" ]; then
+                    printf -v "$key" '%s' "$value"
+                    export "${key?}"
+                fi
+                ;;
+        esac
+    done < "$BACKUP_CRON_FILE"
+fi
 BACKUP_LOCAL="${BACKUP_LOCAL:-/var/lib/homelab/photo-backups}"
 MEDIA_PATH="${MEDIA_PATH:-/mnt/hdd/Memories}"
 GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:}"
