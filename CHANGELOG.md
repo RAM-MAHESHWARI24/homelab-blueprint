@@ -9,6 +9,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ### Changed
 - Pinned images now match what the existing server already runs, so moving that server to v2 does not downgrade any app: Radarr 7.0.3, Prowlarr 3.0.2, Seerr 3.5.2 and Noodle Gallery 5.11.1. These apps migrate their databases forward and cannot open them after a downgrade.
+- The optional Byparr proxy is pinned to 3.1.1. The old 1.0.7 pin had no amd64 image, so the profile could not start on a PC.
 - The gallery machine-learning service sets `MACHINE_LEARNING_MODEL_REVISION: v2`, as the upstream v5 compose file does.
 
 ## [2.1.1] - 2026-11-21
