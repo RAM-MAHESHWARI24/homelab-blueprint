@@ -390,7 +390,8 @@ class TestCompleteLifecycleHandoff(unittest.TestCase):
         data = res.get_json()
         self.assertEqual(data.get("status"), "ok")
         self.assertEqual(data.get("service"), "control-hub")
-        self.assertEqual(data.get("version"), "2.1.0")
+        from setup.installer.deployer import BLUEPRINT_VERSION
+        self.assertEqual(data.get("version"), BLUEPRINT_VERSION)
         self.assertIn("uptime_seconds", data)
 
         # 2. Kubernetes Liveness Probe

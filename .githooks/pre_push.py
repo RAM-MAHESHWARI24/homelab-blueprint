@@ -7,6 +7,7 @@ Performs medium-weight validation before sending outbound commits to GitHub:
   3. Control Hub unit smoke suite (test_standalone.py)
   4. Complete documentation link integrity
   5. Module contract (test_module_contract.py)
+  6. Version consistency (test_version_consistency.py)
 """
 
 import sys
@@ -64,6 +65,11 @@ def main():
         (
             "Module Contract (standalone files, no reaching outside a module)",
             [sys.executable, "testing/test_module_contract.py"],
+            REPO_ROOT
+        ),
+        (
+            "Version Consistency (version strings match CHANGELOG.md)",
+            [sys.executable, "testing/test_version_consistency.py"],
             REPO_ROOT
         )
     ]
