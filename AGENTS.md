@@ -138,6 +138,10 @@ python testing/test_lifecycle_handoff.py
 # 5. Module Contract
 # Validates each module's standalone files and that no module reaches outside its folder
 python testing/test_module_contract.py
+
+# 6. Version Consistency
+# Validates that every reported version matches the newest release in CHANGELOG.md
+python testing/test_version_consistency.py
 ```
 
 ### Testing Rules for Agents:

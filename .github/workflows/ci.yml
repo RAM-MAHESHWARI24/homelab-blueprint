@@ -49,6 +49,9 @@ jobs:
       - name: Module contract (required files, no reaching outside a module)
         run: python testing/test_module_contract.py
 
+      - name: Version strings match the newest changelog release
+        run: python testing/test_version_consistency.py
+
   split-simulation:
     # Each published module becomes its own repo on release (docs/RELEASING.md).
     # Copy its tracked files out of the monorepo and run its ci.sh there, so a
