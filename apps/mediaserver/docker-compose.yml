@@ -185,7 +185,7 @@ services:
   # Opt-in: COMPOSE_PROFILES=byparr in .env (the installer sets it when chosen).
   byparr:
     container_name: byparr
-    image: ghcr.io/thephaseless/byparr:1.0.7
+    image: ghcr.io/thephaseless/byparr:3.1.1
     restart: unless-stopped
     profiles: ["byparr"]
     environment:
