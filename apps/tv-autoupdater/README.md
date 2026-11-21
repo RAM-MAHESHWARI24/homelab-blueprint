@@ -131,6 +131,8 @@ nano config.json
 ## 🖥️ Live Monitoring on Control Hub
 Android TV fleet status is integrated directly into [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub) (set `TV_UPDATER_DIR` and `TV_UPDATER_PY` in its `.env`):
 * **Living Room & Bedroom TV Card:** Visual status indicators (`UP TO DATE`, `PENDING`, `OFFLINE`).
+* **Names:** each TV is shown by its nickname, or by the model it reports (`ro.product.manufacturer` + `ro.product.model`, for example "Xiaomi MIBOX4"). Hover over the name for a summary; click it for the full details (codename, Android version, the TV's own device name, address, last seen) and to rename it. The updater stores what each TV reports in `device_info.json` (refreshed every 6 hours while online) and the Control Hub stores nicknames in `nicknames.json`, both in `TV_AUTOUPDATER_STATE_DIR`.
+* **Offline TVs** show the versions from when they were last seen, marked as such.
 * **Active Version Tracking:** Displays target vs installed versionCodes for SmartTube, CloudStream, and custom sideloads.
 * **1-Click Sync:** Trigger updates or inspect ADB logs directly from the browser without opening SSH.
 
