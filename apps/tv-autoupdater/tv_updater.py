@@ -54,6 +54,12 @@ INSTALLED_DIR = STATE_DIR / "installed_apks"
 LOG_FILE = Path(os.getenv("TV_AUTOUPDATER_LOG", str(STATE_DIR / "tv_updater.log")))
 STATE_FILE = STATE_DIR / "state.json"
 DEVICES_CACHE_FILE = STATE_DIR / "devices_cache.json"
+# What each TV reports about itself (written here) and the names users give TVs
+# (written by the Control Hub, which runs as the same service user).
+DEVICE_INFO_FILE = STATE_DIR / "device_info.json"
+NICKNAMES_FILE = STATE_DIR / "nicknames.json"
+DEVICE_INFO_MAX_AGE_SEC = 6 * 3600
+NICKNAME_MAX_LEN = 40
 INCOMPATIBLE_CACHE_FILE = STATE_DIR / "incompatible_apks.json"
 
 for _d in (CACHE_DIR, INCOMING_DIR, INSTALLED_DIR):
@@ -318,6 +324,82 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
 # -------------------------------------------------------------
 # ZERO-PERFORMANCE-LOSS SAFETY GUARDS
 # -------------------------------------------------------------
+
+def _read_json(path: Path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def _write_json_atomic(path: Path, data) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def load_nicknames() -> dict:
+    return _read_json(NICKNAMES_FILE, {})
+
+
+def set_nickname(profile_id: str, nickname: str):
+    """Saves the name a user gave a TV (empty removes it). Returns the stored name or None."""
+    if profile_id not in {p["id"] for p in TARGET_PROFILES}:
+        raise KeyError(profile_id)
+    name = " ".join(str(nickname or "").split())
+    if len(name) > NICKNAME_MAX_LEN:
+        raise ValueError(f"A name can have at most {NICKNAME_MAX_LEN} characters.")
+    if any(not ch.isprintable() for ch in name):
+        raise ValueError("A name cannot contain control characters.")
+    names = load_nicknames()
+    if name:
+        names[profile_id] = name
+    else:
+        names.pop(profile_id, None)
+    _write_json_atomic(NICKNAMES_FILE, names)
+    return name or None
+
+
+_INFO_PROPS = (
+    ("manufacturer", "ro.product.manufacturer"),
+    ("model", "ro.product.model"),
+    ("device", "ro.product.device"),
+    ("android", "ro.build.version.release"),
+    ("sdk", "ro.build.version.sdk"),
+)
+
+
+def probe_device_info(device_ip: str) -> dict:
+    """Asks the TV for its manufacturer, model, codename, Android version and device name."""
+    script = "; ".join(f"getprop {prop}" for _, prop in _INFO_PROPS) + "; settings get global device_name"
+    try:
+        res = adb_cmd(device_ip, ["shell", script], timeout=6)
+    except Exception:
+        return {}
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    if res.returncode != 0 or len(lines) < len(_INFO_PROPS):
+        return {}
+    info = {key: lines[i] for i, (key, _) in enumerate(_INFO_PROPS) if lines[i]}
+    if len(lines) > len(_INFO_PROPS) and lines[len(_INFO_PROPS)] not in ("", "null"):
+        info["device_name"] = lines[len(_INFO_PROPS)]
+    return info if info.get("model") else {}
+
+
+def model_label(info: dict):
+    """'Xiaomi MIBOX4' from what the TV reported, or None before it was ever seen."""
+    model = (info or {}).get("model")
+    if not model:
+        return None
+    maker = (info.get("manufacturer") or "").strip()
+    if maker and not model.lower().startswith(maker.lower()):
+        return f"{maker.capitalize() if maker.islower() else maker} {model}"
+    return model
+
 
 def adb_cmd(device_ip: str, args: list, timeout: int = 60) -> subprocess.CompletedProcess:
     target = f"{device_ip}:5555"
@@ -984,6 +1066,10 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
     total_online = 0
     all_up_to_date = True
     pending_updates_count = 0
+    device_info = _read_json(DEVICE_INFO_FILE, {})
+    info_changed = False
+    nicknames = load_nicknames()
+    now = time.time()
 
     for profile in TARGET_PROFILES:
         pid = profile["id"]
@@ -996,8 +1082,17 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         fg_app_name = "Home Screen / Launcher"
         media_playing = False
 
+        info = device_info.setdefault(pid, {})
         if is_online:
             total_online += 1
+            if now - info.get("last_seen", 0) >= 60 or info.get("ip") != ip:
+                info.update(ip=ip, last_seen=int(now))
+                info_changed = True
+            if fast_probe and (not info.get("model") or now - info.get("probed_at", 0) >= DEVICE_INFO_MAX_AGE_SEC):
+                probed = probe_device_info(ip)
+                if probed:
+                    info.update(probed, probed_at=int(now))
+                    info_changed = True
             if fast_probe:
                 try:
                     fg_pkg = get_foreground_package(ip)
@@ -1060,6 +1155,9 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
             else:
                 status_code = "UP_TO_DATE"
                 status_text = f"Up to date (vCode {inst_code})"
+            if not is_online and inst_code > 0:
+                # Versions come from the last time the TV was reachable.
+                status_text += " when last seen"
 
             app_list.append({
                 "package": pkg,
@@ -1076,12 +1174,27 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
                 "is_foreground": (fg_pkg == pkg)
             })
 
+        label = model_label(info)
+        nickname = nicknames.get(pid)
+        last_seen = info.get("last_seen")
         devices_data.append({
             "id": pid,
-            "name": pname,
+            "name": nickname or label or pname,
+            "nickname": nickname,
+            "profile_name": pname,
             "ip": ip,
             "port": profile["port"],
-            "model": profile.get("match_models", ["android"])[0].upper(),
+            "model": info.get("model"),
+            "model_label": label,
+            "details": {
+                "manufacturer": info.get("manufacturer"),
+                "model": info.get("model"),
+                "codename": info.get("device"),
+                "android": info.get("android"),
+                "sdk": info.get("sdk"),
+                "device_name": info.get("device_name"),
+                "last_seen": time.strftime("%Y-%m-%d %H:%M", time.localtime(last_seen)) if last_seen else None,
+            },
             "is_online": is_online,
             "foreground_pkg": fg_pkg,
             "foreground_app_name": fg_app_name,
@@ -1090,6 +1203,11 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         })
 
     save_state(state)
+    if info_changed:
+        try:
+            _write_json_atomic(DEVICE_INFO_FILE, device_info)
+        except OSError as e:
+            log.warning(f"Could not save {DEVICE_INFO_FILE}: {e}")
 
     incoming_files = [f.name for f in INCOMING_DIR.glob("*.apk")]
     if incoming_files:
