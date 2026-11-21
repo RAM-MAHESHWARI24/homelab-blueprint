@@ -413,7 +413,7 @@ class Deployment:
     def module_ml_schedule(self) -> None:
         """Optional: start/stop the Immich ML container on a schedule (noodle-gallery-tools script)."""
         src = self.root / "apps" / "immich-face-xmp-exporter" / "scripts" / "immich-ml-control.sh"
-        cron = self.root / "system" / "cron.d" / "immich-ml"
+        cron = self.root / "apps" / "immich-face-xmp-exporter" / "host" / "cron" / "immich-ml"
         if self.dry_run:
             self.log("Would install immich-ml-control.sh and /etc/cron.d/immich-ml.")
             self.services_launched.append("ml_schedule (dry-run)")
@@ -429,7 +429,7 @@ class Deployment:
     def module_photo_backup(self) -> None:
         """Optional: nightly Postgres dump + XMP export + rclone mirror of the photo library."""
         src = self.root / "apps" / "immich-face-xmp-exporter" / "scripts" / "immich_backup_gdrive.sh.example"
-        cron = self.root / "system" / "cron.d" / "immich-backup"
+        cron = self.root / "apps" / "immich-face-xmp-exporter" / "host" / "cron" / "immich-backup"
         remote = str(self.config.get("gdrive_remote") or "").strip()
         if self.dry_run:
             self.log(f"Would install immich_backup_gdrive.sh and /etc/cron.d/immich-backup (rclone remote '{remote or 'unset'}').")
@@ -611,7 +611,7 @@ class Deployment:
         self.log(f"Control Hub service enabled on port {self.config.get('control_hub_port', 7575)}.")
 
     def module_tv_autoupdater(self) -> None:
-        cron_src = self.root / "system" / "cron.d" / "tv-updater"
+        cron_src = self.root / "apps" / "tv-autoupdater" / "host" / "cron" / "tv-autoupdater"
         if self.dry_run:
             self.log("Would register the TV auto-updater cron schedule.")
             self.services_launched.append("tv_autoupdater (dry-run)")
@@ -619,7 +619,7 @@ class Deployment:
         if not self.linux:
             return
         if not cron_src.exists():
-            self.fail("tv_autoupdater", "cron template system/cron.d/tv-updater missing")
+            self.fail("tv_autoupdater", "cron template apps/tv-autoupdater/host/cron/tv-autoupdater missing")
             return
         ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
         state_dir = self.state_dir / "tv-autoupdater"
@@ -639,9 +639,9 @@ class Deployment:
         self.log("TV auto-updater cron registered.")
 
     def module_sleep_guard(self) -> None:
-        script = self.root / "system" / "power" / "server-suspend.sh"
-        cron_src = self.root / "system" / "cron.d" / "server-suspend"
-        conf_example = self.root / "system" / "power" / "server-suspend.conf.example"
+        script = self.root / "apps" / "control-hub" / "host" / "server-suspend.sh"
+        cron_src = self.root / "apps" / "control-hub" / "host" / "cron" / "server-suspend"
+        conf_example = self.root / "apps" / "control-hub" / "host" / "server-suspend.conf.example"
         if self.dry_run:
             self.log("Would install server-suspend.sh, /etc/server-suspend.conf and the midnight suspend cron.")
             self.services_launched.append("sleep_guard (dry-run)")

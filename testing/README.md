@@ -235,7 +235,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 5: Host Daemons, Cron, & Power Management
 
-* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`system/power/`](../system/power), [`apps/tv-updater/`](../apps/tv-updater)
+* **Target Source:** [`apps/control-hub/`](../apps/control-hub), [`apps/control-hub/host/`](../apps/control-hub/host), [`apps/tv-autoupdater/`](../apps/tv-autoupdater)
 * **Goal:** Verify ultra-low power consumption, host health telemetry, and autonomous Android TV maintenance.
 
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
@@ -355,7 +355,7 @@ multipass delete homelab-low-spec --purge
 
 ### Module 9: Simulated Cloud Backup, Database Dumps & Rclone Mirror
 
-* **Target Source:** [`system/cron.d/immich-backup`](../system/cron.d/immich-backup), [`apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)
+* **Target Source:** [`apps/immich-face-xmp-exporter/host/cron/immich-backup`](../apps/immich-face-xmp-exporter/host/cron/immich-backup), [`apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example`](../apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example)
 * **Goal:** Conclusively verify that nightly database snapshots, exported XMP sidecars, and the Memories photo library are mirrored to simulated Google Drive storage using `rclone` with server-side move tracking and accidental deletion protection.
 
 ```
@@ -443,7 +443,8 @@ The workflow that runs on every push and pull request is [`.github/workflows/ci.
 
 | Job | What it checks |
 | :--- | :--- |
-| Linting & Secret Sanitization | ruff, ShellCheck, Gitleaks |
+| Linting & Secret Sanitization | ruff, ShellCheck, Gitleaks, and the [module contract](test_module_contract.py) |
+| Split Simulation | Each published module copied out of the repository alone, running its own `ci.sh` |
 | Setup Wizard Matrix Test | The wizard suite on Ubuntu 22.04 and 24.04 with Python 3.10 to 3.12 |
 | Docker Compose & Multi-Arch Verification | Compose files validate, no floating tags, every pinned image exists for amd64 and arm64 |
 | Real Headless Install, Health Probes & Teardown | A real install on a fresh runner, the apps wired together, then a teardown that leaves nothing |

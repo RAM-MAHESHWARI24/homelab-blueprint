@@ -6,6 +6,7 @@ Performs medium-weight validation before sending outbound commits to GitHub:
   2. Setup wizard verification suite (test_setup.py)
   3. Control Hub unit smoke suite (test_standalone.py)
   4. Complete documentation link integrity
+  5. Module contract (test_module_contract.py)
 """
 
 import sys
@@ -58,6 +59,11 @@ def main():
         (
             "Documentation Integrity & Anchor Verification",
             [sys.executable, "testing/test_docs_integrity.py"],
+            REPO_ROOT
+        ),
+        (
+            "Module Contract (standalone files, no reaching outside a module)",
+            [sys.executable, "testing/test_module_contract.py"],
             REPO_ROOT
         )
     ]

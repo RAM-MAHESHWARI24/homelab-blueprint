@@ -36,8 +36,13 @@ Every agent proposing modifications must honor these five non-negotiable invaria
 * **Implementation:** Always validate with `netplan generate` first, then apply through `config_core/netplan_manager.py`, which arms the `homelab-netplan-revert` timer and restores the backup unless the change is confirmed from the new address.
 
 ### 1.5. Sleep Guard & Power Deferral ([`ADR-0003`](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md))
-* **The Rule:** Never remove or bypass active condition guards in `system/power/server-suspend.sh`.
+* **The Rule:** Never remove or bypass active condition guards in `apps/control-hub/host/server-suspend.sh`.
 * **Guards:** Active qBittorrent downloads, active LAN SMB file streams, and `/run/server-suspend.skip` UI flags must defer S3 suspend.
+
+### 1.6. Modules Stay Self-Contained ([`docs/RELEASING.md`](docs/RELEASING.md))
+* **The Rule:** Each `apps/<module>/` folder with `"publish": true` in its `module.json` is published as its own repository. Code in it must never reach another module's folder or a path outside its own, and its README must not link outside it (use absolute GitHub URLs to the blueprint instead).
+* **Allowed:** `setup/` may import from `apps/control-hub` (the shared `config_core` library). The installer's env renderer, `config_core/env_manager.py`, is the one file that knows every module.
+* **Standalone files:** a published module keeps its own `install.sh`, `ci.sh`, `.github/workflows/ci.yml`, README, LICENSE and example config. Run `python testing/test_module_contract.py` after touching any of them.
 
 ---
 
@@ -129,6 +134,10 @@ python testing/test_e2e_regression.py
 # 4. Full Lifecycle Handoff Suite
 # Validates unmocked end-to-end handoff from Setup Wizard (:8099) to Control Hub (:7575)
 python testing/test_lifecycle_handoff.py
+
+# 5. Module Contract
+# Validates each module's standalone files and that no module reaches outside its folder
+python testing/test_module_contract.py
 ```
 
 ### Testing Rules for Agents:

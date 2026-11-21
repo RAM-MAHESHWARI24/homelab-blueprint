@@ -13,7 +13,7 @@ set -euo pipefail
 #   GDRIVE_REMOTE   rclone remote (and optional path), e.g. "gdrive:" or "gdrive:homelab/"
 #   FACE_EXPORTER   path to export_faces_to_xmp.py (defaults to the copy next to this script)
 #   DB_CONTAINER    postgres container name (default immich_postgres)
-BACKUP_LOCAL="${BACKUP_LOCAL:-/opt/immich/backups}"
+BACKUP_LOCAL="${BACKUP_LOCAL:-/var/backups/immich}"
 MEDIA_PATH="${MEDIA_PATH:-/mnt/hdd/Memories}"
 GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:}"
 case "$GDRIVE_REMOTE" in *:|*/) ;; *) GDRIVE_REMOTE="${GDRIVE_REMOTE}/" ;; esac

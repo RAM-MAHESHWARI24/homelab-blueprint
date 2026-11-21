@@ -60,14 +60,16 @@ sudo ./setup.sh --headless --config my-profile.json
 
 ## Modules
 
-| Module | Folder | What you get |
-| :--- | :--- | :--- |
-| Media stack | [`apps/mediaserver/`](apps/mediaserver/) | Arr apps, qBittorrent, Jellyfin, Seerr, all wired by `wire_arr.py` |
-| Photo library | [`apps/noodle-gallery/`](apps/noodle-gallery/) | Open-Noodle Gallery with Postgres and Valkey |
-| Photo tools | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Face-tag XMP export, ML on/off schedule, nightly backup |
-| Control Hub | [`apps/control-hub/`](apps/control-hub/) | Dashboard, indexer picker, Sleep Guard, static-IP changes |
-| TV auto-updater | [`apps/tv-updater/`](apps/tv-updater/) | Keeps SmartTube and CloudStream current on Android TVs over ADB, with pinned signing keys |
-| Host extras | [`system/`](system/) | Samba shares, Tailscale forwarding, suspend and wake |
+| Module | Folder | What you get | On its own |
+| :--- | :--- | :--- | :--- |
+| Media stack | [`apps/mediaserver/`](apps/mediaserver/) | Arr apps, qBittorrent, Jellyfin, Seerr, all wired by `wire_arr.py` | [homelab-mediaserver](https://github.com/RAM-MAHESHWARI24/homelab-mediaserver) |
+| Photo library | [`apps/noodle-gallery/`](apps/noodle-gallery/) | Open-Noodle Gallery with Postgres and Valkey | Blueprint only |
+| Photo tools | [`apps/immich-face-xmp-exporter/`](apps/immich-face-xmp-exporter/) | Face-tag XMP export, ML on/off schedule, nightly backup | [noodle-gallery-tools](https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools) |
+| Control Hub | [`apps/control-hub/`](apps/control-hub/) | Dashboard, indexer picker, Sleep Guard, static-IP changes | [control-hub](https://github.com/RAM-MAHESHWARI24/control-hub) |
+| TV auto-updater | [`apps/tv-autoupdater/`](apps/tv-autoupdater/) | Keeps SmartTube and CloudStream current on Android TVs over ADB, with pinned signing keys | [tv-autoupdater](https://github.com/RAM-MAHESHWARI24/tv-autoupdater) |
+| Host extras | [`system/`](system/) | Samba shares, Tailscale forwarding | Blueprint only |
+
+Already running your own homelab? Each module marked with a repository installs on its own with its `install.sh`. Those repositories are read-only mirrors published from this one on every release; see [Releasing](docs/RELEASING.md).
 
 ## Where things live
 
@@ -108,6 +110,8 @@ Teardown reads the install manifest and removes only what the installer created.
 - [Installing on a server that already runs these apps](docs/INSTALL_ON_EXISTING_SERVER.md)
 - [Static IP changes and rollback](docs/NETPLAN_STATIC_IP_QUIRKS.md)
 - [Storage and hardlinks](docs/STORAGE_AND_HARDLINKS.md)
+- [Releasing and the module repositories](docs/RELEASING.md)
+- [Test report](docs/V2_TEST_REPORT.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

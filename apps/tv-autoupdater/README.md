@@ -9,6 +9,8 @@
 
 ---
 
+> This repository is a read-only mirror of a folder in [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint), published on every release. Please open issues and pull requests there.
+
 ## 🏗️ 2-Tier Architecture
 
 Running updaters (Obtainium, Shizuku, auto-update daemons) directly on low-spec Android TV dongles (1GB–2GB RAM) consumes background resources, causing video stutters and sluggish menus. 
@@ -119,15 +121,15 @@ nano config.json
   ```bash
   python3 tv_updater.py --deploy
   ```
-* **Install Background Cron (every 15 min):**
+* **Install (creates `config.json`, checks `adb`) and schedule it every 15 minutes:**
   ```bash
-  bash setup_cron.sh
+  ./install.sh --cron
   ```
 
 ---
 
 ## 🖥️ Live Monitoring on Control Hub
-Android TV fleet status is integrated directly into [Control Hub](../control-hub/):
+Android TV fleet status is integrated directly into [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub) (set `TV_UPDATER_DIR` and `TV_UPDATER_PY` in its `.env`):
 * **Living Room & Bedroom TV Card:** Visual status indicators (`UP TO DATE`, `PENDING`, `OFFLINE`).
 * **Active Version Tracking:** Displays target vs installed versionCodes for SmartTube, CloudStream, and custom sideloads.
 * **1-Click Sync:** Trigger updates or inspect ADB logs directly from the browser without opening SSH.
@@ -135,4 +137,4 @@ Android TV fleet status is integrated directly into [Control Hub](../control-hub
 ---
 
 ## 📄 License
-MIT License. Part of the [Homelab Blueprint](../../README.md) monorepo.
+MIT License. Part of [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint).

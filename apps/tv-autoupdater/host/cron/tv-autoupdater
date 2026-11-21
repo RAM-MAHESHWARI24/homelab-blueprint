@@ -4,4 +4,4 @@
 TV_AUTOUPDATER_STATE_DIR={{STATE_DIR}}/tv-autoupdater
 TV_AUTOUPDATER_CONFIG={{ETC_DIR}}/tv-autoupdater.json
 TV_AUTOUPDATER_LOG={{STATE_DIR}}/tv-autoupdater/tv-autoupdater.log
-*/15 6-23 * * * {{SERVICE_USER}} /usr/bin/python3 {{INSTALL_DIR}}/apps/tv-updater/tv_updater.py >> {{STATE_DIR}}/tv-autoupdater/tv-autoupdater.log 2>&1
+*/15 6-23 * * * {{SERVICE_USER}} /usr/bin/python3 {{INSTALL_DIR}}/apps/tv-autoupdater/tv_updater.py >> {{STATE_DIR}}/tv-autoupdater/tv-autoupdater.log 2>&1

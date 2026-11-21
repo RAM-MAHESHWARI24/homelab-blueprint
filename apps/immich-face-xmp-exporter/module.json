@@ -1,0 +1,12 @@
+{
+  "name": "noodle-gallery-tools",
+  "description": "Immich / Noodle Gallery face-tag XMP exporter, ML container schedule and nightly photo backup.",
+  "publish": true,
+  "repo": "RAM-MAHESHWARI24/noodle-gallery-tools",
+  "split_secret": "SPLIT_KEY_NOODLE_TOOLS",
+  "blueprint_modules": ["ml_schedule", "photo_backup"],
+  "standalone": {
+    "install": "install.sh",
+    "requires": ["python3 >= 3.10 with venv", "exiftool", "a running Immich or Noodle Gallery with its Postgres container"]
+  }
+}

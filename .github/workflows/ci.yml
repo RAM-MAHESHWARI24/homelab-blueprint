@@ -39,10 +39,49 @@ jobs:
             teardown.sh \
             apps/control-hub/run.sh \
             apps/immich-face-xmp-exporter/scripts/immich-ml-control.sh \
-            system/power/server-suspend.sh \
-            apps/tv-updater/setup_cron.sh \
+            apps/control-hub/host/server-suspend.sh \
+            apps/tv-autoupdater/setup_cron.sh \
             apps/mediaserver/host/post-wake-arr.sh \
-            apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example
+            apps/immich-face-xmp-exporter/scripts/immich_backup_gdrive.sh.example \
+            apps/*/install.sh \
+            apps/*/ci.sh
+
+      - name: Module contract (required files, no reaching outside a module)
+        run: python testing/test_module_contract.py
+
+  split-simulation:
+    # Each published module becomes its own repo on release (docs/RELEASING.md).
+    # Copy its tracked files out of the monorepo and run its ci.sh there, so a
+    # module that secretly depends on the rest of the repo fails here first.
+    name: Split Simulation (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [control-hub, mediaserver, immich-face-xmp-exporter, tv-autoupdater]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Copy the module out of the monorepo and run its checks
+        env:
+          MODULE: ${{ matrix.module }}
+          CI_BUILD_IMAGE: "1"
+        run: |
+          dest="$RUNNER_TEMP/split/$MODULE"
+          mkdir -p "$dest"
+          git ls-files "apps/$MODULE" | while read -r f; do
+            rel="${f#apps/$MODULE/}"
+            mkdir -p "$dest/$(dirname "$rel")"
+            cp -p "$f" "$dest/$rel"
+          done
+          cd "$dest"
+          bash ci.sh
 
   setup-wizard-test-matrix:
     name: Setup Wizard Matrix Test

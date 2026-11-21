@@ -91,7 +91,7 @@ class TestDocumentationIntegrity(unittest.TestCase):
             REPO_ROOT / "apps" / "control-hub" / "README.md",
             REPO_ROOT / "apps" / "mediaserver" / "README.md",
             REPO_ROOT / "apps" / "noodle-gallery" / "README.md",
-            REPO_ROOT / "apps" / "tv-updater" / "README.md",
+            REPO_ROOT / "apps" / "tv-autoupdater" / "README.md",
             REPO_ROOT / "apps" / "immich-face-xmp-exporter" / "README.md",
             REPO_ROOT / "system" / "README.md",
             REPO_ROOT / "testing" / "README.md",

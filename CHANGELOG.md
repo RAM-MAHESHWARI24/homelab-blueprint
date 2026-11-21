@@ -4,6 +4,21 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+- Four modules are published as their own read-only repositories on every release: [control-hub](https://github.com/RAM-MAHESHWARI24/control-hub), [homelab-mediaserver](https://github.com/RAM-MAHESHWARI24/homelab-mediaserver), [noodle-gallery-tools](https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools) and [tv-autoupdater](https://github.com/RAM-MAHESHWARI24/tv-autoupdater). See [docs/RELEASING.md](docs/RELEASING.md).
+- Each published module has its own `install.sh` for use without the blueprint, a `ci.sh` and a `module.json`.
+- A module contract test and a CI job that runs each module's checks in an isolated copy.
+
+### Changed
+- `apps/tv-updater` is now `apps/tv-autoupdater`.
+- Host scripts and cron templates moved from `system/` into the module they belong to. Installed paths on the server are unchanged.
+- The Control Hub's TV card is hidden unless the TV auto-updater is installed.
+
+### Fixed
+- The Control Hub's backup card read the old `/opt/immich/backups` path instead of the folder the photo backup writes to.
+- The Control Hub container could not reach qBittorrent on the host.
+- The media stack and photo tools no longer ship a regional time zone or a server-specific backup path as defaults.
+
 ## [2.0.0] - 2026-11-15
 
 A rewrite of the installer around a single goal: a fresh Ubuntu server installed from the browser comes up fully wired.
