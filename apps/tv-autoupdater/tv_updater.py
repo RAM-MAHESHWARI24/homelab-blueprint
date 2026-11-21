@@ -132,15 +132,33 @@ if CONFIG_FILE.exists():
 
 HEADERS = {"User-Agent": "tv-autoupdater/2.0 (+https://github.com/RAM-MAHESHWARI24/homelab-blueprint)"}
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Configure logging. Skip StreamHandler when stdout is already redirected to LOG_FILE
+# (e.g. cron `>> tv-autoupdater.log 2>&1`), otherwise every line is written twice.
+def _stdout_is_log_file(log_path: Path) -> bool:
+    if os.getenv("TV_AUTOUPDATER_LOG_STDOUT", "1") == "0":
+        return True
+    try:
+        out_stat = os.fstat(sys.stdout.fileno())
+        log_stat = log_path.stat()
+        return (out_stat.st_dev, out_stat.st_ino) == (log_stat.st_dev, log_stat.st_ino)
+    except Exception:
+        return False
+
+
+# A named logger that does not propagate: the Control Hub imports this module for
+# telemetry, and configuring the root logger here would pull the hub's own HTTP
+# access log into tv-autoupdater.log. Echo to stdout only when run as a script.
+log = logging.getLogger("tv_autoupdater")
+log.setLevel(logging.INFO)
+log.propagate = False
+if not log.handlers:
+    _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    _log_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8")]
+    if __name__ == "__main__" and not _stdout_is_log_file(LOG_FILE):
+        _log_handlers.append(logging.StreamHandler(sys.stdout))
+    for _handler in _log_handlers:
+        _handler.setFormatter(_formatter)
+        log.addHandler(_handler)
 
 # -------------------------------------------------------------
 # STATE MANAGEMENT
@@ -187,7 +205,7 @@ def load_state() -> dict:
                     data["upstream_apps"] = {}
                 return data
         except Exception as e:
-            logging.warning(f"Could not load state.json ({e}), using defaults.")
+            log.warning(f"Could not load state.json ({e}), using defaults.")
     return default_state
 
 def save_state(state: dict):
@@ -195,7 +213,7 @@ def save_state(state: dict):
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)
     except Exception as e:
-        logging.error(f"Failed to save state.json: {e}")
+        log.error(f"Failed to save state.json: {e}")
 
 # -------------------------------------------------------------
 # AUTO-DISCOVERY & NETWORK PROBING
@@ -288,7 +306,7 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
                 if profile["id"] in found_profile_ids:
                     continue
                 if any(m in model.lower() for m in profile["match_models"]):
-                    logging.info(f"Auto-Discovered {profile['name']} at new IP: {ip} (Model: {model})")
+                    log.info(f"Auto-Discovered {profile['name']} at new IP: {ip} (Model: {model})")
                     online_tvs.append({**profile, "ip": ip, "model": model})
                     found_profile_ids.add(profile["id"])
                     cached_ips[profile["id"]] = ip
@@ -382,7 +400,7 @@ def get_apk_details(apk_path: Path) -> dict:
                 break
         return info
     except Exception as e:
-        logging.warning(f"Error inspecting APK {apk_path.name} via aapt: {e}")
+        log.warning(f"Error inspecting APK {apk_path.name} via aapt: {e}")
         return {}
 
 def get_installed_version_code(device_ip: str, package_name: str) -> int:
@@ -522,7 +540,7 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
     manual = INCOMING_DIR in apk_path.parents
     sig_ok, sig_reason = verify_apk_signature(apk_path, package_name or get_apk_details(apk_path).get("package", ""), manual=manual)
     if not sig_ok:
-        logging.error(f"Refusing to install {apk_path.name} on {device_name}: {sig_reason}")
+        log.error(f"Refusing to install {apk_path.name} on {device_name}: {sig_reason}")
         return False
     if force:
         fg_pkg = get_foreground_package(device_ip)
@@ -532,17 +550,17 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
         safe, reason = is_safe_to_install(device_ip, device_name, package_name)
 
     if not safe:
-        logging.info(f"Skipping installation of {apk_path.name} on {device_name}: {reason}")
+        log.info(f"Skipping installation of {apk_path.name} on {device_name}: {reason}")
         return False
 
-    logging.info(f"Installing {apk_path.name} on {device_name} ({reason})...")
+    log.info(f"Installing {apk_path.name} on {device_name} ({reason})...")
     res = adb_cmd(device_ip, ["install", "-r", str(apk_path)], timeout=120)
     out = (res.stdout.strip() + " " + res.stderr.strip()).strip()
     if "Success" in res.stdout:
-        logging.info(f"Successfully installed {apk_path.name} on {device_name}!")
+        log.info(f"Successfully installed {apk_path.name} on {device_name}!")
         return True
     elif "INSTALL_FAILED_UPDATE_INCOMPATIBLE" in out:
-        logging.warning(
+        log.warning(
             f"Signature mismatch on {device_name} for {apk_path.name}: "
             f"Package signatures do not match previously installed version (different developer signing key). "
             f"Android OS blocks in-place upgrades across differing certificates."
@@ -550,22 +568,22 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
         mark_incompatible(apk_path.name, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")
         return False
     else:
-        logging.error(f"Failed to install {apk_path.name} on {device_name}: {out}")
+        log.error(f"Failed to install {apk_path.name} on {device_name}: {out}")
         return False
 
 def download_file(url: str, dest_path: Path) -> bool:
     temp_path = dest_path.with_suffix(".tmp")
     try:
-        logging.info(f"Downloading from {url}...")
+        log.info(f"Downloading from {url}...")
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=60) as resp, open(temp_path, "wb") as out_f:
             while chunk := resp.read(65536):
                 out_f.write(chunk)
         temp_path.replace(dest_path)
-        logging.info(f"Downloaded: {dest_path.name} ({dest_path.stat().st_size // 1024} KB)")
+        log.info(f"Downloaded: {dest_path.name} ({dest_path.stat().st_size // 1024} KB)")
         return True
     except Exception as e:
-        logging.error(f"Download failed for {url}: {e}")
+        log.error(f"Download failed for {url}: {e}")
         if temp_path.exists():
             temp_path.unlink()
         return False
@@ -578,9 +596,9 @@ def _verified_download(cached_apk: Path, package: str) -> bool:
     """Discards a downloaded APK whose signing certificate does not match the pin."""
     ok, reason = verify_apk_signature(cached_apk, package)
     if ok:
-        logging.info(f"{cached_apk.name}: {reason}")
+        log.info(f"{cached_apk.name}: {reason}")
         return True
-    logging.error(f"{cached_apk.name}: {reason}; discarding download")
+    log.error(f"{cached_apk.name}: {reason}; discarding download")
     try:
         cached_apk.unlink()
     except OSError:
@@ -596,7 +614,7 @@ def fetch_upstream_smarttube() -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
-        logging.warning(f"Could not check SmartTube GitHub API: {e}")
+        log.warning(f"Could not check SmartTube GitHub API: {e}")
         return {}
 
     tag_name = data.get("tag_name", "").strip()
@@ -638,7 +656,7 @@ def fetch_upstream_cloudstream() -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             releases = json.loads(resp.read().decode())
     except Exception as e:
-        logging.warning(f"Could not check CloudStream GitHub API: {e}")
+        log.warning(f"Could not check CloudStream GitHub API: {e}")
         return {}
 
     prerelease = next((r for r in releases if r.get("prerelease")), None)
@@ -685,7 +703,7 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
         # No sync needed
         return False
 
-    logging.info("Initiating Daily Upstream Sync (GitHub release APIs; signing keys pinned)...")
+    log.info("Initiating Daily Upstream Sync (GitHub release APIs; signing keys pinned)...")
     updated = False
 
     st_meta = fetch_upstream_smarttube()
@@ -700,9 +718,9 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
 
     state["last_upstream_check"] = now
     save_state(state)
-    logging.info("Daily Upstream Sync complete. Current upstream catalog:")
+    log.info("Daily Upstream Sync complete. Current upstream catalog:")
     for pkg, meta in state["upstream_apps"].items():
-        logging.info(f"  • {pkg}: vCode {meta.get('version_code')} ({meta.get('version_name')}) -> {meta.get('apk_filename')}")
+        log.info(f"  • {pkg}: vCode {meta.get('version_code')} ({meta.get('version_name')}) -> {meta.get('apk_filename')}")
 
     return updated
 
@@ -778,14 +796,14 @@ def process_manual_incoming(online_tvs: list):
     if not apk_files or not online_tvs:
         return
 
-    logging.info(f"Processing manual drops: {[f.name for f in apk_files]}")
+    log.info(f"Processing manual drops: {[f.name for f in apk_files]}")
     for apk_path in apk_files:
         info = get_apk_details(apk_path)
         pkg = info.get("package")
         code = info.get("version_code", -1)
 
         if not pkg:
-            logging.warning(f"Could not read package name from {apk_path.name}; skipping.")
+            log.warning(f"Could not read package name from {apk_path.name}; skipping.")
             continue
 
         all_done = True
@@ -801,9 +819,9 @@ def process_manual_incoming(online_tvs: list):
             archive_name = f"{time.strftime('%Y%m%d_%H%M%S')}_{apk_path.name}"
             try:
                 apk_path.rename(INSTALLED_DIR / archive_name)
-                logging.info(f"Moved {apk_path.name} -> installed_apks/{archive_name}")
+                log.info(f"Moved {apk_path.name} -> installed_apks/{archive_name}")
             except Exception as e:
-                logging.warning(f"Failed to archive {apk_path.name}: {e}")
+                log.warning(f"Failed to archive {apk_path.name}: {e}")
 
 def run_opportunistic_deployment(
     state: dict,
@@ -830,23 +848,24 @@ def run_opportunistic_deployment(
         remaining_sec = max(0, UPSTREAM_CHECK_INTERVAL_SEC - elapsed)
         rem_hours = int(remaining_sec // 3600)
         rem_mins = int((remaining_sec % 3600) // 60)
-        logging.info(
-            f"All target TVs (Mi Box 4, Mi TV 4A, Acer TV) are completely up to date. "
+        target_names = ", ".join(p.get("name", p.get("id", "TV")) for p in TARGET_PROFILES) or "configured"
+        log.info(
+            f"All target TVs ({target_names}) are completely up to date. "
             f"Zero pending tasks. Quiescent: stopping polling. Next daily upstream sync in {rem_hours}h {rem_mins}m."
         )
         return
 
     pending_names = [pending_devices[pid]["profile"]["name"] for pid in pending_devices]
-    logging.info(f"Pending tasks detected for: {', '.join(pending_names)} (force_install={force_install})")
+    log.info(f"Pending tasks detected for: {', '.join(pending_names)} (force_install={force_install})")
 
     # Step 3: Probe ONLY the pending devices (leaving already-updated TVs untouched)
     online_tvs = discover_online_tvs(target_profile_ids=list(pending_devices.keys()))
 
     if not online_tvs:
-        logging.info(f"Pending TV(s) ({', '.join(pending_names)}) are currently offline/sleeping. Will retry on next 15-min interval.")
+        log.info(f"Pending TV(s) ({', '.join(pending_names)}) are currently offline/sleeping. Will retry on next 15-min interval.")
         return
 
-    logging.info(f"Discovered Online Pending TVs: {[{d['name']: d['ip']} for d in online_tvs]}")
+    log.info(f"Discovered Online Pending TVs: {[{d['name']: d['ip']} for d in online_tvs]}")
 
     # Process any manual APK drops first
     process_manual_incoming(online_tvs)
@@ -877,21 +896,21 @@ def run_opportunistic_deployment(
 
             curr_code = dev_installed.get(pkg, -1)
             if not force_reinstall and curr_code >= target_code:
-                logging.info(f"{app_name} is already up to date on {name} (vCode {curr_code}).")
+                log.info(f"{app_name} is already up to date on {name} (vCode {curr_code}).")
                 continue
 
             if not apk_path.exists():
-                logging.warning(f"Target APK {apk_filename} missing from cache; skipping.")
+                log.warning(f"Target APK {apk_filename} missing from cache; skipping.")
                 continue
 
-            logging.info(f"{action} requested for {app_name} on {name}: current vCode {curr_code} -> target vCode {target_code} (force={force_install})")
+            log.info(f"{action} requested for {app_name} on {name}: current vCode {curr_code} -> target vCode {target_code} (force={force_install})")
             success = silent_install(ip, name, apk_path, pkg, force=force_install)
             if success:
                 new_code = get_installed_version_code(ip, pkg)
                 if new_code >= target_code or force_reinstall:
                     dev_installed[pkg] = new_code if new_code > 0 else target_code
                     save_state(state)
-                    logging.info(f"Successfully deployed {app_name} to {name} ({action}: vCode {dev_installed[pkg]})!")
+                    log.info(f"Successfully deployed {app_name} to {name} ({action}: vCode {dev_installed[pkg]})!")
 
     save_state(state)
 
@@ -939,7 +958,7 @@ def deploy_single_app(device_id: str, package_or_id: str, force: bool = False) -
         if not apk_path.exists():
             return False, f"Target APK '{apk_filename}' is missing from cache. Run upstream sync first."
 
-    logging.info(f"Direct deployment: {apk_path.name} on {name} ({ip}), force={force}...")
+    log.info(f"Direct deployment: {apk_path.name} on {name} ({ip}), force={force}...")
     success = silent_install(ip, name, apk_path, pkg, force=force)
     if success:
         live_code = get_installed_version_code(ip, pkg)
@@ -959,7 +978,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
     cached_ips = load_cached_ips()
     upstream_apps = state.get("upstream_apps", {})
     last_upstream = state.get("last_upstream_check", 0)
-    last_upstream_str = time.strftime('%Y-%m-%d %I:%M %p IST', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
+    last_upstream_str = time.strftime('%Y-%m-%d %H:%M %Z', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
 
     devices_data = []
     total_online = 0
@@ -1087,7 +1106,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         "devices": devices_data,
         "upstream_apps": upstream_apps,
         "incoming_apks": incoming_files,
-        "schedule": "Every 15 min (06:00 - 23:59 IST)"
+        "schedule": "Every 15 min (06:00 - 23:59)"
     }
 
 # -------------------------------------------------------------

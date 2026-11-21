@@ -94,7 +94,7 @@ recyclarr sync
 Once launched, the entire media pipeline is monitored in real-time by [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub):
 * **Live Downloads:** qBittorrent ingest speeds, queue progress, and 1-click pause.
 * **Port Matrix:** Real-time port connectivity prober for Jellyfin (8096), Seerr (5055), Sonarr (8989), Radarr (7878), Prowlarr (9696), and Bazarr (6767).
-* **Container Logs:** 1-Click Dozzle log streaming with 12-char hex Docker ID deep linking.
+* **Container Logs:** recent logs for each container, read inline from the Service Matrix.
 
 ---
 

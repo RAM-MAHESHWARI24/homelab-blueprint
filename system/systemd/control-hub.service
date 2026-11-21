@@ -18,6 +18,8 @@ ExecStart={{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=HOME={{STATE_DIR}}/home
+Environment=ANDROID_SDK_HOME={{STATE_DIR}}/home
 
 # Hardening
 NoNewPrivileges=false

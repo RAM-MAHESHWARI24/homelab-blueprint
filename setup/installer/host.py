@@ -86,15 +86,26 @@ def ensure_group(group: str) -> CommandResult:
     return run_command(["groupadd", "--system", group], timeout=30)
 
 
-def ensure_system_user(username: str, manifest: InstallManifest, extra_groups: Optional[List[str]] = None) -> CommandResult:
-    """Creates a nologin system account (idempotent) and adds it to extra groups."""
+def ensure_system_user(
+    username: str,
+    manifest: InstallManifest,
+    extra_groups: Optional[List[str]] = None,
+    home_dir: Optional[Path] = None,
+) -> CommandResult:
+    """Creates a nologin system account (idempotent), adds it to extra groups, and optionally prepares a home dir."""
     extra_groups = extra_groups or []
     for grp in extra_groups:
         ensure_group(grp)
 
     exists = run_command(["id", "-u", username], timeout=10)
     if not exists.ok:
-        cmd = ["useradd", "--system", "--shell", "/usr/sbin/nologin", "--no-create-home", username]
+        # Never --create-home: it copies /etc/skel, which is huge on some hosts (GitHub
+        # runners keep toolchains there) and only adds dotfiles a nologin account never
+        # reads. The home directory is created below instead.
+        cmd = ["useradd", "--system", "--shell", "/usr/sbin/nologin", "--no-create-home"]
+        if home_dir is not None:
+            cmd += ["--home-dir", str(home_dir)]
+        cmd.append(username)
         if extra_groups:
             cmd += ["--groups", ",".join(extra_groups)]
         created = run_command(cmd, timeout=30)
@@ -104,6 +115,26 @@ def ensure_system_user(username: str, manifest: InstallManifest, extra_groups: O
     else:
         for grp in extra_groups:
             run_command(["usermod", "-aG", grp, username], timeout=30)
+        if home_dir is not None:
+            current = run_command(["getent", "passwd", username], timeout=10)
+            fields = current["stdout"].split(":") if current.ok else []
+            current_home = fields[5] if len(fields) >= 7 else ""
+            if current_home != str(home_dir):
+                # usermod refuses while the account has running processes (Control Hub,
+                # adb). That is harmless: the unit and cron file set HOME explicitly.
+                run_command(["usermod", "--home", str(home_dir), username], timeout=30)
+
+    if home_dir is not None:
+        try:
+            home_dir.mkdir(parents=True, exist_ok=True)
+            android_dir = home_dir / ".android"
+            android_dir.mkdir(parents=True, exist_ok=True)
+            run_command(["chown", "-R", f"{username}:{username}", str(home_dir)], timeout=30)
+            os.chmod(home_dir, 0o700)
+            os.chmod(android_dir, 0o700)
+            manifest.add_dir(home_dir)
+        except OSError as exc:
+            return CommandResult(success=False, stdout="", stderr=str(exc), returncode=-1)
     return CommandResult(success=True, stdout="", stderr="", returncode=0)
 
 

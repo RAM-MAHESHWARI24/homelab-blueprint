@@ -8,12 +8,28 @@ set -euo pipefail
 # ==============================================================================
 
 # All settings come from the environment (the blueprint sets them in /etc/cron.d/immich-backup):
-#   BACKUP_LOCAL    local directory for database dumps and logs
+#   BACKUP_LOCAL    local directory for database dumps, logs and status.json
 #   MEDIA_PATH      photo library to mirror
 #   GDRIVE_REMOTE   rclone remote (and optional path), e.g. "gdrive:" or "gdrive:homelab/"
 #   FACE_EXPORTER   path to export_faces_to_xmp.py (defaults to the copy next to this script)
 #   DB_CONTAINER    postgres container name (default immich_postgres)
-BACKUP_LOCAL="${BACKUP_LOCAL:-/var/backups/immich}"
+# A run started outside cron (the Control Hub's "Run backup now" goes through sudo,
+# which clears the environment) reads any unset value from that cron file, so both
+# runs use the same remote and paths. BACKUP_CRON_FILE overrides its location.
+BACKUP_CRON_FILE="${BACKUP_CRON_FILE:-/etc/cron.d/immich-backup}"
+if [ -r "$BACKUP_CRON_FILE" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            BACKUP_LOCAL|MEDIA_PATH|GDRIVE_REMOTE|FACE_EXPORTER|DB_CONTAINER)
+                if [ -z "${!key:-}" ]; then
+                    printf -v "$key" '%s' "$value"
+                    export "${key?}"
+                fi
+                ;;
+        esac
+    done < "$BACKUP_CRON_FILE"
+fi
+BACKUP_LOCAL="${BACKUP_LOCAL:-/var/lib/homelab/photo-backups}"
 MEDIA_PATH="${MEDIA_PATH:-/mnt/hdd/Memories}"
 GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:}"
 case "$GDRIVE_REMOTE" in *:|*/) ;; *) GDRIVE_REMOTE="${GDRIVE_REMOTE}/" ;; esac
@@ -23,13 +39,95 @@ GDRIVE_MEMORIES="${GDRIVE_REMOTE}Memories"
 GDRIVE_DB_BACKUP="${GDRIVE_REMOTE}Immich_Backup/database"
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="${BACKUP_LOCAL}/backup.log"
+STATUS_FILE="${BACKUP_LOCAL}/status.json"
 
 mkdir -p "$BACKUP_LOCAL"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+STARTED_AT="$(date -Is)"
+CURRENT_STAGE=1
+STAGE_LABEL="1. Face XMP Export"
+CURRENT_MSG="Exporting named faces to XMP sidecars..."
+DUMP_BASENAME=""
+DUMP_BYTES=""
+GDRIVE_JSON="null"
+BACKUP_DONE=0
+
+write_status() {
+    local status_val="$1"
+    local stage_val="$2"
+    local label_val="$3"
+    local msg_val="$4"
+    local completed_at="$5"
+    python3 - "$STATUS_FILE" "$status_val" "$stage_val" "$label_val" "$msg_val" \
+        "$STARTED_AT" "$completed_at" "$GDRIVE_REMOTE" "$DUMP_BASENAME" "$DUMP_BYTES" "$GDRIVE_JSON" <<'PY' || true
+import json
+import os
+import sys
+from pathlib import Path
+
+(
+    status_path, status_val, stage_val, label_val, msg_val,
+    started_at, completed_at, remote, dump_name, dump_bytes, gdrive_raw,
+) = sys.argv[1:12]
+
+path = Path(status_path)
+prev = {}
+if path.exists():
+    try:
+        prev = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        prev = {}
+
+gdrive_obj = None
+if gdrive_raw and gdrive_raw != "null":
+    try:
+        g = json.loads(gdrive_raw)
+        if isinstance(g, dict) and g.get("total"):
+            gdrive_obj = {
+                "total_bytes": g.get("total"),
+                "used_bytes": g.get("used"),
+                "free_bytes": g.get("free"),
+            }
+    except Exception:
+        gdrive_obj = None
+if gdrive_obj is None and isinstance(prev.get("gdrive"), dict):
+    gdrive_obj = prev.get("gdrive")
+
+last_good = completed_at if status_val == "synced" and completed_at else prev.get("last_good_at")
+payload = {
+    "status": status_val,
+    "stage": int(stage_val),
+    "stage_label": label_val,
+    "message": msg_val,
+    "started_at": started_at,
+    "completed_at": completed_at or None,
+    "last_good_at": last_good,
+    "remote": remote,
+    "dump_file": dump_name or prev.get("dump_file"),
+    "dump_bytes": int(dump_bytes) if dump_bytes.isdigit() else prev.get("dump_bytes"),
+    "gdrive": gdrive_obj,
+}
+tmp = path.with_name(path.name + ".tmp")
+tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PY
+}
+
+on_exit() {
+    local rc=$?
+    if [ "$BACKUP_DONE" -eq 0 ] || [ "$rc" -ne 0 ]; then
+        write_status "error" "$CURRENT_STAGE" "$STAGE_LABEL" \
+            "Backup failed during Step ${CURRENT_STAGE} (${STAGE_LABEL}, exit ${rc})" "$(date -Is)"
+    fi
+}
+trap on_exit EXIT
+
 echo "=================================================="
 echo "Starting Immich Backup: $(date)"
 echo "=================================================="
+write_status "syncing" "$CURRENT_STAGE" "$STAGE_LABEL" "$CURRENT_MSG" ""
 
 # 1. Export named faces to XMP sidecars
 echo "[1/4] Running Face-to-XMP Exporter..."
@@ -40,10 +138,16 @@ else
 fi
 
 # 2. Dump PostgreSQL database (consistent snapshot)
+CURRENT_STAGE=2
+STAGE_LABEL="2. Postgres Dump"
+CURRENT_MSG="Creating PostgreSQL database dump (pg_dumpall)..."
+write_status "syncing" "$CURRENT_STAGE" "$STAGE_LABEL" "$CURRENT_MSG" ""
 echo "[2/4] Creating PostgreSQL database dump..."
 DB_DUMP="$BACKUP_LOCAL/immich_db_${DATE}.sql.gz"
 COMPRESS_CMD=$(command -v pigz >/dev/null 2>&1 && echo "pigz -p 4 -1" || echo "gzip")
 docker exec "$DB_CONTAINER" pg_dumpall -U postgres | $COMPRESS_CMD > "$DB_DUMP"
+DUMP_BASENAME="$(basename "$DB_DUMP")"
+DUMP_BYTES="$(wc -c < "$DB_DUMP" | tr -d '[:space:]')"
 echo "Database dumped successfully: $DB_DUMP ($(du -h "$DB_DUMP" | cut -f1))"
 
 # Prune local database backups older than 7 days
@@ -51,6 +155,10 @@ echo "Pruning local database dumps older than 7 days..."
 find "$BACKUP_LOCAL" -name "immich_db_*.sql.gz" -type f -mtime +7 -delete || true
 
 # 3. Copy Database Dump to Google Drive
+CURRENT_STAGE=3
+STAGE_LABEL="3. Rclone Mirror"
+CURRENT_MSG="Mirroring database dump & photo library to ${GDRIVE_REMOTE}..."
+write_status "syncing" "$CURRENT_STAGE" "$STAGE_LABEL" "$CURRENT_MSG" ""
 echo "[3/4] Uploading database dump to Cloud..."
 rclone copy "$DB_DUMP" "$GDRIVE_DB_BACKUP/" --stats 30s
 
@@ -64,6 +172,17 @@ rclone sync "$MEDIA_PATH" "$GDRIVE_MEMORIES/" \
     --fast-list \
     --stats 60s \
     --exclude ".dtrash/**"
+
+# Capture Google Drive quota for the dashboard (best effort, never fails backup)
+if command -v rclone >/dev/null 2>&1; then
+    GDRIVE_JSON="$(rclone about "$GDRIVE_REMOTE" --json 2>/dev/null || echo 'null')"
+fi
+
+BACKUP_DONE=1
+CURRENT_STAGE=4
+STAGE_LABEL="4. GDrive Verified"
+CURRENT_MSG="Cloud backup verified & protected on ${GDRIVE_REMOTE}"
+write_status "synced" "$CURRENT_STAGE" "$STAGE_LABEL" "$CURRENT_MSG" "$(date -Is)"
 
 echo "=================================================="
 echo "Immich Backup Completed Successfully: $(date)"
