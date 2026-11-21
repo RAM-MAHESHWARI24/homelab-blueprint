@@ -270,7 +270,12 @@ class TestSimulatedCloudBackup(unittest.TestCase):
         text = script_path.read_text(encoding="utf-8")
         self.assertIn("--backup-dir", text, "Must retain accidental deletion protection buffer")
         self.assertIn("--track-renames", text, "Must retain server-side move tracking")
-        self.assertIn("-mtime +7 -delete", text, "Must enforce 7-day database dump retention")
+        self.assertIn('retention --names-file "$WORK/local.txt" --keep "$KEEP_LOCAL_DUMPS"', text,
+                      "Must enforce count-based local dump retention")
+        self.assertIn('--monthly "$KEEP_DRIVE_MONTHLY"', text, "Must keep monthly dumps on the remote")
+        self.assertIn("--protect", text, "Retention must never delete the dump just uploaded")
+        self.assertIn("flock -n", text, "Only one backup run at a time")
+        self.assertIn("is missing or empty", text, "Pre-flight must refuse to mirror an empty photo folder")
 
 
 class TestSystemPowerAndHostDaemons(unittest.TestCase):

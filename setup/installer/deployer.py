@@ -145,6 +145,9 @@ class Deployment:
             "MEMORIES_DIR": str(self.config.get("hdd_memories", "/mnt/hdd/Memories")),
             "HOST_USER": str(self.config.get("host_user") or SERVICE_USER),
             "GDRIVE_REMOTE": str(self.config.get("gdrive_remote") or ""),
+            "KEEP_LOCAL_DUMPS": str(int(self.config.get("photo_backup_keep_local", 3))),
+            "KEEP_DRIVE_DUMPS": str(int(self.config.get("photo_backup_keep_remote", 14))),
+            "KEEP_DRIVE_MONTHLY": str(int(self.config.get("photo_backup_keep_monthly", 12))),
         }
 
     # ---------------------------------------------------------------- step 1
@@ -447,7 +450,16 @@ class Deployment:
             self.fail("photo_backup", "no rclone remote configured (gdrive_remote); run `rclone config` first and re-run with the remote name")
             return
         if not shutil.which("rclone"):
-            self.warn("rclone is not installed; the nightly photo backup will fail until it is (https://rclone.org/install/).")
+            self.fail("photo_backup", "rclone is not installed; install it (https://rclone.org/install/), run `sudo rclone config`, then re-run setup")
+            return
+        # A typo in the remote name or an expired login would otherwise install cleanly
+        # and fail every night. Check it now and refuse the module with rclone's own error.
+        check = run_command(["rclone", "lsd", remote], timeout=120)
+        if not check.ok:
+            detail = (check["stderr"] or check["stdout"] or "no output").strip().splitlines()[-1]
+            self.fail("photo_backup", f"rclone remote '{remote}' did not answer: {detail}. Fix it with `sudo rclone config` and re-run setup.")
+            return
+        self.log(f"rclone remote '{remote}' answers.")
         backup_dir = self.state_dir / "photo-backups"
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)

@@ -77,11 +77,13 @@ python3 export_faces_to_xmp.py --force
 ## ☁️ Automated Nightly Cloud Backup & Media Sync
 
 The included backup script ([`scripts/immich_backup_gdrive.sh.example`](scripts/immich_backup_gdrive.sh.example)):
+0. Runs pre-flight checks and stops before touching anything if one fails: the remote answers (`rclone lsd`), its `Memories` and `Immich_Backup/database` folders exist once a run has succeeded (a missing one was probably moved), the photo folder is not empty (an unmounted disk would otherwise be mirrored over the cloud copy), and there is room locally and on the remote.
 1. Runs `export_faces_to_xmp.py` to ensure all latest face tags are written to portable XMP sidecars.
 2. Dumps a consistent PostgreSQL snapshot (`pg_dumpall | gzip`).
-3. Automatically prunes local database dumps older than 7 days.
-4. Uploads database snapshots to Google Drive / S3 / Backblaze via `rclone copy`.
-5. Synchronizes photo binaries and sidecars using `rclone sync --track-renames` with an `Immich_Trash/<date>` buffer to prevent accidental deletions.
+3. Uploads database snapshots to Google Drive / S3 / Backblaze via `rclone copy`, then synchronizes photo binaries and sidecars using `rclone sync --track-renames` with an `Immich_Trash/<date>` buffer to prevent accidental deletions.
+4. Applies retention and checks the new dump is on the remote. Locally it keeps the newest `KEEP_LOCAL_DUMPS` (3); on the remote the newest `KEEP_DRIVE_DUMPS` (14) plus the first dump of each of the last `KEEP_DRIVE_MONTHLY` (12) months. Only files named `immich_db_YYYYMMDD_HHMMSS.sql.gz` are ever deleted, so manual dumps stay.
+
+Each step updates `status.json` next to the log (0644, written atomically) with the outcome, pre-flight results, transfer totals, retention and the last 30 runs; [`scripts/backup_status.py`](scripts/backup_status.py) writes it. Only one run happens at a time. A run started by hand (for example from the Control Hub) reads its settings from `/etc/cron.d/immich-backup`, like the nightly job.
 
 ### Enabling as a Daily Cron Job:
 ```bash

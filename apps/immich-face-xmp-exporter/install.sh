@@ -49,6 +49,9 @@ if $WITH_CRON; then
         -e "s|{{STATE_DIR}}|$STATE_DIR|g" \
         -e "s|{{MEMORIES_DIR}}|${MEDIA_PATH:-/mnt/hdd/Memories}|g" \
         -e "s|{{GDRIVE_REMOTE}}|${GDRIVE_REMOTE:-gdrive:}|g" \
+        -e "s|{{KEEP_LOCAL_DUMPS}}|${KEEP_LOCAL_DUMPS:-3}|g" \
+        -e "s|{{KEEP_DRIVE_DUMPS}}|${KEEP_DRIVE_DUMPS:-14}|g" \
+        -e "s|{{KEEP_DRIVE_MONTHLY}}|${KEEP_DRIVE_MONTHLY:-12}|g" \
         host/cron/immich-backup > /etc/cron.d/immich-backup
     cp host/cron/immich-ml /etc/cron.d/immich-ml
     chmod 0644 /etc/cron.d/immich-backup /etc/cron.d/immich-ml
