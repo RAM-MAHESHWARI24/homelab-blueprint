@@ -132,14 +132,27 @@ if CONFIG_FILE.exists():
 
 HEADERS = {"User-Agent": "tv-autoupdater/2.0 (+https://github.com/RAM-MAHESHWARI24/homelab-blueprint)"}
 
-# Configure logging
+# Configure logging. Skip StreamHandler when stdout is already redirected to LOG_FILE
+# (e.g. cron `>> tv-autoupdater.log 2>&1`), otherwise every line is written twice.
+def _stdout_is_log_file(log_path: Path) -> bool:
+    if os.getenv("TV_AUTOUPDATER_LOG_STDOUT", "1") == "0":
+        return True
+    try:
+        out_stat = os.fstat(sys.stdout.fileno())
+        log_stat = log_path.stat()
+        return (out_stat.st_dev, out_stat.st_ino) == (log_stat.st_dev, log_stat.st_ino)
+    except Exception:
+        return False
+
+
+_log_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8")]
+if not _stdout_is_log_file(LOG_FILE):
+    _log_handlers.append(logging.StreamHandler(sys.stdout))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=_log_handlers,
 )
 
 # -------------------------------------------------------------
@@ -830,8 +843,9 @@ def run_opportunistic_deployment(
         remaining_sec = max(0, UPSTREAM_CHECK_INTERVAL_SEC - elapsed)
         rem_hours = int(remaining_sec // 3600)
         rem_mins = int((remaining_sec % 3600) // 60)
+        target_names = ", ".join(p.get("name", p.get("id", "TV")) for p in TARGET_PROFILES) or "configured"
         logging.info(
-            f"All target TVs (Mi Box 4, Mi TV 4A, Acer TV) are completely up to date. "
+            f"All target TVs ({target_names}) are completely up to date. "
             f"Zero pending tasks. Quiescent: stopping polling. Next daily upstream sync in {rem_hours}h {rem_mins}m."
         )
         return
@@ -959,7 +973,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
     cached_ips = load_cached_ips()
     upstream_apps = state.get("upstream_apps", {})
     last_upstream = state.get("last_upstream_check", 0)
-    last_upstream_str = time.strftime('%Y-%m-%d %I:%M %p IST', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
+    last_upstream_str = time.strftime('%Y-%m-%d %H:%M %Z', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
 
     devices_data = []
     total_online = 0
@@ -1087,7 +1101,7 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         "devices": devices_data,
         "upstream_apps": upstream_apps,
         "incoming_apks": incoming_files,
-        "schedule": "Every 15 min (06:00 - 23:59 IST)"
+        "schedule": "Every 15 min (06:00 - 23:59)"
     }
 
 # -------------------------------------------------------------

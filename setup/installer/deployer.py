@@ -589,11 +589,19 @@ class Deployment:
             self.fail("control_hub", f"pip install failed: {res['stderr']}")
             return
 
-        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         if not res.ok:
             self.fail("control_hub", f"could not create service user: {res['stderr']}")
             return
         run_command(["chown", "-R", f"{SERVICE_USER}:{SERVICE_USER}", str(ch_dir / "venv")], timeout=120)
+        hub_state_dir = self.state_dir / "control-hub"
+        try:
+            hub_state_dir.mkdir(parents=True, exist_ok=True)
+            run_command(["chown", f"{SERVICE_USER}:{SERVICE_USER}", str(hub_state_dir)], timeout=30)
+            os.chmod(hub_state_dir, 0o750)
+            self.manifest.add_dir(hub_state_dir)
+        except OSError as exc:
+            self.warn(f"could not prepare {hub_state_dir}: {exc}")
 
         # The unit runs as `homelab` with WorkingDirectory inside the checkout. A clone
         # under a 0750 home directory fails with status=200/CHDIR; say so up front.
@@ -649,7 +657,7 @@ class Deployment:
         if not cron_src.exists():
             self.fail("tv_autoupdater", "cron template apps/tv-autoupdater/host/cron/tv-autoupdater missing")
             return
-        ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         state_dir = self.state_dir / "tv-autoupdater"
         try:
             state_dir.mkdir(parents=True, exist_ok=True)
@@ -767,7 +775,7 @@ class Deployment:
         if self.dry_run:
             self.log(f"Would create system user '{SERVICE_USER}' (docker group).")
             return
-        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         if not res.ok:
             self.fail("host", f"could not create service user '{SERVICE_USER}': {res['stderr']}")
         else:
