@@ -21,6 +21,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 - The gallery machine-learning service sets `MACHINE_LEARNING_MODEL_REVISION: v2`, as the upstream v5 compose file does.
 
 ### Fixed
+- A backup started with "Run backup now" ran inside the Control Hub's service, so restarting the Control Hub killed it and the hub's 100 MB memory cap applied to the database dump and rclone. The script now moves itself into its own transient systemd unit (`photo-backup-<time>`).
 - The Control Hub no longer shows invented numbers. Backup, Google Drive, photo library, speed test, storage split, service ping and TV figures come from real data, or say "Unknown" with the reason. Backup status starts as unknown and turns green only from a real result: the photo backup script now writes `status.json` (0644, atomic) next to its log, and the dashboard reads it without `sudo rclone`.
 - The Control Hub reads the photo backup from `/var/lib/homelab/photo-backups` by default, matches the v2 log line `Starting Immich Backup:`, and gets `GDRIVE_REMOTE`, `HDD_MEMORIES` and `TZ` from the installer. Times use the host time zone instead of a fixed IST.
 - Media and photo folder sizes are measured with `du` at low priority in the background, cached to disk and refreshed hourly, instead of a fixed 75/20/5 split.

@@ -56,6 +56,15 @@ DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="${BACKUP_LOCAL}/backup.log"
 STATUS_FILE="${BACKUP_LOCAL}/status.json"
 
+# "Run backup now" starts this script from the Control Hub, i.e. inside the hub's service
+# cgroup: restarting the hub would kill the backup, and its MemoryMax/CPUQuota would apply
+# to pg_dumpall and rclone. Move into a transient systemd unit of our own first.
+if [ -z "${BACKUP_DETACHED:-}" ] && [ "$(id -u)" -eq 0 ] && command -v systemd-run >/dev/null 2>&1 \
+    && grep -q 'control-hub\.service' /proc/self/cgroup 2>/dev/null; then
+    exec systemd-run --quiet --collect --unit="photo-backup-$(date +%Y%m%d-%H%M%S)" \
+        --setenv=BACKUP_DETACHED=1 "$(readlink -f "$0")"
+fi
+
 mkdir -p "$BACKUP_LOCAL"
 
 # One run at a time (the nightly cron job and "Run backup now" can overlap).
