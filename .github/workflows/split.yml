@@ -1,0 +1,86 @@
+# Publishes each module folder (apps/<module>/ with "publish": true in module.json)
+# to its own read-only repository: git subtree split, then push to the module repo's
+# main branch and mirror the release tag. See docs/RELEASING.md.
+#
+# The module repos are mirrors: every run replaces their main branch with the
+# monorepo's history of that folder. Changes made directly in a module repo are lost.
+name: Split modules into their repositories
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to split (e.g. v2.1.0)"
+        required: true
+      dry_run:
+        description: "Only build the split branches, do not push"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  modules:
+    name: Read module manifests
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - id: list
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib
+          rows = []
+          for manifest in sorted(pathlib.Path("apps").glob("*/module.json")):
+              data = json.loads(manifest.read_text())
+              if data.get("publish"):
+                  rows.append({"folder": manifest.parent.name, "repo": data["repo"], "secret": data["split_secret"]})
+          print("matrix=" + json.dumps({"include": rows}))
+          PY
+
+  split:
+    name: Split ${{ matrix.folder }} -> ${{ matrix.repo }}
+    needs: modules
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.modules.outputs.matrix) }}
+    env:
+      REF: ${{ inputs.ref || github.ref_name }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Build the module's history (git subtree split)
+        run: |
+          git subtree split --prefix "apps/${{ matrix.folder }}" -b split-out
+          echo "Split head: $(git rev-parse split-out)  files: $(git ls-tree -r --name-only split-out | wc -l)"
+          git ls-tree --name-only split-out | sed 's/^/  /'
+
+      - name: Push to ${{ matrix.repo }}
+        if: env.DRY_RUN != 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets[matrix.secret] }}
+        run: |
+          test -n "$DEPLOY_KEY" || { echo "Secret ${{ matrix.secret }} is not set"; exit 1; }
+          keyfile="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$DEPLOY_KEY" > "$keyfile"
+          chmod 600 "$keyfile"
+          export GIT_SSH_COMMAND="ssh -i $keyfile -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          remote="git@github.com:${{ matrix.repo }}.git"
+          # Mirror: replace main with the folder's history from the monorepo.
+          git push --force "$remote" "split-out:refs/heads/main"
+          if [[ "$REF" == v* ]]; then
+            git tag -f "$REF" split-out
+            git push --force "$remote" "refs/tags/$REF"
+          fi
+          rm -f "$keyfile"

@@ -1,0 +1,26 @@
+# Active in the published homelab-mediaserver repo. Inside homelab-blueprint GitHub only runs
+# workflows at the repository root, so this file is inert there. The checks live in
+# ci.sh, which the blueprint's split-simulation job also runs on an isolated copy of
+# this folder, so both places test the same thing.
+name: homelab-mediaserver CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Module checks (ci.sh)
+        run: bash ci.sh

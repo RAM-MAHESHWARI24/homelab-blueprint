@@ -1,41 +1,26 @@
-name: CI
+# Active in the published noodle-gallery-tools repo. Inside homelab-blueprint GitHub only runs
+# workflows at the repository root, so this file is inert there. The checks live in
+# ci.sh, which the blueprint's split-simulation job also runs on an isolated copy of
+# this folder, so both places test the same thing.
+name: noodle-gallery-tools CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [main]
 
 jobs:
-  lint-and-syntax:
+  checks:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Lint with flake8
-        run: |
-          # stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=__pycache__,tests/fixtures
-          # exit-zero treats all errors as warnings
-          flake8 . --count --exit-zero --max-complexity=15 --max-line-length=160 --statistics --exclude=__pycache__,tests/fixtures
-
-      - name: Verify CLI argument parsing
-        run: |
-          python export_faces_to_xmp.py --help
-          python sync_space_faces.py --help
+      - name: Module checks (ci.sh)
+        run: bash ci.sh

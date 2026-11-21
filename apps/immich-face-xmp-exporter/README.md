@@ -10,6 +10,8 @@
 
 ---
 
+> This repository is a read-only mirror of a folder in [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint), published on every release. Please open issues and pull requests there.
+
 ## 🌟 The Problem Solved
 
 By default, **Noodle Gallery** and **Immich** store facial recognitions, person names, and crop bounding boxes strictly inside their internal PostgreSQL database. If you ever migrate away, reinstall, or open your library in professional desktop photo managers (DigiKam, Adobe Lightroom, Adobe Bridge), all your manual and automated tagging effort is lost.
@@ -40,8 +42,9 @@ This toolkit provides:
 ```bash
 git clone https://github.com/RAM-MAHESHWARI24/noodle-gallery-tools.git /opt/noodle-gallery-tools
 cd /opt/noodle-gallery-tools
-pip install -r requirements.txt
+./install.sh      # creates .env and checks for exiftool and docker; no Python packages needed
 ```
+Fill in `IMMICH_URL`, `IMMICH_API_KEY` and the Postgres container name in `.env`.
 
 ### 3. Exporting Named Faces
 ```bash
@@ -82,12 +85,9 @@ The included backup script ([`scripts/immich_backup_gdrive.sh.example`](scripts/
 
 ### Enabling as a Daily Cron Job:
 ```bash
-cp scripts/immich_backup_gdrive.sh.example /opt/noodle-gallery-tools/scripts/backup.sh
-chmod +x /opt/noodle-gallery-tools/scripts/backup.sh
-
-# Add to root crontab (runs daily at 10:00 PM)
-echo "0 22 * * * root /opt/noodle-gallery-tools/scripts/backup.sh >> /var/log/gallery-backup.log 2>&1" | sudo tee /etc/cron.d/gallery-backup
+sudo ./install.sh --cron
 ```
+This installs `/etc/cron.d/immich-backup` (22:00 nightly) and `/etc/cron.d/immich-ml`, which starts the ML container at 06:00 and stops it at 10:00. Paths come from `.env`.
 
 ---
 

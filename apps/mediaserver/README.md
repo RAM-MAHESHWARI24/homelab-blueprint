@@ -9,6 +9,8 @@
 
 ---
 
+> This repository is a read-only mirror of a folder in [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint), published on every release. Please open issues and pull requests there.
+
 ## 🏗️ Architecture Stack
 
 * **Streaming:** Jellyfin (Direct Play optimized for clients, <1.5% CPU on Haswell i3)
@@ -62,19 +64,20 @@ It transparently patches Node.js `https.request`, `http.request`, and `globalThi
 * Docker & Docker Compose v2+
 * Storage mounted at `/mnt/hdd/data` (or your chosen path)
 
-### 2. Configuration & Automated Provisioning
-You can configure and deploy the media server stack in two ways:
-* **Automated Web GUI (Recommended):** Use the [Homelab Setup Wizard](../../setup/README.md) (`http://<server-ip>:8000`) or [Control Hub Settings](../../apps/control-hub/README.md) (`http://<server-ip>:7575`). It automatically tests your disk mounts with live `os.link` hardlink inode probes and auto-generates API keys.
-* **Manual Setup:**
+### 2. Install on its own
+
 ```bash
-cp .env.example .env
-nano .env
+git clone https://github.com/RAM-MAHESHWARI24/homelab-mediaserver.git
+cd homelab-mediaserver
+./install.sh --data-dir /mnt/hdd/data     # add --byparr for the Byparr proxy
 ```
 
-### 3. Launch Stack
-```bash
-docker compose up -d
-```
+`install.sh` creates `.env` with generated passwords, builds the data tree (`torrents/` and `media/` on one filesystem so imports are hardlinks), seeds qBittorrent, starts the stack, waits until every container is healthy, and wires the apps together with [`scripts/wire_arr.py`](scripts/wire_arr.py). It prints the credentials at the end. Re-running it is safe.
+
+It adds no indexers. Pick them in Prowlarr; which indexers you use, and whether they are legal where you live, is up to you.
+
+### 3. Inside homelab-blueprint
+The [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint) installer does the same from its browser wizard, and its Control Hub adds an indexer picker over Prowlarr's own list.
 
 ### 4. Recyclarr Setup
 Sync the curated compact profiles with +50k Hindi audio scoring:
@@ -88,7 +91,7 @@ recyclarr sync
 ---
 
 ## 🖥️ Live Monitoring & Management
-Once launched, the entire media pipeline is monitored in real-time by [Control Hub](../control-hub/):
+Once launched, the entire media pipeline is monitored in real-time by [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub):
 * **Live Downloads:** qBittorrent ingest speeds, queue progress, and 1-click pause.
 * **Port Matrix:** Real-time port connectivity prober for Jellyfin (8096), Seerr (5055), Sonarr (8989), Radarr (7878), Prowlarr (9696), and Bazarr (6767).
 * **Container Logs:** 1-Click Dozzle log streaming with 12-char hex Docker ID deep linking.
@@ -96,4 +99,4 @@ Once launched, the entire media pipeline is monitored in real-time by [Control H
 ---
 
 ## 📄 License
-MIT License. Part of the [Homelab Blueprint](../../README.md) monorepo.
+MIT License. Part of [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint).

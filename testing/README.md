@@ -443,7 +443,8 @@ The workflow that runs on every push and pull request is [`.github/workflows/ci.
 
 | Job | What it checks |
 | :--- | :--- |
-| Linting & Secret Sanitization | ruff, ShellCheck, Gitleaks |
+| Linting & Secret Sanitization | ruff, ShellCheck, Gitleaks, and the [module contract](test_module_contract.py) |
+| Split Simulation | Each published module copied out of the repository alone, running its own `ci.sh` |
 | Setup Wizard Matrix Test | The wizard suite on Ubuntu 22.04 and 24.04 with Python 3.10 to 3.12 |
 | Docker Compose & Multi-Arch Verification | Compose files validate, no floating tags, every pinned image exists for amd64 and arm64 |
 | Real Headless Install, Health Probes & Teardown | A real install on a fresh runner, the apps wired together, then a teardown that leaves nothing |
