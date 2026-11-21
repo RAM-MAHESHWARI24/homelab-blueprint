@@ -64,11 +64,15 @@ class TestNicknames(_Isolated):
 class TestDetectedModel(unittest.TestCase):
     def test_probe_parses_getprop_and_device_name(self):
         out = "Xiaomi\nMIBOX4\noneday\n9\n28\nMi Box\n"
-        with mock.patch.object(tv_updater, "adb_cmd", return_value=SimpleNamespace(stdout=out, returncode=0)):
+        with mock.patch.object(tv_updater, "adb_cmd", return_value=SimpleNamespace(stdout=out, returncode=0)), \
+             mock.patch.object(tv_updater.subprocess, "run") as run:
             info = tv_updater.probe_device_info("192.168.1.34")
+        self.assertEqual(run.call_args.args[0], ["adb", "connect", "192.168.1.34:5555"], "connects before asking")
         self.assertEqual(info, {"manufacturer": "Xiaomi", "model": "MIBOX4", "device": "oneday",
                                 "android": "9", "sdk": "28", "device_name": "Mi Box"})
-        with mock.patch.object(tv_updater, "adb_cmd", return_value=SimpleNamespace(stdout="error: device unauthorized\n", returncode=1)):
+        unauthorized = SimpleNamespace(stdout="error: device unauthorized\n", returncode=1)
+        with mock.patch.object(tv_updater, "adb_cmd", return_value=unauthorized), \
+             mock.patch.object(tv_updater.subprocess, "run"):
             self.assertEqual(tv_updater.probe_device_info("192.168.1.34"), {})
 
     def test_model_label(self):
