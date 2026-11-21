@@ -5,6 +5,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 ## [Unreleased]
 
 ### Added
+- **Change remote** on the backup card: pick another rclone remote (and folder), test it, and switch the photo and media settings backups to it, without editing files on the server. A root helper (`/usr/local/sbin/homelab-backup-remote`, one sudoers line) does the checking and the edits.
 - Monthly restore test of the photo backup (first Sunday, 11:00): the newest database dump is downloaded from the remote, restored into a throwaway database from the live image, and the photos counted against the dump. The result is on the backup card, with **Run restore test now**, and a failure sends a critical alert.
 - Nightly off-site backup of the media apps' settings (21:30, with the photo backup's remote): Sonarr, Radarr, Prowlarr, Bazarr, Seerr and Jellyfin databases and configuration plus qBittorrent's settings and torrent list, copied with SQLite's online backup API so nothing stops. Logs, caches and re-downloadable artwork are left out (about 20 MB instead of 1.8 GB). Same pre-flight checks, retention, history and alerts as the photo backup, and a **Back up now** button on the backup card.
 - Photo backup health (Control Hub Phase 2A). The backup script runs pre-flight checks before anything else and stops with a clear reason if the remote does not answer, a backup folder on it went missing, the photo folder is empty (an unmounted disk), or there is not enough space. It records transfer totals, retention and the last 30 runs in `status.json`, and never runs twice at once.
@@ -24,6 +25,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 - The gallery machine-learning service sets `MACHINE_LEARNING_MODEL_REVISION: v2`, as the upstream v5 compose file does.
 
 ### Fixed
+- After switching to another backup remote, the first backup would have stopped with "folder missing although earlier runs wrote to it". Both backups now remember which remote their last good run used.
 - The TV card showed a model taken from the first entry of the profile's model list ("SHIELD" for a Mi Box) and showed offline TVs as up to date. It now shows the model the TV reports (or none until it has been online), and an offline TV's versions say "when last seen". The model is read after `adb connect`, so it is also found for a TV the server has not talked to since a restart.
 - A backup started with "Run backup now" ran inside the Control Hub's service, so restarting the Control Hub killed it and the hub's 100 MB memory cap applied to the database dump and rclone. The script now moves itself into its own transient systemd unit (`photo-backup-<time>`).
 - The Control Hub no longer shows invented numbers. Backup, Google Drive, photo library, speed test, storage split, service ping and TV figures come from real data, or say "Unknown" with the reason. Backup status starts as unknown and turns green only from a real result: the photo backup script now writes `status.json` (0644, atomic) next to its log, and the dashboard reads it without `sudo rclone`.

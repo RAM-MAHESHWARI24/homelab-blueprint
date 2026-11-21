@@ -152,6 +152,10 @@ jobs:
         run: |
           python testing/test_lifecycle_handoff.py
 
+      - name: Backup remote helper (runs as root behind sudo)
+        run: |
+          python testing/test_backup_remote_helper.py
+
   docker-compose-validation:
     name: Docker Compose & Multi-Arch Verification
     runs-on: ubuntu-latest

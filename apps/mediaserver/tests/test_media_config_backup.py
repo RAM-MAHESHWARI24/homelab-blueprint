@@ -129,6 +129,9 @@ class TestStatus(unittest.TestCase):
             self.assertEqual([h["outcome"] for h in d["history"]], ["error", "synced"])
             self.assertEqual(d["last_good_at"], d["history"][1]["completed_at"])
             self.assertFalse(d["preflight"]["ok"])
+            self.assertEqual(d["last_good_remote"], "drive:", "a failed run keeps the remote of the last good one")
+            s3 = mcb.Status(path, "other:")
+            self.assertEqual(s3.data["last_good_remote"], "drive:")
 
 
 if __name__ == "__main__":

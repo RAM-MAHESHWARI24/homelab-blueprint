@@ -24,6 +24,24 @@ While application workloads (Jellyfin, qBittorrent, Immich, Radarr) run inside i
 
 ---
 
+## 🔐 Root Helper: `helpers/homelab-backup-remote`
+
+Installed to `/usr/local/sbin/homelab-backup-remote` with the photo backup, and allowed for the
+`homelab` service account by one sudoers line. It lets the Control Hub list, test and switch the
+rclone remote of both backups without the dashboard touching root-owned files:
+
+```bash
+sudo homelab-backup-remote list                  # remotes in root's rclone config, current one
+sudo homelab-backup-remote test gdrive:homelab/  # answers? free space? which folders exist?
+sudo homelab-backup-remote set gdrive:homelab/   # test, then rewrite GDRIVE_REMOTE everywhere
+```
+
+`set` rewrites `GDRIVE_REMOTE=` in `/etc/cron.d/immich-backup`, `/etc/cron.d/media-backup`,
+`/etc/homelab/control-hub.env` and `homelab.env`, and `gdrive_remote` in
+`/etc/homelab/config.json`, keeping each file's owner and mode. The remote is validated strictly
+(`name:` or `name:folder/`, no leading `-`, no `..`, no absolute path) and must exist in root's
+rclone config; it is passed to rclone as a single argument, never through a shell. Output is JSON.
+
 ## 📂 Component Directory Structure
 
 ```
