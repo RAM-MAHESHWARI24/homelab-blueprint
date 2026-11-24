@@ -114,6 +114,8 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* Architectural guide to the 5-view Operations Console at `:7575`, real-time 13-service port polling, live `os.link` storage testing, 120-second Netplan static IP confirmation, and AI Copilot diagnostics.
 * **[Control Hub Improvement & De-AI Redesign Plan](../Control%20Hub%20Improvement%20Plan.md)**
   * *Why it matters:* Complete audit history, Pivot Phases A & B implementation record, and the Pivot Phase C full-depth Hallmark `Console` (`console: graphite` / `console: paper`) + Impeccable redesign specification.
+* **[Control Hub Visual History](CONTROL_HUB_VISUAL_HISTORY.md)**
+  * *Why it matters:* Side-by-side automated Playwright captures tracking every Control Hub UI revision across `Overview` (Dark & Light) and `Apps`.
 * **[Master Verification & Test Report](HOMELAB_VERIFICATION_AND_TEST_REPORT.md)**
   * *Why it matters:* Complete test documentation including 13 visual proof screenshots, risk matrices, and deployment verification artifacts.
 * **[Early Setup Wizard Test Results](SETUP_WIZARD_TEST_RESULTS.md)**
