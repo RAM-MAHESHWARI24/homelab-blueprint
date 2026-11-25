@@ -699,10 +699,10 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 ### 3A. Media
 
-1. **Downloads:** per-torrent pause, resume, delete (with or without files), priority, and global speed limits with an "alternative speed" schedule for evenings.
+1. **Downloads:** per-torrent pause, resume, delete (with or without files), priority, and global speed limits with an "alternative speed" schedule for evenings. (**Done** — `/api/torrents/<hash>/action`, `/api/torrents/limits`, `#torrent-limits-modal`)
 2. **Requests:** pending Seerr requests with approve and decline, and what each request is waiting for.
 3. **Coming up:** Radarr and Sonarr calendar for the next 7 days; "recently added" with posters.
-4. **Who is watching:** active Jellyfin streams (user, title, direct play or transcode). Update `apps/control-hub/host/server-suspend.sh` to defer S3 suspend while someone is streaming — and align it with `AGENTS.md` §1.5 for active qBittorrent downloads and SMB sessions.
+4. **Who is watching:** active Jellyfin streams (user, title, direct play or transcode). Update `apps/control-hub/host/server-suspend.sh` to defer S3 suspend while someone is streaming — and align it with `AGENTS.md` §1.5 for active qBittorrent downloads and SMB sessions. (**Done** — `telemetry_sampler.get_jellyfin_streams()`, `storageOps.js`, and ADR-0003 guards in `server-suspend.sh`)
 5. **Indexer health:** each Prowlarr indexer with its last success, failures and a fix hint. Today YTS, The Pirate Bay and 1337x fail their challenge checks.
 6. **Library tools:** trigger a Jellyfin library scan; show missing episodes and wanted movies.
 
