@@ -1,6 +1,6 @@
 # Control Hub Improvement Plan
 
-Nov 25, 2026 · *(updated after completing Pivot Phase C `C1`–`C4` & Collapsible Sidebar `PR #60`–`#65` on `develop`; `apps/control-hub/core/updates.py` remains staged WIP for Phase 2C)*
+Nov 25, 2026 · *(Phase 2C `#27`–`#29` Update Centre + Safe Rollback Helper live on `develop`; moving next to Phase 2D Guided Add-a-TV)*
 
 ## Summary
 
@@ -671,13 +671,13 @@ Give the owner what a home server needs every week: proof that backups work, a m
 3. Quiet hours and a daily digest, so a non-urgent alert at 02:00 waits until morning.
 4. A "Send test" button per channel.
 
-### 2C. Update centre (replaces Watchtower)
+### 2C. Update centre (replaces Watchtower) — **Done (PR #66 + helper PR)**
 
-1. A table of every app: pinned version, newest upstream version, and the release notes link, refreshed daily.
-2. "Update" per app, or all: take a backup of that app's data, change the pin, pull, recreate the container, wait for healthy, and roll back automatically if it does not come up. (Requires a blueprint-side host helper for pinned compose edits, keeping `apps/control-hub` isolated under `test_module_contract.py`.)
-3. Mark majors that need a migration (Postgres, the photo app, Sonarr) as "manual" with the reason.
-4. Update the Control Hub and installer themselves: show the repo version, the newest release, and a "Check for updates" that invokes a `sudo` blueprint helper (`git pull` on a release tag in `root`-owned `/opt/homelab-blueprint` and re-running the installer; hidden in standalone mode).
-5. Optional automatic patch updates on a schedule, never majors.
+1. A table of every app: pinned version, newest upstream version, and the release notes link, refreshed daily. (**Done** — `core/updates.py` + `widgets/updates.py` + `#/apps` Updates sheet)
+2. "Update" per app, or all: take a backup of that app's data, change the pin, pull, recreate the container, wait for healthy, and roll back automatically if it does not come up. (**Done** — `system/helpers/homelab-update` stores pin overrides in `/etc/homelab/<project>.pins.yml`, backs up `/config` bind mounts, and rolls back pin + config on pull/up/health failure; Control Hub stays isolated under `test_module_contract.py`)
+3. Mark majors that need a migration (Postgres, the photo app, Sonarr) as "manual" with the reason. (**Done**)
+4. Update the Control Hub and installer themselves: show the repo version, the newest release, and trigger `homelab-update self-update` (release-tag checkout in clean `/opt/homelab-blueprint` + headless installer re-apply + restart; hidden in standalone mode). (**Done**)
+5. Optional automatic patch updates on a schedule, never majors. (**Done** — `Auto-Patch` policy toggle in `/api/updates/policy` + background patch/rebuild worker)
 
 ### 2D. Add a TV (guided)
 

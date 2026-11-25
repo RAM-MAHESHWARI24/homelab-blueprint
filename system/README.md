@@ -42,6 +42,22 @@ sudo homelab-backup-remote set gdrive:homelab/   # test, then rewrite GDRIVE_REM
 (`name:` or `name:folder/`, no leading `-`, no `..`, no absolute path) and must exist in root's
 rclone config; it is passed to rclone as a single argument, never through a shell. Output is JSON.
 
+### `helpers/homelab-update`
+
+Installed to `/usr/local/sbin/homelab-update` with the Control Hub and allowed via one sudoers
+drop-in entry (`/usr/local/sbin/homelab-update *`). It lets the Control Hub apply safe pinned
+container updates with automatic config backup + healthcheck + rollback, and self-update the
+blueprint checkout on release tags:
+
+```bash
+sudo homelab-update status                          # install dir, git clean/ref state
+sudo homelab-update app qbittorrent 5.3.1_v2.1.3-ls490   # backup config, update pin override, pull/up, rollback on failure
+sudo homelab-update self-update --tag v2.2.0        # fetch release tag in /opt/homelab-blueprint & re-apply setup
+```
+
+App version overrides are stored atomically in `/etc/homelab/<project>.pins.yml` so the blueprint Git
+checkout stays clean during updates and re-running the installer preserves pinned app upgrades.
+
 ## 📂 Component Directory Structure
 
 ```
