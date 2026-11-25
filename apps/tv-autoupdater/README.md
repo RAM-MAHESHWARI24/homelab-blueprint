@@ -72,14 +72,14 @@ The **TV auto-updater** moves all downloading, version diffing, and scheduling t
 1. On your Android TV, navigate to: **Settings -> Device Preferences -> About**.
 2. Click **Build** 7 times to enable Developer Options.
 3. In **Developer Options**, turn ON **USB Debugging** and **Network ADB Debugging** (port 5555).
-4. Connect from your server once:
+4. Connect from your server once (or use the guided **Add a TV** wizard in the Control Hub):
    ```bash
    adb connect 192.168.1.150:5555
    ```
 5. Check "Always allow from this computer" on the TV screen.
 
 ### 3. Configuration
-Copy `config.example.json` to `config.json` and specify your TV device profiles:
+Copy `config.example.json` to `config.json` and specify your initial TV device profiles (additional TVs edited via the Control Hub are stored in `STATE_DIR/tv_profiles.json`):
 ```bash
 cp config.example.json config.json
 nano config.json
