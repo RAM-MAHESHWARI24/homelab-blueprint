@@ -1,6 +1,6 @@
 # Control Hub Improvement Plan
 
-Nov 25, 2026 · *(Phase 2C `#27`–`#29` Update Centre + Phase 2D `#30`–`#31b` Guided Add-a-TV & TV CRUD implemented; moving next to Phase 2E Container Lifecycle)*
+Nov 25, 2026 · *(Phase 2C `#27`–`#29`, Phase 2D `#30`–`#31b`, and Phase 2E `#32`–`#33` complete; ready for Phase 3)*
 
 ## Summary
 
@@ -20,8 +20,8 @@ flowchart LR
     P1["Phase 1 & 2A/2B<br/>Honest Baseline, Backups & Alerts<br/>(PRs #45-#55 · Done)"] --> PA["Pivot Phase A & B<br/>Honesty v2 & 5-View Shell<br/>(PR #56 · Done)"]
     PA --> PB["Pivot Phase B+<br/>De-AI Polish Pass<br/>(PR #57 · Done)"]
     PB --> PC["Pivot Phase C<br/>Full-Depth 'Console' Redesign<br/>(PRs #60-#65 · Done)"]
-    PC --> P2["Phase 2C-2E<br/>Updates, Add-a-TV & Lifecycle<br/>(Next)"]
-    P2 --> P3["Phase 3<br/>Media, Photos, Storage & Settings"]
+    PC --> P2["Phase 2C-2E<br/>Updates, Add-a-TV & Lifecycle<br/>(Done)"]
+    P2 --> P3["Phase 3<br/>Media, Photos, Storage & Settings<br/>(Next)"]
     P3 --> P4["Phase 4<br/>Tailscale HTTPS, PWA & uPlot History"]
 ```
 
@@ -685,11 +685,11 @@ Give the owner what a home server needs every week: proof that backups work, a m
 2. A TV list with rename, change IP, test connection, pause updates and remove stored in `homelab`-owned `/var/lib/homelab/tv-autoupdater/tv_profiles.json` (`PATCH` / `DELETE` `/api/tv-updater/devices/<id>`, `POST .../test`). (**Done**)
 3. Per-TV detail: installed app versions, `last_update`, and `last_error`. (**Done**)
 
-### 2E. Apps that keep running
+### 2E. Apps that keep running — **Done**
 
-1. **Service Matrix shows real health:** container state and healthcheck status, uptime, version and restart count.
-2. **Per-app actions:** start, stop, restart, open, and logs inline in a drawer (replacing the jump to Dozzle, which is not in the v2 compose stack).
-3. A confirmation for anything that interrupts streaming.
+1. **Service Matrix shows real health:** container state and healthcheck status, uptime, version and restart count (via batch `docker inspect` + `docker ps` in `service_matrix.py`). (**Done**)
+2. **Per-app actions:** start, stop, restart, open, and logs inline in a searchable drawer (replacing Dozzle). (**Done**)
+3. Confirmation dialog on every stop and guarded service restart with live active-stream and transfer warnings. (**Done**)
 
 **Gate:** a deliberately broken Drive remote raises an alert within one run; a stopped container raises an alert within 5 minutes; one app updated and rolled back from the update centre; a new TV added from a phone with no SSH.
 
