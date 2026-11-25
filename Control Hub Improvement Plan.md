@@ -1,6 +1,6 @@
 # Control Hub Improvement Plan
 
-Nov 25, 2026 · *(Phase 2C `#27`–`#29` Update Centre + Safe Rollback Helper live on `develop`; moving next to Phase 2D Guided Add-a-TV)*
+Nov 25, 2026 · *(Phase 2C `#27`–`#29` Update Centre + Phase 2D `#30`–`#31b` Guided Add-a-TV & TV CRUD implemented; moving next to Phase 2E Container Lifecycle)*
 
 ## Summary
 
@@ -679,18 +679,11 @@ Give the owner what a home server needs every week: proof that backups work, a m
 4. Update the Control Hub and installer themselves: show the repo version, the newest release, and trigger `homelab-update self-update` (release-tag checkout in clean `/opt/homelab-blueprint` + headless installer re-apply + restart; hidden in standalone mode). (**Done**)
 5. Optional automatic patch updates on a schedule, never majors. (**Done** — `Auto-Patch` policy toggle in `/api/updates/policy` + background patch/rebuild worker)
 
-### 2D. Add a TV (guided)
+### 2D. Add a TV (guided) — **Done**
 
-1. An "Add a TV" wizard in the TV card, phone-friendly, with pictures for each step:
-   1. Open Settings, Device Preferences, About on the TV and select Build 7 times.
-   2. In Developer options, turn on USB debugging and Network debugging (ADB over network).
-   3. Find the TV's IP (shown in Settings, Network, or picked from a live scan of the LAN).
-   4. Press "Connect": the server runs `adb connect` and the dashboard says "Look at your TV and choose Always allow".
-   5. The wizard reads the model and Android version, suggests a name, and asks which apps to keep updated.
-2. A TV list with rename, change IP, test connection, pause updates and remove (note: `/etc/homelab/tv-autoupdater.json` is currently `0640 root:homelab`, so move user-managed TV profiles to `homelab`-owned `/var/lib/homelab/tv-autoupdater/` or write via a narrow helper).
-3. Per-TV detail: installed app versions, last update, last error.
-4. A tip to give each TV a fixed IP in the router (DHCP reservation), with why.
-5. Clear notes for brands that differ: Fire TV (Settings, My Fire TV, Developer options), Google TV (System, About, Android TV OS build), Sony and TCL.
+1. An "Add a TV" wizard in the TV card, phone-friendly, with inline offline vector illustrations for each step and brand-specific notes (Google TV, Fire TV, Android TV/Mi, Sony/TCL), live LAN ADB scan, ADB pairing + `"Always allow"` prompt, model/Android probe, app selection, and router DHCP reservation tip. (**Done** — `#add-tv-wizard-modal`, `/api/tv-updater/scan-lan`, `/api/tv-updater/connect`, `/api/tv-updater/devices`)
+2. A TV list with rename, change IP, test connection, pause updates and remove stored in `homelab`-owned `/var/lib/homelab/tv-autoupdater/tv_profiles.json` (`PATCH` / `DELETE` `/api/tv-updater/devices/<id>`, `POST .../test`). (**Done**)
+3. Per-TV detail: installed app versions, `last_update`, and `last_error`. (**Done**)
 
 ### 2E. Apps that keep running
 

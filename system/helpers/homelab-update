@@ -356,11 +356,15 @@ def _schedule_hub_restart() -> None:
     )
 
 
+def _git_cmd(install_dir: Path, *args: str) -> List[str]:
+    return [GIT_BIN, "-c", f"safe.directory={install_dir}", "-C", str(install_dir), *args]
+
+
 def _git_status(install_dir: Path) -> Dict:
     if not (install_dir / ".git").exists():
         return {"git_repo": False, "git_clean": False, "git_ref": None}
-    ref = _run([GIT_BIN, "-C", str(install_dir), "describe", "--tags", "--always"], timeout=15)
-    dirty = _run([GIT_BIN, "-C", str(install_dir), "status", "--porcelain"], timeout=15)
+    ref = _run(_git_cmd(install_dir, "describe", "--tags", "--always"), timeout=15)
+    dirty = _run(_git_cmd(install_dir, "status", "--porcelain"), timeout=15)
     return {
         "git_repo": True,
         "git_ref": (ref.stdout or "").strip() if ref.returncode == 0 else None,
@@ -389,12 +393,12 @@ def self_update(target_tag: Optional[str] = None) -> Dict:
     if not CONFIG_JSON.is_file():
         raise UpdateError(f"Missing installer configuration at '{CONFIG_JSON}'; cannot re-apply setup.")
 
-    prev_head_res = _run([GIT_BIN, "-C", str(install_dir), "rev-parse", "HEAD"], timeout=15)
+    prev_head_res = _run(_git_cmd(install_dir, "rev-parse", "HEAD"), timeout=15)
     if prev_head_res.returncode != 0:
         raise UpdateError("Could not read current HEAD commit.")
     prev_head = prev_head_res.stdout.strip()
 
-    fetch = _run([GIT_BIN, "-C", str(install_dir), "fetch", "--tags", "--force", "origin"], timeout=120)
+    fetch = _run(_git_cmd(install_dir, "fetch", "--tags", "--force", "origin"), timeout=120)
     if fetch.returncode != 0:
         raise UpdateError(f"git fetch failed: {(fetch.stderr or fetch.stdout).strip()[:240]}")
 
@@ -405,24 +409,24 @@ def self_update(target_tag: Optional[str] = None) -> Dict:
         if not chosen_tag.startswith("v"):
             chosen_tag = f"v{chosen_tag}"
     else:
-        tags_res = _run([GIT_BIN, "-C", str(install_dir), "tag", "-l", "v*", "--sort=-v:refname"], timeout=15)
+        tags_res = _run(_git_cmd(install_dir, "tag", "-l", "v*", "--sort=-v:refname"), timeout=15)
         tags = [t.strip() for t in (tags_res.stdout or "").splitlines() if SEMVER_TAG_RE.match(t.strip())]
         if not tags:
             raise UpdateError("No release tags (vX.Y.Z) found on origin.")
         chosen_tag = tags[0]
 
-    target_sha_res = _run([GIT_BIN, "-C", str(install_dir), "rev-parse", "--verify", f"refs/tags/{chosen_tag}^{{commit}}"], timeout=15)
+    target_sha_res = _run(_git_cmd(install_dir, "rev-parse", "--verify", f"refs/tags/{chosen_tag}^{{commit}}"), timeout=15)
     if target_sha_res.returncode != 0:
         raise UpdateError(f"Release tag '{chosen_tag}' does not exist on origin.")
     if target_sha_res.stdout.strip() == prev_head:
         return {"ok": True, "changed": False, "tag": chosen_tag, "message": f"Already running release {chosen_tag}."}
 
-    checkout = _run([GIT_BIN, "-C", str(install_dir), "checkout", "--detach", f"refs/tags/{chosen_tag}"], timeout=30)
+    checkout = _run(_git_cmd(install_dir, "checkout", "--detach", f"refs/tags/{chosen_tag}"), timeout=30)
     if checkout.returncode != 0:
         raise UpdateError(f"Could not switch to release {chosen_tag}: {(checkout.stderr or checkout.stdout).strip()[:200]}")
 
     def rollback_self(reason: str) -> Dict:
-        _run([GIT_BIN, "-C", str(install_dir), "checkout", prev_head], timeout=30)
+        _run(_git_cmd(install_dir, "checkout", prev_head), timeout=30)
         return {"ok": False, "tag": chosen_tag, "rolled_back": True, "previous_head": prev_head[:12], "error": reason}
 
     venv_pip = install_dir / "apps" / "control-hub" / "venv" / "bin" / "pip"

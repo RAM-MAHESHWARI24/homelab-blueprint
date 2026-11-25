@@ -33,6 +33,8 @@ class _Isolated(unittest.TestCase):
             mock.patch.object(tv_updater, "TARGET_PROFILES", PROFILES),
             mock.patch.object(tv_updater, "NICKNAMES_FILE", d / "nicknames.json"),
             mock.patch.object(tv_updater, "DEVICE_INFO_FILE", d / "device_info.json"),
+            mock.patch.object(tv_updater, "NICKNAMES_FILE", d / "nicknames.json"),
+            mock.patch.object(tv_updater, "TV_PROFILES_FILE", d / "tv_profiles.json"),
             mock.patch.object(tv_updater, "STATE_FILE", d / "state.json"),
             mock.patch.object(tv_updater, "DEVICES_CACHE_FILE", d / "devices_cache.json"),
             mock.patch.object(tv_updater, "INCOMING_DIR", d / "incoming"),
@@ -111,6 +113,59 @@ class TestTelemetryNames(_Isolated):
         self.assertTrue(st["status_text"].endswith("when last seen"))
         saved = json.loads((self.dir / "device_info.json").read_text())
         self.assertEqual(saved["living_room_tv"]["model"], "MIBOX4")
+
+
+class TestTvProfilesAndWizard(_Isolated):
+    def test_add_update_pause_and_remove_tv_profile(self):
+        added = tv_updater.add_tv_profile(
+            "Kitchen TV",
+            "192.168.1.60",
+            port=5555,
+            apps=["smarttube"],
+            probe={"manufacturer": "TCL", "model": "BeyondTV", "android": "12", "sdk": "31"},
+        )
+        pid = added["id"]
+        self.assertEqual(pid, "kitchen_tv")
+        self.assertEqual(added["apps"], ["org.smarttube.stable"])
+        self.assertTrue((self.dir / "tv_profiles.json").is_file())
+
+        # Updating IP + pausing updates
+        updated = tv_updater.update_tv_profile(pid, name="Patio TV", ip="192.168.1.61", paused=True)
+        self.assertEqual(updated["name"], "Patio TV")
+        self.assertEqual(updated["default_ip"], "192.168.1.61")
+        self.assertTrue(updated["paused"])
+
+        # Paused TV is skipped by evaluate_pending_work
+        st = {"upstream_apps": {"org.smarttube.stable": {"version_code": 9999}}, "devices": {}}
+        pending = tv_updater.evaluate_pending_work(st)
+        self.assertNotIn(pid, pending)
+
+        # Unpaused + single-app filter applies only selected package
+        tv_updater.update_tv_profile(pid, paused=False)
+        st["upstream_apps"]["com.lagradost.cloudstream3.prerelease"] = {"version_code": 9999}
+        pending = tv_updater.evaluate_pending_work(st)
+        self.assertEqual([t["package"] for t in pending[pid]["pending_apps"]], ["org.smarttube.stable"])
+
+        tv_updater.remove_tv_profile(pid)
+        self.assertNotIn(pid, {p["id"] for p in tv_updater.get_target_profiles()})
+
+    def test_connect_adb_tv_prompts_authorization_and_detects_model(self):
+        with mock.patch.object(tv_updater, "is_port_open", return_value=True):
+            # Needs authorization
+            with mock.patch.object(tv_updater.subprocess, "run", return_value=SimpleNamespace(stdout="failed to authenticate to 192.168.1.60:5555", stderr="")), \
+                 mock.patch.object(tv_updater, "probe_device_info", return_value={}):
+                unauth = tv_updater.connect_adb_tv("192.168.1.60")
+                self.assertFalse(unauth["ok"])
+                self.assertTrue(unauth["needs_auth"])
+                self.assertIn("Always allow", unauth["message"])
+
+            # Authorized connect returns model & suggested name
+            with mock.patch.object(tv_updater.subprocess, "run", return_value=SimpleNamespace(stdout="connected to 192.168.1.60:5555", stderr="")), \
+                 mock.patch.object(tv_updater, "probe_device_info", return_value={"manufacturer": "Sony", "model": "BRAVIA 4K", "android": "11", "sdk": "30"}):
+                ok = tv_updater.connect_adb_tv("192.168.1.60")
+                self.assertTrue(ok["ok"])
+                self.assertEqual(ok["android"], "11")
+                self.assertEqual(ok["suggested_name"], "Sony BRAVIA 4K")
 
 
 if __name__ == "__main__":
