@@ -341,9 +341,15 @@ class Deployment:
             self.fail("media", f"wire_arr.py {subcommand} failed: {res['stderr'][-400:] or 'see log'}")
         return res.ok
 
+    def _pins_override_for(self, stack_name: str) -> List[str]:
+        """Preserves app version overrides written by homelab-update across setup re-runs."""
+        pins_file = self.etc_dir / f"{stack_name}.pins.yml"
+        return [str(pins_file)] if pins_file.is_file() else []
+
     def module_media(self) -> None:
         module_dir = self.root / "apps" / "mediaserver"
         extra_files = ["docker-compose.dns.yml"] if self.config.get("dns_override") else []
+        extra_files.extend(self._pins_override_for(module_dir.name))
 
         if self.dry_run:
             self.log("Would seed qBittorrent.conf with the chosen password, start the media stack and wire "
@@ -416,6 +422,7 @@ class Deployment:
                 write_private_file(path, override, self.manifest, mode=0o600)
                 self.log(f"Photo images pinned by configuration ({path}).")
             extra.append(str(path))
+        extra.extend(self._pins_override_for(module_dir.name))
         self._compose("photos", module_dir, self.etc_dir / "noodle-gallery.env", extra)
 
     def module_ml_schedule(self) -> None:
@@ -694,6 +701,9 @@ class Deployment:
             if not res.ok:
                 self.fail("control_hub", f"sudoers validation failed: {res['stderr']}")
                 return
+        update_helper = self.root / "system" / "helpers" / "homelab-update"
+        if update_helper.exists():
+            install_helper_script(update_helper, self.manifest)
 
         if not unit_src.exists():
             self.fail("control_hub", "system/systemd/control-hub.service template missing")
