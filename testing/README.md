@@ -49,8 +49,8 @@ Before declaring any release, pull request, or architectural change production-r
 │    st_nlink >= 2 and exactly identical stat.st_ino numbers.           │
 │                                                                        │
 │ 3. Zero-Downtime Network Safety:                                       │
-│    Netplan static IP updates auto-rollback within 45 seconds if the    │
-│    gateway is misconfigured or SSH is severed.                         │
+│    Netplan static IP updates auto-rollback within 120 seconds if the   │
+│    gateway is misconfigured or SSH is severed without confirmation.    │
 │                                                                        │
 │ 4. Total Container Health:                                             │
 │    100% of enabled Docker Compose services transition to Healthy       │
@@ -74,19 +74,19 @@ Before declaring any release, pull request, or architectural change production-r
 
 ## 2. Testing Architecture & Layered Defense
 
-To avoid disturbing the live production server (`Z:\` at `192.168.1.31`), testing is segmented into **four distinct environments**:
+To avoid disturbing a live production server (`<ssh-host>` at `<server-lan-ip>`), testing is segmented into **four distinct environments**:
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │                        LAYERED TESTING PYRAMID                            │
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
-│  [Layer 4: Real Bare-Metal Production] (Z:\ Server - 192.168.1.31)        │
+│  [Layer 4: Bare-Metal Production Server] (<ssh-host> - <server-lan-ip>)   │
 │  • Intel QSV VAAPI /dev/dri render node direct play                       │
 │  • Motherboard ACPI S3 rtcwake sleep (1.2W)                               │
 │  • Physical Android TV network ADB updates (Port 5555)                    │
 │                               ▲                                           │
-│  [Layer 3: Ephemeral VM Sandboxes] (Multipass / Hyper-V on Host D:\)      │
+│  [Layer 3: Ephemeral VM Sandboxes] (Multipass / Hyper-V on Dev Host)      │
 │  • 100% genuine Linux kernel, virtual BIOS, isolated IP                   │
 │  • Static-IP change with revert timer, confirmed from the new address     │
 │  • Multi-disk loop mounts (SSD root + ext4 HDD simulation)                │
@@ -127,7 +127,12 @@ The blueprint is designed to run on diverse hardware—from salvaged dual-core l
 [`vm/test_wizard_gui.py`](vm/test_wizard_gui.py) installs on a fresh Multipass VM through `bootstrap.sh`, drives the Setup Wizard and Control Hub in Chromium (including a static-IP change confirmed from the new address), then runs [`vm/check_wiring.sh`](vm/check_wiring.sh) inside the VM. Results and how to run it: [v2.0.0 Test Report](../docs/V2_TEST_REPORT.md).
 
 
-Because WSL lacks real motherboard ACPI clocks and virtual network adapters, **Canonical Multipass** is the industry standard for testing Ubuntu server deployments locally without disturbing server `Z:\`.
+Because WSL lacks real motherboard ACPI clocks and virtual network adapters, **Canonical Multipass** is the industry standard for testing Ubuntu server deployments locally without disturbing your live server.
+
+### Automated Visual Regression, Accessibility & De-AI UI Gates
+- **Playwright + `axe-core` WCAG 2.2 AA (`apps/control-hub/tests/test_ui_accessibility.py`):** Tests all 5 hash-routed views (`#/overview`, `#/apps`, `#/backups`, `#/tvs`, `#/system`) across `360x800`, `820x1180`, and `1366x900` viewports in both `console: graphite` (Dark) and `console: paper` (Light) colorways, verifying `>= 44x44px` touch targets, collapsible sidebar state, zero external CDN requests, and zero critical/serious `axe-core` violations.
+- **Visual History Diff Generator ([`capture_visual_history.py`](capture_visual_history.py)):** Renders deterministic headless Playwright captures across recent Git commits inside isolated temporary worktrees and writes screenshots + [`docs/CONTROL_HUB_VISUAL_HISTORY.md`](../docs/CONTROL_HUB_VISUAL_HISTORY.md).
+- **De-AI Craft Scanners (`Nutlope/hallmark` & `pbakaus/impeccable`):** Verify structural typography, 4px spacing normalization, and zero static UI anti-patterns (`sloplint.mjs --scope app` and `impeccable detect apps/control-hub/static`).
 
 ### Prerequisites (Host Machine)
 Multipass installs with one command on Windows via `winget`:

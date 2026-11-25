@@ -75,7 +75,7 @@ Administrators can inspect their node topology, run live atomic hardlink probes,
 
 ### 🌐 4. Safe Netplan Static IP with 120s Auto-Rollback & Live Confirmation
 - Auto-detects active network interfaces (via `/proc/net/route`), gateway, and DNS servers.
-- Generates standard Netplan v2 YAML configuration.
+- Generates standard Netplan v2 YAML configuration rendered with semantic `.row--plus` / `.row--minus` line highlights for static IP additions and DHCP changes.
 - **End-to-End Safety Guarantee:** Applies with an armed revert timer (`homelab-netplan-revert`, 120 s by default) and immediately surfaces a live **120-second confirmation countdown banner** (in both the modal and the Overview Attention Strip) with a direct link to the new IP and a **"Confirm New IP"** button (`/api/config/netplan-confirm`). Unless confirmed before the timer expires, the previous Netplan configuration is restored automatically.
 
 ### 🤖 5. AI Copilot Diagnostics & Compact Prompt Exporter
