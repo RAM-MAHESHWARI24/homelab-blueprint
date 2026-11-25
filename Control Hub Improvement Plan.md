@@ -8,10 +8,10 @@ The Control Hub works, and PRs `#45`–`#65` have now shipped Phase 1 (honest ba
 
 **Why we pivoted and what comes next:**
 1. **Solved in Pivot Phases A & B (`PR #56`, `2ff463b`):** Fixed every remaining fake/wrong readout (WAN speedtest substitution, partial-permission photo size under-reporting via `homelab-storage-sizes.timer`, SSD appdata inside HDD bar, Sleep Guard disabled/uninstalled states, phantom Recyclarr cron, qBittorrent 5.x `stop`/`start`, Netplan 120 s confirm flow, Config Center read-only banner, and N100/AMD/Haswell hardware probing) and restructured the dashboard from a 9,000 px single scroll wall into a 5-view hash-routed Operations Console (`Overview`, `Apps`, `Backups`, `TVs`, `System`).
-2. **Solved in Pivot Phase C (`PR #60`–`#65`):** Elevated Control Hub into a full-depth **`Console`** single-surface instrument console (`console: graphite` dark default + `console: paper` light mode, self-hosted `Host Grotesk` + `Atkinson Hyperlegible Mono`, `.panels` hairline grids, Amber operator vs Cool Blue telemetry signal grammar, `Host Record` trail, ruled Service & ADB TV ledgers, 24h Sleep Guard Pin Axis, collapsible icon-rail sidebar, `0 FAIL / 0 WARN` in `sloplint`, and `0 anti-patterns` in `impeccable detect`).
-3. **Next Step — Phase 2C–2E & Phase 3–4:** Wire WIP `apps/control-hub/core/updates.py` into `#/apps` + Alerts (Phase 2C), guided "Add a TV" wizard + TV CRUD (Phase 2D), full container lifecycle controls (Phase 2E), and Phases 3–4 (`uPlot` charts, PWA, Tailscale HTTPS).
+2. **Solved in De-AI Polish Pass (`PR #57`, `032e103`):** Audited `apps/control-hub/static/` with **[`pbakaus/impeccable`](https://github.com/pbakaus/impeccable)** (`114.4k ⭐`) and **[`Nutlope/hallmark`](https://github.com/Nutlope/hallmark)** (`58.9k ⭐`), clearing all 10 static anti-patterns (`border-left: 4px` side-tabs, tracked uppercase labels, glass blur, nested service cards).
+3. **Next Step — Pivot Phase C (Complete Full-Depth De-AI Redesign with Hallmark `Console` + Impeccable):** Elevate Control Hub from a `polish`-depth card layout to a **`redesign: full` (`--scope app`) single-surface instrument console** using Hallmark's **`Console`** theme (`console: graphite` dark default + `console: paper` light mode), eliminating the remaining 162 off-4px spacing rules (`REFLEX 24b`) and 5 repeated box-recipe warnings (`WARN F7`) before landing Phase 2C–2E (`core/updates.py`, Guided Add-a-TV, Container Lifecycle) and Phases 3–4.
 
-Evidence comes from the live dashboard at `http://<server-lan-ip>:7575` (verified live after each PR deploy), full source review of `apps/control-hub`, `apps/tv-autoupdater`, `apps/mediaserver`, `apps/immich-face-xmp-exporter`, `apps/noodle-gallery`, and `system/`, and read-only inspection of the live host state.
+Evidence comes from the live dashboard at `http://<server-lan-ip>:7575` on 2026-11-21 (original baseline `c0cf3ec`, updated and verified live at `032e103`), full source review of `apps/control-hub`, `apps/tv-autoupdater`, `apps/mediaserver`, `apps/immich-face-xmp-exporter`, `apps/noodle-gallery`, and `system/`, and read-only inspection of the live host state.
 
 ## Roadmap
 
@@ -840,7 +840,7 @@ Every item in build order, updated after PRs `#45`–`#55` and Audit v2. Effort 
 
 | # | Phase | Area | Feature | Effort |
 | --- | --- | --- | --- | --- |
-| 27 | 2C | Updates | Wire WIP `core/updates.py` into `Apps` view + alert rule for new releases & major-version warnings | M |
+| 27 | 2C | Updates | Wire WIP `core/updates.py` into `Apps` view + alert rule for new releases & major-version warnings (`Done`) | M |
 | 28 | 2C | Updates | One-click update with backup and automatic rollback (via blueprint-side host helper) | L |
 | 29 | 2C | Updates | Self-update of the Control Hub and installer (via audited `sudo` blueprint helper; hidden in standalone mode) | M |
 | 30 | 2D | TVs | Guided "Add a TV" wizard (LAN scan, ADB connect, "Always allow" prompt, model detection, brand notes) | L |
