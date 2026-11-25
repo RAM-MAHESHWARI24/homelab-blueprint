@@ -339,6 +339,15 @@ class TestSystemPowerAndHostDaemons(unittest.TestCase):
         log_content = self.log_file.read_text(encoding="utf-8")
         self.assertIn("[DRY_RUN] Dry run enabled", log_content)
 
+    def test_suspend_script_defers_on_jellyfin_playback(self):
+        """TC-SYS-05: Verify server-suspend.sh contains all ADR-0003 stream/download/SMB deferral guards"""
+        script_path = REPO_ROOT / "apps" / "control-hub" / "host" / "server-suspend.sh"
+        text = script_path.read_text(encoding="utf-8")
+        self.assertIn("smbstatus -S", text)
+        self.assertIn("/api/v2/transfer/info", text)
+        self.assertIn("/Sessions", text)
+        self.assertIn("Active Jellyfin media playback", text)
+
 
 class TestUniversalHardwareDetection(unittest.TestCase):
     """Module 10: Dynamic Hardware Probing & Custom Hardware Adaptability"""
