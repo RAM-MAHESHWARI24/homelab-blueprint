@@ -191,10 +191,11 @@ def save_cache(path: Path, data: Dict) -> None:
         pass
 
 
-def refresh(cache_path: Path, containers: List[Dict], extra_repos: List[str], fetch=fetch_latest, now: Optional[float] = None) -> Dict:
+def refresh(cache_path: Path, containers: List[Dict], extra_repos: List[str], fetch=None, now: Optional[float] = None) -> Dict:
     """Fetches the newest release of every repo the running images map to."""
+    fetcher = fetch or fetch_latest
     repos = sorted({r for c in containers if (r := source_for(split_image(c["image"])[0])[0])} | set(extra_repos))
-    data = {"checked_at": now or time.time(), "repos": {repo: fetch(repo) for repo in repos}}
+    data = {"checked_at": now or time.time(), "repos": {repo: fetcher(repo) for repo in repos}}
     save_cache(cache_path, data)
     return data
 
