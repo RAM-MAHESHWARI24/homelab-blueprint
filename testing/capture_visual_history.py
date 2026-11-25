@@ -29,6 +29,8 @@ DEFAULT_STAGES = [
     ("02-pr57-polish", "032e103", "PR #57 — De-AI Polish Pass (Impeccable & Hallmark)"),
     ("03-pr60-console-c1", "8cda9bc", "PR #60 — Hallmark Console C1 (OKLCH Tokens, Fonts & 4px Scale)"),
     ("04-pr61-console-c2", "e4a7879", "PR #61 — Hallmark Console C2 (Bench, Audit Spine & Service Ledger)"),
+    ("05-pr63-sidebar", "ef48dc1", "PR #63 — Collapsible Icon-Rail Sidebar & Arrow Toggle"),
+    ("06-pr64-console-c3", "f4aee83", "PR #64 — Hallmark Console C3 (Backups Trail, TV Ledger & 24h Sleep Pin Axis)"),
 ]
 
 WORKER_SCRIPT = textwrap.dedent(
@@ -314,6 +316,8 @@ def write_report(stages: list[tuple[str, str, str, dict[str, str]]]) -> None:
         "1. **`2ff463b` -> `032e103` (PR #57 — De-AI Polish):** Deliberately incremental; kept the `#090d14` slate + sky-blue `#38bdf8` layout intact while removing eyebrow clutter, glass blur, and nested card chrome.",
         "2. **`032e103` -> `8cda9bc` (PR #60 — Console C1):** Replaced blue-tinted navy slate with 3-step neutral graphite OKLCH (`console: graphite`) and warm cream (`console: paper`), self-hosted `Host Grotesk` + `Atkinson Hyperlegible Mono`, split **Amber** operator buttons from **Cool Blue** instrument bars, and normalized all spacing onto a 4px scale.",
         "3. **`8cda9bc` -> `e4a7879` (PR #61 — Console C2):** Replaced Overview's separated cards and Quick Launch tiles with flush 1px hairline grids (`Host Record` audit spine added beside Live Activity), and converted `#/apps` from stacked rows into a ruled multi-column `service-ledger` table on desktop.",
+        "4. **`e4a7879` -> `ef48dc1` (PR #63 — Collapsible Sidebar):** Added auto-collapse to an icon-only rail when clicking right-side workspace content, hover/focus module tooltips, and the persistent bottom arrow toggle.",
+        "5. **`ef48dc1` -> `f4aee83` (PR #64 — Console C3):** Extended full-depth `Console` composition across `#/backups` (`.trail` audit spine with `.row--plus`/`.row--minus`), `#/tvs` (ruled ADB Fleet Matrix), and `#/system` (`Rim`/`Console` 24h Sleep Guard pin axis with cron pins, HiDPI `--color-cool` NIC oscilloscope, and Netplan diff highlighting).",
         "",
     ])
 

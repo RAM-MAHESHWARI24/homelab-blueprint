@@ -1,17 +1,17 @@
 # Control Hub Improvement Plan
 
-Nov 21, 2026 · *(originally validated against `develop` @ `c0cf3ec`; updated through `develop` @ `032e103` after landing PRs `#45`–`#57`, untracked WIP `apps/control-hub/core/updates.py`, read-only live server verification, and `AGENTS.md`)*
+Nov 25, 2026 · *(updated after completing Pivot Phase C `C1`–`C4` & Collapsible Sidebar `PR #60`–`#65` on `develop`; `apps/control-hub/core/updates.py` remains staged WIP for Phase 2C)*
 
 ## Summary
 
-The Control Hub works, and PRs `#45`–`#57` have now shipped Phase 1 (honest baseline, 3-breakpoint responsive CSS, WCAG 2.2 AA dialogs/tests), Phase 2A (photo backup pre-flight, history, retention, monthly restore test, media settings backup, remote switcher), Phase 2B (multi-channel alerts), TV nicknames, **Pivot Phase A** (Honesty v2, broken controls, universality, root hourly `homelab-storage-sizes.timer`), **Pivot Phase B** (5-view hash-routed Operations Console, Dark/Light/Auto theme engine, inline SVG sprite, HiDPI sparklines, keyed DOM patching), and the first **De-AI GUI Polish Pass** (`PR #57`, `0 anti-patterns` in `impeccable detect`).
+The Control Hub works, and PRs `#45`–`#65` have now shipped Phase 1 (honest baseline, 3-breakpoint responsive CSS, WCAG 2.2 AA dialogs/tests), Phase 2A (photo backup pre-flight, history, retention, monthly restore test, media settings backup, remote switcher), Phase 2B (multi-channel alerts), TV nicknames, **Pivot Phase A** (Honesty v2, broken controls, universality, root hourly `homelab-storage-sizes.timer`), **Pivot Phase B** (5-view hash-routed Operations Console, Dark/Light/Auto theme engine, inline SVG sprite, HiDPI sparklines, keyed DOM patching), the **De-AI Polish Pass (`PR #57`)**, and **Pivot Phase C — Complete Full-Depth `Console` Redesign (`PR #60`–`#65`)**, including the collapsible icon-rail sidebar (`PR #63`) and automated visual regression history (`PR #62`).
 
 **Why we pivoted and what comes next:**
 1. **Solved in Pivot Phases A & B (`PR #56`, `2ff463b`):** Fixed every remaining fake/wrong readout (WAN speedtest substitution, partial-permission photo size under-reporting via `homelab-storage-sizes.timer`, SSD appdata inside HDD bar, Sleep Guard disabled/uninstalled states, phantom Recyclarr cron, qBittorrent 5.x `stop`/`start`, Netplan 120 s confirm flow, Config Center read-only banner, and N100/AMD/Haswell hardware probing) and restructured the dashboard from a 9,000 px single scroll wall into a 5-view hash-routed Operations Console (`Overview`, `Apps`, `Backups`, `TVs`, `System`).
-2. **Solved in De-AI Polish Pass (`PR #57`, `032e103`):** Audited `apps/control-hub/static/` with **[`pbakaus/impeccable`](https://github.com/pbakaus/impeccable)** (`114.4k ⭐`) and **[`Nutlope/hallmark`](https://github.com/Nutlope/hallmark)** (`58.9k ⭐`), clearing all 10 static anti-patterns (`border-left: 4px` side-tabs, tracked uppercase labels, glass blur, nested service cards).
-3. **Next Step — Pivot Phase C (Complete Full-Depth De-AI Redesign with Hallmark `Console` + Impeccable):** Elevate Control Hub from a `polish`-depth card layout to a **`redesign: full` (`--scope app`) single-surface instrument console** using Hallmark's **`Console`** theme (`console: graphite` dark default + `console: paper` light mode), eliminating the remaining 162 off-4px spacing rules (`REFLEX 24b`) and 5 repeated box-recipe warnings (`WARN F7`) before landing Phase 2C–2E (`core/updates.py`, Guided Add-a-TV, Container Lifecycle) and Phases 3–4.
+2. **Solved in Pivot Phase C (`PR #60`–`#65`):** Elevated Control Hub into a full-depth **`Console`** single-surface instrument console (`console: graphite` dark default + `console: paper` light mode, self-hosted `Host Grotesk` + `Atkinson Hyperlegible Mono`, `.panels` hairline grids, Amber operator vs Cool Blue telemetry signal grammar, `Host Record` trail, ruled Service & ADB TV ledgers, 24h Sleep Guard Pin Axis, collapsible icon-rail sidebar, `0 FAIL / 0 WARN` in `sloplint`, and `0 anti-patterns` in `impeccable detect`).
+3. **Next Step — Phase 2C–2E & Phase 3–4:** Wire WIP `apps/control-hub/core/updates.py` into `#/apps` + Alerts (Phase 2C), guided "Add a TV" wizard + TV CRUD (Phase 2D), full container lifecycle controls (Phase 2E), and Phases 3–4 (`uPlot` charts, PWA, Tailscale HTTPS).
 
-Evidence comes from the live dashboard at `http://<server-lan-ip>:7575` on 2026-11-21 (original baseline `c0cf3ec`, updated and verified live at `032e103`), full source review of `apps/control-hub`, `apps/tv-autoupdater`, `apps/mediaserver`, `apps/immich-face-xmp-exporter`, `apps/noodle-gallery`, and `system/`, and read-only inspection of the live host state.
+Evidence comes from the live dashboard at `http://<server-lan-ip>:7575` (verified live after each PR deploy), full source review of `apps/control-hub`, `apps/tv-autoupdater`, `apps/mediaserver`, `apps/immich-face-xmp-exporter`, `apps/noodle-gallery`, and `system/`, and read-only inspection of the live host state.
 
 ## Roadmap
 
@@ -19,8 +19,8 @@ Evidence comes from the live dashboard at `http://<server-lan-ip>:7575` on 2026-
 flowchart LR
     P1["Phase 1 & 2A/2B<br/>Honest Baseline, Backups & Alerts<br/>(PRs #45-#55 · Done)"] --> PA["Pivot Phase A & B<br/>Honesty v2 & 5-View Shell<br/>(PR #56 · Done)"]
     PA --> PB["Pivot Phase B+<br/>De-AI Polish Pass<br/>(PR #57 · Done)"]
-    PB --> PC["Pivot Phase C<br/>Full-Depth 'Console' Redesign<br/>(Hallmark + Impeccable · Next)"]
-    PC --> P2["Phase 2C-2E<br/>Updates, Add-a-TV & Lifecycle"]
+    PB --> PC["Pivot Phase C<br/>Full-Depth 'Console' Redesign<br/>(PRs #60-#65 · Done)"]
+    PC --> P2["Phase 2C-2E<br/>Updates, Add-a-TV & Lifecycle<br/>(Next)"]
     P2 --> P3["Phase 3<br/>Media, Photos, Storage & Settings"]
     P3 --> P4["Phase 4<br/>Tailscale HTTPS, PWA & uPlot History"]
 ```
@@ -815,7 +815,7 @@ Every item in build order, updated after PRs `#45`–`#55` and Audit v2. Effort 
 | 25–26 | 2B | Alerts | ntfy, Telegram, Discord, SMTP channels, 10 rules, quiet hours, daily summary, test button, guide | Done (PRs `#48`, `#49`, `#50`) — *badge/mobile/sensor fixes in Pivot A4* |
 | 31a | 2D (partial) | TVs | TV nicknames, ADB model/Android probing, details drawer + rename | Done (PRs `#51`, `#52`) |
 
-### Completed in Pivot Phases A, B & De-AI Polish Pass (`PR #56` & `PR #57`, `develop` @ `032e103`)
+### Completed in Pivot Phases A, B, B+ & C (`PR #56`–`#65`, `develop`)
 
 | # | Phase | Area | Feature | Status |
 | --- | --- | --- | --- | --- |
@@ -830,15 +830,16 @@ Every item in build order, updated after PRs `#45`–`#55` and Audit v2. Effort 
 | P9 | Pivot B3 | Overview & Live UX | Quick-Launch App Grid promoted to top of Overview, 4 compact KPI cards, adaptive Idle/Active strip, HiDPI Retina `devicePixelRatio` sparklines, keyed zero-flicker DOM patching, streaming-aware confirmation dialogs | Done (`PR #56`) |
 | P10 | Pivot B4 | Deep Views & QA | Un-nested Backups & Photos panels, searchable/copyable inline Container Logs modal, polished TVs & System views, dual-theme + 5-view Playwright & `axe-core` WCAG 2.2 AA CI gate | Done (`PR #56`) |
 | P11 | Pivot B+ | De-AI Polish Pass | Audited with `pbakaus/impeccable` (`0 anti-patterns`) & `Nutlope/hallmark`; stripped `border-left: 4px` side-tabs, tracked uppercase labels, glass blur; hairline Service Matrix ledger; refreshed sanitized screenshot assets | Done (`PR #57`) |
+| C1 | Pivot C1 | Design System | Hallmark `Console` (`console: graphite` Dark + `console: paper` Light) OKLCH token engine, self-hosted `Host Grotesk` + `Atkinson Hyperlegible Mono` `.woff2` fonts (`< 40 KB`), `.panels` 1px hairline surface primitives, and 4px spacing scale normalization (`0 REFLEX 24b`) | Done (`PR #60`) |
+| C2 | Pivot C2 | Overview & Apps | Full-depth `Console` composition for `#/overview` (4-cell `.panels` Instrument Bench, flush hairline Quick Launch tiles, `.trail` Host Record Audit Spine) and `#/apps` (ruled `service-ledger` table & Downloads ledger) | Done (`PR #61`) |
+| C2+ | UX & QA | Sidebar & Visual History | Automated visual regression screenshot suite (`testing/capture_visual_history.py`, `docs/CONTROL_HUB_VISUAL_HISTORY.md`) and collapsible icon-rail sidebar with hover/focus module tooltips + bottom arrow toggle | Done (`PR #62`, `PR #63`) |
+| C3 | Pivot C3 | Backups, TVs & System | Full-depth `Console` composition for `#/backups` (`.trail` audit spine + `.row--plus`/`.row--minus`), `#/tvs` (ruled ADB Fleet Matrix), `#/system` (24-hour Sleep Guard Pin Axis with cron pins, HiDPI `--color-cool` oscilloscope, ruled Automations & Admin shortcuts), and Netplan YAML diff view | Done (`PR #64`) |
+| C4 | Pivot C4 | Verification Gate C & Docs | `impeccable detect` (`0 anti-patterns`) + `sloplint.mjs --scope app` (`0 FAIL`, `0 REFLEX 24b`, `0 WARN F7`) + 5-view × 3-viewport × 2-theme Playwright & `axe-core` WCAG 2.2 AA gate + refreshed documentation screenshots & runbooks | Done (`C4`) |
 
-### Next Up: Pivot Phase C (Full-Depth Hallmark `Console` Redesign) & Remaining Phase 2C–4 Roadmap
+### Next Up: Phase 2C–4 Roadmap (Updates, Add-a-TV, Container Lifecycle & Extensions)
 
 | # | Phase | Area | Feature | Effort |
 | --- | --- | --- | --- | --- |
-| C1 | **Pivot C1** | **Design System** | **Hallmark `Console` (`console: graphite` Dark + `console: paper` Light) OKLCH token engine, self-hosted `Host Grotesk` + `Atkinson Hyperlegible Mono` `.woff2` fonts (`< 40 KB`), `.panels` 1px hairline surface primitives, and 4px spacing scale normalization (`0 REFLEX 24b`)** | **S** |
-| C2 | **Pivot C2** | **Overview & Apps** | **Full-depth `Console` composition for `#/overview` (4-cell `.panels` Instrument Bench, monochrome/duotone Service Matrix plate, `.trail` Audit Spine) and `#/apps` (ruled Service Ledger table, `Wayfind` inline `--color-paper-3` log drawer, qBittorrent transfer table)** | **M** |
-| C3 | **Pivot C3** | **Backups, TVs & System** | **Full-depth `Console` composition for `#/backups` (7-run Audit Trail with `.row--plus`/`.row--minus` diff tints), `#/tvs` (ruled ADB Fleet Matrix), and `#/system` (`Rim`/`Console` 24-hour Sleep Guard pin axis, `--color-cool` HiDPI LAN oscilloscope, Netplan YAML diff view)** | **M** |
-| C4 | **Pivot C4** | **Verification Gate C** | **`impeccable detect` (`0 anti-patterns`) + `sloplint.mjs --scope app` (`0 FAIL`, `0 REFLEX 24b`, `0 WARN F7`) + 5-view × 3-viewport × 2-theme Playwright & `axe-core` WCAG 2.2 AA gate + refreshed documentation screenshots** | **S** |
 | 27 | 2C | Updates | Wire WIP `core/updates.py` into `Apps` view + alert rule for new releases & major-version warnings | M |
 | 28 | 2C | Updates | One-click update with backup and automatic rollback (via blueprint-side host helper) | L |
 | 29 | 2C | Updates | Self-update of the Control Hub and installer (via audited `sudo` blueprint helper; hidden in standalone mode) | M |
