@@ -31,6 +31,7 @@ homelab ALL=(ALL) NOPASSWD: {{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/core/net
 # Optional modules
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh start
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich-ml-control.sh stop
+homelab ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/cron.d/immich-ml
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/immich_backup_gdrive.sh
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl start --no-block photo-restore-test.service
 # Backup remote: list | test REMOTE | set REMOTE (the helper validates REMOTE itself)

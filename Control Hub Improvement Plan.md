@@ -708,10 +708,10 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 ### 3B. Photos
 
-1. Library overview: photos, videos, people, per-user storage.
-2. Machine-learning schedule: show and edit the 06:00 start and 10:00 stop, run now, and the job queue it is working through.
-3. Face-tag export: last run, files written, errors.
-4. Upload folder and external library health: free space, files the app cannot read, and offline assets (zero today).
+1. **Library overview:** photos, videos, people, per-user storage. (**Done** — `GET /api/photos/overview`, `_query_immich_db()` per-user `asset_exif` footprint, `#backup-library-panel` 2x2 non-clipping metric grid, `#photos-users-tbody`)
+2. **Machine-learning schedule:** show and edit the 06:00 start and 10:00 stop, run now, and the job queue it is working through. (**Done** — `POST /api/photos/ml/schedule` atomic `/etc/cron.d/immich-ml` update, `POST /api/photos/ml/action`, BullMQ `immich_redis` pipeline + Postgres pending counts)
+3. **Face-tag export:** last run, files written, errors. (**Done** — `parse_face_export_status()` from `backup.log` & XMP cache in `#photos-users-export-box`)
+4. **Upload folder and external library health:** free space, files the app cannot read, and offline assets (zero today). (**Done** — `probe_folder_health()` + Postgres `isOffline` & `library` table audit in `#photos-folders-box`)
 
 ### 3C. Storage
 
