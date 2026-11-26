@@ -203,6 +203,21 @@ class QBit:
             ok = ok and st in (200, 409)
         return ok
 
+    DEFAULT_EXCLUDED_PATTERNS = ("*.exe", "*.bat", "*.cmd", "*.scr", "*.lnk", "*.pif", "*.com", "*.vbs")
+
+    def ensure_excluded_files(self) -> Tuple[bool, str]:
+        """Set default non-media payload exclusions when qBittorrent has none configured yet."""
+        st, body = self._get("/api/v2/app/preferences")
+        if st != 200:
+            return False, f"GET preferences -> HTTP {st}"
+        prefs = jloads(body, {})
+        existing = str(prefs.get("excluded_files") or "").strip()
+        if existing:
+            return True, "already configured"
+        payload = json.dumps({"excluded_files_enabled": True, "excluded_files": "\n".join(self.DEFAULT_EXCLUDED_PATTERNS)})
+        pst, pbody = self._form("/api/v2/app/setPreferences", {"json": payload})
+        return pst == 200, ("configured" if pst == 200 else f"setPreferences HTTP {pst}: {pbody[:120]}")
+
 
 # ------------------------------------------------------------------------ *arr apps
 def read_api_key(config_dir: Path, app: str, retries: int = 40) -> str:
@@ -231,6 +246,10 @@ class Arr:
 
     def post(self, path: str, data):
         st, body, _ = http(f"{self.base}/{path}", method="POST", data=data, headers=self.headers, timeout=60)
+        return st, jloads(body, body)
+
+    def put(self, path: str, data):
+        st, body, _ = http(f"{self.base}/{path}", method="PUT", data=data, headers=self.headers, timeout=60)
         return st, jloads(body, body)
 
     def ensure(self, collection: str, match_key: str, match_value, build) -> Tuple[bool, str]:
@@ -286,6 +305,48 @@ def wire_arr(app: Arr, root_folder: str, category_key: str, category: str, qbit_
     ok, detail = app.ensure("downloadclient", "name", "qBittorrent", build)
     step(f"{app.name}: qBittorrent download client", ok, detail)
 
+    # Best-effort: block known filename-mangling P2P uploaders that break automatic import.
+    ensure_restriction_term(app, "Ozlem")
+
+
+DEFAULT_DEPRIORITIZED_INDEXERS = {"the pirate bay": 45}
+
+
+def ensure_restriction_term(app: Arr, term: str) -> None:
+    st, existing = app.get("restriction")
+    if st != 200 or not isinstance(existing, list):
+        return
+    needle = term.lower()
+    for item in existing:
+        ignored = item.get("ignored") or []
+        if isinstance(ignored, str):
+            ignored_list = [x.strip().lower() for x in ignored.split(",") if x.strip()]
+        else:
+            ignored_list = [str(x).strip().lower() for x in ignored]
+        if needle in ignored_list:
+            step(f"{app.name}: restriction '{term}'", True, "already configured", required=False)
+            return
+    pst, _ = app.post("restriction", {"ignored": [term], "required": [], "tags": []})
+    step(f"{app.name}: restriction '{term}'", pst in (200, 201), f"HTTP {pst}", required=False)
+
+
+def deprioritize_unmoderated_indexers(prowlarr: Arr) -> None:
+    """Lower priority of unmoderated public trackers (from default 25 -> 45) when cleaner indexers exist."""
+    st, indexers = prowlarr.get("indexer")
+    if st != 200 or not isinstance(indexers, list):
+        return
+    enabled = [i for i in indexers if i.get("enable")]
+    if len(enabled) < 2:
+        return
+    for ix in enabled:
+        name = str(ix.get("name") or "")
+        target = DEFAULT_DEPRIORITIZED_INDEXERS.get(name.lower())
+        if target and ix.get("priority") == 25 and ix.get("id"):
+            updated = dict(ix)
+            updated["priority"] = target
+            pst, _ = prowlarr.put(f"indexer/{ix['id']}", updated)
+            step(f"Prowlarr: deprioritize {name} (priority {target})", pst in (200, 202), f"HTTP {pst}", required=False)
+
 
 def wire_prowlarr(prowlarr: Arr, radarr_key: str, sonarr_key: str, byparr: bool) -> None:
     targets = (
@@ -316,6 +377,7 @@ def wire_prowlarr(prowlarr: Arr, radarr_key: str, sonarr_key: str, byparr: bool)
 
     st, _ = prowlarr.post("command", {"name": "ApplicationIndexerSync"})
     step("Prowlarr: application sync triggered", st in (200, 201), f"HTTP {st}", required=False)
+    deprioritize_unmoderated_indexers(prowlarr)
 
 
 # -------------------------------------------------------------------------- jellyfin
@@ -549,6 +611,8 @@ def cmd_wire(args) -> int:
     qb_ok, qb_detail = qb.login()
     if step("qBittorrent: login", qb_ok, qb_detail):
         step("qBittorrent: categories movies/tv", qb.ensure_categories())
+        ex_ok, ex_detail = qb.ensure_excluded_files()
+        step("qBittorrent: excluded payload extensions", ex_ok, ex_detail, required=False)
 
     radarr = Arr("radarr", host, keys["radarr"], "v3")
     sonarr = Arr("sonarr", host, keys["sonarr"], "v3")

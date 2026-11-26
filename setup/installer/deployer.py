@@ -383,6 +383,11 @@ class Deployment:
         if self._wire_script("wire", wire_args):
             self.log("Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.")
             self.log("No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).")
+        if self.linux:
+            autoimport_cron = module_dir / "host" / "cron" / "mediaserver-autoimport"
+            if autoimport_cron.exists():
+                install_cron(autoimport_cron, "mediaserver-autoimport", self.manifest, variables=self.template_vars())
+                self.log("Installed Radarr/Sonarr title-verified auto-import cron job.")
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
 

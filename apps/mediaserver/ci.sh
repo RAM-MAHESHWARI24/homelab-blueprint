@@ -10,6 +10,7 @@ python3 -m py_compile scripts/*.py
 python3 scripts/wire_arr.py --help >/dev/null
 python3 scripts/wire_arr.py seed --help >/dev/null
 python3 scripts/media_config_backup.py --help >/dev/null
+python3 scripts/auto_import.py --help >/dev/null
 
 echo "== unit tests"
 python3 -m unittest discover -s tests

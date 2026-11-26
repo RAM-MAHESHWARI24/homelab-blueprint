@@ -159,9 +159,9 @@ services:
       TZ: ${TZ:-UTC}
       PORT: "5055"
       LOG_LEVEL: info
-      # Optional TMDB DPI bypass (see config/seerr/tmdb-interceptor.js). Empty by default;
-      # the installer sets SEERR_NODE_OPTIONS when the bypass module is enabled.
-      NODE_OPTIONS: ${SEERR_NODE_OPTIONS:-}
+      # Prefer IPv4 DNS globally so bridges without IPv6 never hit ENETUNREACH;
+      # set SEERR_NODE_OPTIONS for extra flags (e.g. TMDB DPI bypass).
+      NODE_OPTIONS: ${SEERR_NODE_OPTIONS:---dns-result-order=ipv4first}
     ports:
       - "5055:5055"
     volumes:
