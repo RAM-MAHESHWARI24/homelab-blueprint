@@ -38,7 +38,8 @@ homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl start --no-block photo-restore-te
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/homelab-backup-remote *
 homelab ALL=(ALL) NOPASSWD: /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/media_config_backup.py
 
-# Self-restart after configuration changes & audited updates/storage helpers
+# Self-restart after configuration changes & audited updates/storage/config helpers
 homelab ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart control-hub.service
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/homelab-update *
 homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/homelab-storage-ops *
+homelab ALL=(ALL) NOPASSWD: /usr/local/sbin/homelab-config-apply *

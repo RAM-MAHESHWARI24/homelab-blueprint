@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""
+Homelab Blueprint root helper for audited Control Hub settings edits, diff preview,
+atomic undo, and sanitized settings export.
+
+Usage (reads JSON from stdin for preview/apply/import):
+    homelab-config-apply status
+    homelab-config-apply preview
+    homelab-config-apply apply
+    homelab-config-apply undo
+    homelab-config-apply export
+
+Security & Safety:
+    - Never writes arbitrary keys: enforces a strict allow-list and value validation.
+    - Redacts all secrets in preview diffs and completely omits secrets on export.
+    - Creates `/etc/homelab/config.json.bak` (0600) before every apply for 1-click undo.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - Python 3.8 fallback
+    ZoneInfo = None  # type: ignore
+
+REPO_ROOT = Path(os.getenv("HOMELAB_BLUEPRINT_ROOT") or Path(__file__).resolve().parents[2])
+HUB_ROOT = REPO_ROOT / "apps" / "control-hub"
+if str(HUB_ROOT) not in sys.path:
+    sys.path.insert(0, str(HUB_ROOT))
+
+from core.config_core.env_manager import sync_all_blueprint_envs  # noqa: E402
+from core.config_core.paths import ETC_DIR  # noqa: E402
+
+CONFIG_JSON = Path(os.getenv("HOMELAB_CONFIG_JSON") or (ETC_DIR / "config.json"))
+BACKUP_JSON = Path(str(CONFIG_JSON) + ".bak")
+
+EDITABLE_LABELS: Dict[str, str] = {
+    "timezone": "Timezone",
+    "hdd_data": "Media Data Root (HDD_DATA)",
+    "hdd_memories": "Photo Library Root (HDD_MEMORIES)",
+    "photo_upload_dir": "Photo Upload Folder",
+    "puid": "Container PUID",
+    "pgid": "Container PGID",
+    "control_hub_port": "Control Hub Port",
+    "gdrive_remote": "Backup Remote",
+    "active_nic": "Network Interface",
+    "link_speed_mbps": "Link Speed (Mbps)",
+    "qbittorrent_pass": "qBittorrent Password",
+    "radarr_api_key": "Radarr API Key",
+    "sonarr_api_key": "Sonarr API Key",
+    "prowlarr_api_key": "Prowlarr API Key",
+}
+
+SECRET_KEYS = {
+    "qbittorrent_pass",
+    "radarr_api_key",
+    "sonarr_api_key",
+    "prowlarr_api_key",
+    "control_hub_token",
+    "postgres_password",
+    "media_admin_pass",
+}
+
+_PATH_FIELDS = {"hdd_data", "hdd_memories", "photo_upload_dir"}
+_PORT_FIELDS = {"control_hub_port"}
+_ID_FIELDS = {"puid", "pgid"}
+_REMOTE_RE = re.compile(r"^[A-Za-z0-9_.-]+:(?:[^\s$`\"']*)$")
+_NIC_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
+SECRET_MASK = "********"
+
+
+def _atomic_write_private(target: Path, text: str, mode: int = 0o600) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    try:
+        os.chmod(tmp, mode)
+    except OSError:
+        pass
+    os.replace(tmp, target)
+
+
+def _load_config() -> Dict[str, Any]:
+    if not CONFIG_JSON.is_file():
+        return {}
+    try:
+        data = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def validate_and_merge(current: Dict[str, Any], incoming: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str]]:
+    """Validates allow-listed updates and builds a redacted diff list."""
+    merged = dict(current)
+    changes: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    for key, raw_val in incoming.items():
+        if key not in EDITABLE_LABELS:
+            continue
+        if key in SECRET_KEYS:
+            val_str = str(raw_val or "").strip()
+            if not val_str or val_str == SECRET_MASK:
+                continue
+            if any(c in val_str for c in ("\n", "\r", "\x00")):
+                errors.append(f"{EDITABLE_LABELS[key]} contains invalid control characters.")
+                continue
+            if str(current.get(key) or "") != val_str:
+                merged[key] = val_str
+                changes.append({"field": key, "label": EDITABLE_LABELS[key], "old": SECRET_MASK, "new": "***updated***"})
+            continue
+
+        if key == "timezone":
+            tz = str(raw_val or "").strip()
+            if not tz or any(c.isspace() for c in tz) or ".." in tz:
+                errors.append("Invalid timezone string.")
+                continue
+            if ZoneInfo is not None:
+                try:
+                    ZoneInfo(tz)
+                except Exception:
+                    errors.append(f"Unknown IANA timezone: {tz}")
+                    continue
+            norm: Any = tz
+        elif key in _PATH_FIELDS:
+            p = str(raw_val or "").strip()
+            if not p.startswith("/") or ".." in Path(p).parts or any(c in p for c in ("\n", "\r", "\x00")):
+                errors.append(f"{EDITABLE_LABELS[key]} must be an absolute path without '..'.")
+                continue
+            norm = p.rstrip("/") or "/"
+        elif key in _ID_FIELDS:
+            try:
+                num = int(raw_val)
+                if not (0 <= num <= 65534):
+                    raise ValueError
+            except (TypeError, ValueError):
+                errors.append(f"{EDITABLE_LABELS[key]} must be an integer between 0 and 65534.")
+                continue
+            norm = num
+        elif key in _PORT_FIELDS:
+            try:
+                port = int(raw_val)
+                if not (1024 <= port <= 65535):
+                    raise ValueError
+            except (TypeError, ValueError):
+                errors.append(f"{EDITABLE_LABELS[key]} must be between 1024 and 65535.")
+                continue
+            norm = port
+        elif key == "link_speed_mbps":
+            if str(raw_val or "").strip() == "":
+                norm = ""
+            else:
+                try:
+                    sp = int(raw_val)
+                    if not (10 <= sp <= 100000):
+                        raise ValueError
+                    norm = sp
+                except (TypeError, ValueError):
+                    errors.append("Link speed must be between 10 and 100000 Mbps.")
+                    continue
+        elif key == "gdrive_remote":
+            rem = str(raw_val or "").strip()
+            if rem and not _REMOTE_RE.match(rem):
+                errors.append("Backup remote must match `remote:` or `remote:folder/` format.")
+                continue
+            norm = rem
+        elif key == "active_nic":
+            nic = str(raw_val or "").strip()
+            if nic and not _NIC_RE.match(nic):
+                errors.append("Invalid network interface name.")
+                continue
+            norm = nic
+        else:
+            norm = str(raw_val or "").strip()
+
+        old_val = current.get(key, "")
+        if str(old_val) != str(norm):
+            merged[key] = norm
+            changes.append({"field": key, "label": EDITABLE_LABELS[key], "old": old_val, "new": norm})
+
+    return merged, changes, errors
+
+
+def sanitize_export(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in cfg.items():
+        kl = k.lower()
+        if k in SECRET_KEYS or any(tok in kl for tok in ("password", "pass", "token", "secret", "api_key", "_key")):
+            continue
+        out[k] = v
+    return out
+
+
+def cmd_preview(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not CONFIG_JSON.is_file():
+        return {"ok": False, "error": f"{CONFIG_JSON} not found."}
+    current = _load_config()
+    _, changes, errors = validate_and_merge(current, payload)
+    return {"ok": len(errors) == 0, "valid": len(errors) == 0, "changes": changes, "errors": errors}
+
+
+def cmd_apply(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not CONFIG_JSON.is_file():
+        return {"ok": False, "error": f"{CONFIG_JSON} not found."}
+    current = _load_config()
+    merged, changes, errors = validate_and_merge(current, payload)
+    if errors:
+        return {"ok": False, "valid": False, "changes": changes, "errors": errors, "error": errors[0]}
+
+    _atomic_write_private(BACKUP_JSON, json.dumps(current, indent=2) + "\n", mode=0o600)
+    _atomic_write_private(CONFIG_JSON, json.dumps(merged, indent=2) + "\n", mode=0o600)
+
+    env_dir = str(CONFIG_JSON.parent)
+    updated_files = sync_all_blueprint_envs(str(REPO_ROOT), merged, env_dir=env_dir)
+
+    return {
+        "ok": True,
+        "changes": changes,
+        "can_undo": True,
+        "updated_files": updated_files,
+        "message": f"Applied {len(changes)} change(s) to {CONFIG_JSON} and synced module .env files.",
+    }
+
+
+def cmd_undo() -> Dict[str, Any]:
+    if not BACKUP_JSON.is_file():
+        return {"ok": False, "error": "No previous config snapshot found to undo."}
+    try:
+        prev = json.loads(BACKUP_JSON.read_text(encoding="utf-8"))
+        if not isinstance(prev, dict):
+            raise ValueError("Invalid backup JSON")
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not read undo snapshot: {exc}"}
+
+    current = _load_config()
+    _atomic_write_private(CONFIG_JSON, json.dumps(prev, indent=2) + "\n", mode=0o600)
+    if current:
+        _atomic_write_private(BACKUP_JSON, json.dumps(current, indent=2) + "\n", mode=0o600)
+    updated_files = sync_all_blueprint_envs(str(REPO_ROOT), prev, env_dir=str(CONFIG_JSON.parent))
+    return {"ok": True, "updated_files": updated_files, "message": "Reverted to previous configuration snapshot."}
+
+
+def cmd_export() -> Dict[str, Any]:
+    if not CONFIG_JSON.is_file():
+        return {"ok": False, "error": f"{CONFIG_JSON} not found."}
+    return {"ok": True, "schema_version": 2, "config": sanitize_export(_load_config())}
+
+
+def cmd_status() -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "blueprint_mode": CONFIG_JSON.is_file(),
+        "can_undo": BACKUP_JSON.is_file(),
+    }
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) < 2:
+        print(json.dumps({"ok": False, "error": "Usage: homelab-config-apply {status|preview|apply|undo|export}"}))
+        return 2
+    action = argv[1].strip()
+    if action == "status":
+        print(json.dumps(cmd_status()))
+        return 0
+    if action == "export":
+        res = cmd_export()
+        print(json.dumps(res))
+        return 0 if res.get("ok") else 1
+    if action == "undo":
+        res = cmd_undo()
+        print(json.dumps(res))
+        return 0 if res.get("ok") else 1
+    if action in ("preview", "apply"):
+        try:
+            raw = sys.stdin.read()
+            payload = json.loads(raw or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object expected")
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": f"Invalid JSON payload: {exc}"}))
+            return 2
+        res = cmd_preview(payload) if action == "preview" else cmd_apply(payload)
+        print(json.dumps(res))
+        return 0 if res.get("ok") else 1
+
+    print(json.dumps({"ok": False, "error": f"Unknown action: {action}"}))
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
