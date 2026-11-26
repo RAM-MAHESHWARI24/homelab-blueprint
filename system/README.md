@@ -58,6 +58,10 @@ sudo homelab-update self-update --tag v2.2.0        # fetch release tag in /opt/
 App version overrides are stored atomically in `/etc/homelab/<project>.pins.yml` so the blueprint Git
 checkout stays clean during updates and re-running the installer preserves pinned app upgrades.
 
+### `helpers/homelab-storage-ops`
+
+Installed to `/usr/local/sbin/homelab-storage-ops` with the Control Hub (`NOPASSWD: /usr/local/sbin/homelab-storage-ops *`). It reads configured paths strictly from `/etc/homelab/control-hub.env` (never accepts arbitrary paths) so the Control Hub can inspect physical drive SMART health (`lsblk` + `smartctl -H -A -j`), count rotated qBittorrent logs / excess old local dumps, and clean only allow-listed `qbit_logs` or excess `old_dumps`.
+
 ## 📂 Component Directory Structure
 
 ```

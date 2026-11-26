@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""
+Homelab Blueprint root helper for storage SMART diagnostics & safe cleanup.
+
+Usage:
+    homelab-storage-ops smart
+    homelab-storage-ops scan
+    homelab-storage-ops clean {qbit_logs|old_dumps}
+
+Security & Safety:
+    - Takes NO arbitrary path arguments from callers; reads configured directories
+      from /etc/homelab/control-hub.env (with safe defaults).
+    - Uses explicit argument lists (never shell=True).
+    - Never touches active `qbittorrent.log` or the newest 3 backup dumps per store.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+ENV_FILE = Path("/etc/homelab/control-hub.env")
+KEEP_DUMPS = 3
+_SAFE_DEV_RE = re.compile(r"^(sd[a-z]+|nvme\d+n\d+|vd[a-z]+|hd[a-z]+)$")
+_QBIT_ROTATED_RE = re.compile(r"^qbittorrent\.log\.bak\d*$")
+_PHOTO_DUMP_RE = re.compile(r"^immich_db_\d{8}_\d{6}\.sql\.gz$")
+_MEDIA_DUMP_RE = re.compile(r"^media_config_\d{8}_\d{6}\.tar\.zst$")
+
+
+def _load_env() -> Dict[str, str]:
+    env: Dict[str, str] = {}
+    try:
+        if ENV_FILE.is_file():
+            for raw in ENV_FILE.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                env[key.strip()] = val.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return env
+
+
+def _resolve_paths(env: Dict[str, str]) -> Dict[str, Path]:
+    appdata = Path(env.get("APPDATA_DIR") or "/srv/homelab/appdata")
+    qbit_logs = Path(env.get("QBIT_LOG_DIR") or (appdata / "mediaserver" / "qbittorrent" / "qBittorrent" / "logs"))
+    photo_backups = Path(env.get("BACKUP_DIR") or "/var/lib/homelab/photo-backups")
+    media_backups = Path(env.get("MEDIA_BACKUP_DIR") or "/var/lib/homelab/media-backups")
+    return {
+        "qbit_logs": qbit_logs,
+        "photo_backups": photo_backups,
+        "media_backups": media_backups,
+    }
+
+
+def _find_smartctl() -> Optional[str]:
+    for candidate in (shutil.which("smartctl"), "/usr/sbin/smartctl", "/sbin/smartctl"):
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _parse_smart_json(raw: Dict[str, Any]) -> Dict[str, Any]:
+    smart_status = raw.get("smart_status") if isinstance(raw.get("smart_status"), dict) else {}
+    passed = smart_status.get("passed")
+    temp = (raw.get("temperature") or {}).get("current") if isinstance(raw.get("temperature"), dict) else None
+    poh = (raw.get("power_on_time") or {}).get("hours") if isinstance(raw.get("power_on_time"), dict) else None
+
+    realloc: Optional[int] = None
+    pending: Optional[int] = None
+    ata_table = ((raw.get("ata_smart_attributes") or {}).get("table") or [])
+    if isinstance(ata_table, list):
+        for attr in ata_table:
+            if not isinstance(attr, dict):
+                continue
+            attr_id = attr.get("id")
+            name = str(attr.get("name") or "").lower()
+            val = (attr.get("raw") or {}).get("value")
+            if isinstance(val, int):
+                if attr_id == 5 or "reallocated_sector" in name:
+                    realloc = val
+                elif attr_id == 197 or "current_pending_sector" in name:
+                    pending = val
+                elif temp is None and attr_id in (190, 194):
+                    temp = val & 0xFF if val > 200 else val
+                elif poh is None and attr_id == 9:
+                    poh = val
+
+    nvme_log = raw.get("nvme_smart_health_information_log")
+    if isinstance(nvme_log, dict):
+        if temp is None and isinstance(nvme_log.get("temperature"), (int, float)):
+            temp = int(nvme_log["temperature"])
+        if realloc is None and isinstance(nvme_log.get("media_errors"), int):
+            realloc = nvme_log["media_errors"]
+        if poh is None and isinstance(nvme_log.get("power_on_hours"), int):
+            poh = nvme_log["power_on_hours"]
+
+    return {
+        "passed": bool(passed) if isinstance(passed, bool) else None,
+        "temp_c": int(temp) if isinstance(temp, (int, float)) else None,
+        "reallocated_sectors": realloc,
+        "pending_sectors": pending,
+        "power_on_hours": int(poh) if isinstance(poh, (int, float)) else None,
+    }
+
+
+def cmd_smart() -> Dict[str, Any]:
+    """Lists physical disks via `lsblk` and gathers SMART metrics via `smartctl`."""
+    lsblk_bin = shutil.which("lsblk") or "/bin/lsblk"
+    smartctl_bin = _find_smartctl()
+    if not os.path.isfile(lsblk_bin):
+        return {"available": False, "reason": "lsblk not found", "disks": []}
+
+    try:
+        proc = subprocess.run(
+            [lsblk_bin, "-J", "-d", "-b", "-o", "NAME,MODEL,TRAN,SIZE,ROTA"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode != 0:
+            return {"available": False, "reason": (proc.stderr or "lsblk failed").strip()[:140], "disks": []}
+        devices = (json.loads(proc.stdout or "{}").get("blockdevices") or [])
+    except Exception as exc:
+        return {"available": False, "reason": str(exc)[:140], "disks": []}
+
+    disks: List[Dict[str, Any]] = []
+    for dev in devices:
+        name = str(dev.get("name") or "").strip()
+        if not _SAFE_DEV_RE.match(name):
+            continue
+        rota_val = dev.get("rota")
+        is_rotational = str(rota_val).lower() in ("1", "true")
+        size_b = int(dev.get("size") or 0)
+        entry: Dict[str, Any] = {
+            "device": name,
+            "path": f"/dev/{name}",
+            "model": (str(dev.get("model") or "").strip() or f"Disk {name}"),
+            "transport": str(dev.get("tran") or "").upper() or ("NVME" if name.startswith("nvme") else "SATA"),
+            "type": "HDD" if is_rotational else ("NVMe" if name.startswith("nvme") else "SSD"),
+            "size_gb": round(size_b / (1024**3), 1) if size_b > 0 else None,
+            "smart_available": False,
+            "passed": None,
+            "temp_c": None,
+            "reallocated_sectors": None,
+            "pending_sectors": None,
+            "power_on_hours": None,
+        }
+        if smartctl_bin:
+            try:
+                sp = subprocess.run(
+                    [smartctl_bin, "-H", "-A", "-j", f"/dev/{name}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                )
+                if sp.stdout.strip():
+                    parsed_raw = json.loads(sp.stdout)
+                    parsed = _parse_smart_json(parsed_raw)
+                    entry.update(parsed)
+                    entry["smart_available"] = parsed.get("passed") is not None or parsed.get("temp_c") is not None
+            except Exception:
+                pass
+        disks.append(entry)
+
+    return {
+        "available": bool(smartctl_bin),
+        "smartctl_installed": bool(smartctl_bin),
+        "disks": disks,
+    }
+
+
+def _find_qbit_rotated_logs(qbit_dir: Path) -> Tuple[int, int, List[Path]]:
+    if not qbit_dir.is_dir():
+        return 0, 0, []
+    matches: List[Path] = []
+    total_bytes = 0
+    try:
+        with os.scandir(qbit_dir) as it:
+            for entry in it:
+                if entry.is_file(follow_symlinks=False) and _QBIT_ROTATED_RE.match(entry.name):
+                    try:
+                        total_bytes += entry.stat(follow_symlinks=False).st_size
+                        matches.append(Path(entry.path))
+                    except OSError:
+                        pass
+    except OSError:
+        return 0, 0, []
+    return len(matches), total_bytes, matches
+
+
+def _find_excess_dumps(photo_dir: Path, media_dir: Path, keep: int = KEEP_DUMPS) -> Tuple[int, int, List[Path]]:
+    excess: List[Path] = []
+    total_bytes = 0
+    for folder, pat in ((photo_dir, _PHOTO_DUMP_RE), (media_dir, _MEDIA_DUMP_RE)):
+        if not folder.is_dir():
+            continue
+        files: List[Tuple[str, Path, int]] = []
+        try:
+            with os.scandir(folder) as it:
+                for entry in it:
+                    if entry.is_file(follow_symlinks=False) and pat.match(entry.name):
+                        try:
+                            files.append((entry.name, Path(entry.path), entry.stat(follow_symlinks=False).st_size))
+                        except OSError:
+                            pass
+        except OSError:
+            continue
+        files.sort(key=lambda item: item[0], reverse=True)
+        for _, path, sz in files[keep:]:
+            excess.append(path)
+            total_bytes += sz
+    return len(excess), total_bytes, excess
+
+
+def cmd_scan() -> Dict[str, Any]:
+    paths = _resolve_paths(_load_env())
+    q_count, q_bytes, _ = _find_qbit_rotated_logs(paths["qbit_logs"])
+    d_count, d_bytes, _ = _find_excess_dumps(paths["photo_backups"], paths["media_backups"])
+    return {
+        "ok": True,
+        "qbit_logs": {"count": q_count, "bytes": q_bytes, "path": str(paths["qbit_logs"])},
+        "old_dumps": {"count": d_count, "bytes": d_bytes, "keep": KEEP_DUMPS},
+    }
+
+
+def cmd_clean(target: str) -> Dict[str, Any]:
+    paths = _resolve_paths(_load_env())
+    if target == "qbit_logs":
+        _, _, targets = _find_qbit_rotated_logs(paths["qbit_logs"])
+    elif target == "old_dumps":
+        _, _, targets = _find_excess_dumps(paths["photo_backups"], paths["media_backups"])
+    else:
+        return {"ok": False, "error": f"Unknown cleanup target: {target}"}
+
+    deleted = 0
+    freed = 0
+    for p in targets:
+        try:
+            sz = p.stat().st_size
+            p.unlink()
+            deleted += 1
+            freed += sz
+        except OSError:
+            pass
+
+    return {
+        "ok": True,
+        "target": target,
+        "deleted_count": deleted,
+        "freed_bytes": freed,
+        "message": f"Removed {deleted} item(s), freeing {round(freed / (1024**2), 1)} MB.",
+    }
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) < 2:
+        print(json.dumps({"ok": False, "error": "Usage: homelab-storage-ops {smart|scan|clean <target>}"}))
+        return 2
+    action = argv[1].strip()
+    if action == "smart":
+        print(json.dumps(cmd_smart()))
+        return 0
+    if action == "scan":
+        print(json.dumps(cmd_scan()))
+        return 0
+    if action == "clean" and len(argv) == 3:
+        res = cmd_clean(argv[2].strip())
+        print(json.dumps(res))
+        return 0 if res.get("ok") else 1
+    print(json.dumps({"ok": False, "error": "Invalid arguments"}))
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
