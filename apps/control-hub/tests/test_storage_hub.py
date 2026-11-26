@@ -44,9 +44,9 @@ class TestStorageHub(unittest.TestCase):
             for folder in (movies, tv, torrents, photos, appdata, p_bak, m_bak):
                 folder.mkdir(parents=True)
 
-            (movies / "movie.bin").write_bytes(b"a" * 4096)
-            (tv / "ep.bin").write_bytes(b"b" * 2048)
-            (torrents / "seed.bin").write_bytes(b"c" * 1024)
+            (movies / "movie.bin").write_bytes(b"a" * 32768)
+            (tv / "ep.bin").write_bytes(b"b" * 16384)
+            (torrents / "seed.bin").write_bytes(b"c" * 8192)
             (photos / "img.jpg").write_bytes(b"d" * 512)
             (appdata / "cfg.db").write_bytes(b"e" * 256)
             (p_bak / "dump.sql.gz").write_bytes(b"f" * 128)
@@ -56,12 +56,15 @@ class TestStorageHub(unittest.TestCase):
                 str(hdd), str(photos), str(appdata), str(p_bak), media_backup_path=str(m_bak)
             )
             self.assertTrue(res["measured"])
-            self.assertEqual(res["movies_bytes"], 4096)
-            self.assertEqual(res["tv_bytes"], 2048)
-            self.assertEqual(res["downloads_bytes"], 1024)
-            self.assertEqual(res["only_appdata_bytes"], 256)
-            self.assertEqual(res["only_backups_bytes"], 256)
-            self.assertEqual(res["appdata_bytes"], 512)
+            # Linux `du -s -B1` includes directory block overhead; verify exact lower bounds and ordering.
+            self.assertGreaterEqual(res["movies_bytes"], 32768)
+            self.assertGreaterEqual(res["tv_bytes"], 16384)
+            self.assertGreaterEqual(res["downloads_bytes"], 8192)
+            self.assertGreater(res["movies_bytes"], res["tv_bytes"])
+            self.assertGreater(res["tv_bytes"], res["downloads_bytes"])
+            self.assertGreaterEqual(res["only_appdata_bytes"], 256)
+            self.assertGreaterEqual(res["only_backups_bytes"], 256)
+            self.assertGreater(res["appdata_bytes"], res["only_appdata_bytes"])
 
     def test_fill_forecast_history_states(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
