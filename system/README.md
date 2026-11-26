@@ -62,6 +62,10 @@ checkout stays clean during updates and re-running the installer preserves pinne
 
 Installed to `/usr/local/sbin/homelab-storage-ops` with the Control Hub (`NOPASSWD: /usr/local/sbin/homelab-storage-ops *`). It reads configured paths strictly from `/etc/homelab/control-hub.env` (never accepts arbitrary paths) so the Control Hub can inspect physical drive SMART health (`lsblk` + `smartctl -H -A -j`), count rotated qBittorrent logs / excess old local dumps, and clean only allow-listed `qbit_logs` or excess `old_dumps`.
 
+### `helpers/homelab-config-apply`
+
+Installed to `/usr/local/sbin/homelab-config-apply` with the Control Hub (`NOPASSWD: /usr/local/sbin/homelab-config-apply *`). Validates configuration edits from stdin JSON, computes redacted diffs (`preview`), snapshots `/etc/homelab/config.json.bak` (`0600`) and re-renders `.env` files (`apply`), restores the previous snapshot (`undo`), or emits secret-free portable config (`export`). Install metadata is tracked in `/var/lib/homelab/installed.json`.
+
 ## 📂 Component Directory Structure
 
 ```

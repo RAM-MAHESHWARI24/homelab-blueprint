@@ -722,10 +722,10 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 ### 3D. Settings centre
 
-1. Edit safely from the browser: time zone, paths, ports, backup time and remote, sleep schedule, ML schedule, TV list and update window. Each change is checked, previewed as a diff, applied through an audited `sudo` blueprint helper (updating root-owned `/etc/homelab/` and re-running the right installer step, reversing the current v2 `403` read-only policy on `/api/config/update`), and can be undone. Hidden/disabled in standalone mode.
-2. Show the install manifest (`/var/lib/homelab/installed.json`): what v2 installed and where.
-3. Export settings (secrets removed) and import them on a new server.
-4. A "support bundle" download: versions, recent logs and health checks with secrets removed, for asking for help.
+1. **Edit safely from the browser:** time zone, paths, ports, backup time and remote, sleep schedule, ML schedule, TV list and update window. Each change is checked, previewed as a diff, applied through an audited `sudo` blueprint helper (updating root-owned `/etc/homelab/` and re-running the right installer step, reversing the current v2 `403` read-only policy on `/api/config/update`), and can be undone. Hidden/disabled in standalone mode. (**Done** — `system/helpers/homelab-config-apply`, `POST /api/config/preview`, `POST /api/config/update`, `POST /api/config/undo`)
+2. **Show the install manifest (`/var/lib/homelab/installed.json`):** what v2 installed and where. (**Done** — `GET /api/config/manifest` & `#cfg-pane-manifest`)
+3. **Export settings (secrets removed) and import them on a new server.** (**Done** — `GET /api/config/export`, `POST /api/config/import`)
+4. **A "support bundle" download:** versions, recent logs and health checks with secrets removed, for asking for help. (**Done** — `GET /api/config/support-bundle` with regex secret scrubber)
 
 ### 3E. Network
 
