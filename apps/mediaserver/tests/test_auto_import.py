@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import tempfile
@@ -306,6 +307,22 @@ class TestWireArrHardening(unittest.TestCase):
         self.assertEqual(len(px.puts), 1)
         self.assertEqual(px.puts[0][0], "indexer/2")
         self.assertEqual(px.puts[0][1]["priority"], 45)
+
+    def test_qbit_ensure_excluded_files_uses_exact_api_keys(self) -> None:
+        qb = wa.QBit("127.0.0.1", "admin", "secret")
+        qb._get = lambda path: (200, '{"excluded_file_names": "", "excluded_file_names_enabled": false}')  # type: ignore[method-assign]
+        calls = []
+
+        def fake_form(path: str, fields: Dict[str, str]):
+            calls.append((path, json.loads(fields["json"])))
+            return 200, ""
+
+        qb._form = fake_form  # type: ignore[method-assign]
+        ok, detail = qb.ensure_excluded_files()
+        self.assertTrue(ok, detail)
+        self.assertEqual(calls[0][0], "/api/v2/app/setPreferences")
+        self.assertTrue(calls[0][1]["excluded_file_names_enabled"])
+        self.assertIn("*.exe", calls[0][1]["excluded_file_names"])
 
 
 if __name__ == "__main__":

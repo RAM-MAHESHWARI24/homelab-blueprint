@@ -211,10 +211,10 @@ class QBit:
         if st != 200:
             return False, f"GET preferences -> HTTP {st}"
         prefs = jloads(body, {})
-        existing = str(prefs.get("excluded_files") or "").strip()
+        existing = str(prefs.get("excluded_file_names") or "").strip()
         if existing:
             return True, "already configured"
-        payload = json.dumps({"excluded_files_enabled": True, "excluded_files": "\n".join(self.DEFAULT_EXCLUDED_PATTERNS)})
+        payload = json.dumps({"excluded_file_names_enabled": True, "excluded_file_names": "\n".join(self.DEFAULT_EXCLUDED_PATTERNS)})
         pst, pbody = self._form("/api/v2/app/setPreferences", {"json": payload})
         return pst == 200, ("configured" if pst == 200 else f"setPreferences HTTP {pst}: {pbody[:120]}")
 
