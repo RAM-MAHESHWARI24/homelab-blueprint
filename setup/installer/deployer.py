@@ -704,6 +704,9 @@ class Deployment:
         update_helper = self.root / "system" / "helpers" / "homelab-update"
         if update_helper.exists():
             install_helper_script(update_helper, self.manifest)
+        storage_helper = self.root / "system" / "helpers" / "homelab-storage-ops"
+        if storage_helper.exists():
+            install_helper_script(storage_helper, self.manifest)
 
         if not unit_src.exists():
             self.fail("control_hub", "system/systemd/control-hub.service template missing")

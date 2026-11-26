@@ -715,10 +715,10 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 ### 3C. Storage
 
-1. Real usage per folder (movies, TV, downloads, photos, backups, app data), measured asynchronously and cached on disk.
-2. A fill forecast: "at the last 30 days' rate, the media disk is full in N days". It is at 88.5% now.
-3. Cleanup suggestions with sizes and one-click actions: finished torrents past their seed goal, qBittorrent's rotated logs (about 2,500 files, 178 MB), unused Docker images, old local dumps.
-4. Disk health: SMART status, temperature and reallocated sectors for each disk.
+1. **Real usage per folder:** movies, TV, downloads, photos, backups, app data, measured asynchronously and cached on disk. (**Done** — `core/storage_sizes.py`, `GET /api/storage/overview`)
+2. **A fill forecast:** "at the last 30 days' rate, the media disk is full in N days". It is at 88.5% now. (**Done** — `record_storage_sample()` + `compute_fill_forecast()` in `storage_sizes.py`)
+3. **Cleanup suggestions:** with sizes and one-click actions: finished torrents past their seed goal, qBittorrent's rotated logs (about 2,500 files, 178 MB), unused Docker images, old local dumps. (**Done** — `POST /api/storage/cleanup` & `system/helpers/homelab-storage-ops`)
+4. **Disk health:** SMART status, temperature and reallocated sectors for each disk. (**Done** — `homelab-storage-ops smart` + `#storage-smart-tbody`)
 
 ### 3D. Settings centre
 
