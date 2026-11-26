@@ -50,11 +50,25 @@ Because torrents and media share the exact same root mount, moves and hardlinks 
 Indian and regional ISPs (Jio, Airtel, ACT) enforce Deep Packet Inspection TLS handshakes resets (`ECONNRESET`) on `api.themoviedb.org`, breaking Seerr movie posters and search.
 
 This blueprint injects `config/seerr/tmdb-interceptor.js` via:
+* Set `SEERR_NODE_OPTIONS=--dns-result-order=ipv4first` (the default) so Seerr never fails with IPv6 `ENETUNREACH` on IPv4-only Docker bridges. When an ISP resets TLS to `api.themoviedb.org`, enable `ENABLE_TMDB_BYPASS=true` and append `--require /app/config/tmdb-interceptor.js`:
 ```yaml
 environment:
   - NODE_OPTIONS=--dns-result-order=ipv4first --require /app/config/tmdb-interceptor.js
 ```
 It transparently patches Node.js `https.request`, `http.request`, and `globalThis.fetch` to rewrite requests to `api.tmdb.org`, resolving the issue with zero code changes to Seerr itself.
+
+---
+
+## 🤖 Smart Title-Verified Auto-Import (`scripts/auto_import.py`)
+
+When an open indexer attaches the right IMDb/TMDB ID but a release uploader mangles the title (for example prepending a franchise prefix like `007 James Bond Quantum of Solace 2008 1080p -Ozlem`), Radarr/Sonarr holds the finished torrent at `Manual Import required` (`matched to movie by ID`).
+
+This module hardens against that in two layers:
+* **Grab prevention ([`scripts/wire_arr.py`](scripts/wire_arr.py)):** configures qBittorrent excluded payload extensions (`*.exe`, `*.bat`, `*.scr`, etc.), lowers default Prowlarr priority of unmoderated public trackers (`The Pirate Bay` → `45`) when cleaner indexers exist, and blocks known filename-mangling groups (`Ozlem`).
+* **Safe auto-resolver ([`scripts/auto_import.py`](scripts/auto_import.py)):** polls Radarr/Sonarr queues every 3 minutes via [`host/cron/mediaserver-autoimport`](host/cron/mediaserver-autoimport), verifies single-file non-sample integrity, rejects non-safe blocks, and only triggers `ManualImport` when the target movie/series normalized title matches inside the downloaded file or folder name:
+```bash
+python3 scripts/auto_import.py --config-dir ./config --once --dry-run
+```
 
 ---
 
