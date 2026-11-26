@@ -483,6 +483,22 @@ class TestControlHubUiAccessibility(unittest.TestCase):
 
         cls.app.view_functions["config_center.get_install_manifest"] = mock_install_manifest
 
+        _orig_get_current_config = cls.app.view_functions["config_center.get_current_config"]
+
+        def mock_get_current_config():
+            resp = _orig_get_current_config()
+            if isinstance(resp, tuple):
+                response_obj, code = resp[0], resp[1]
+            else:
+                response_obj, code = resp, 200
+            data = response_obj.get_json() or {}
+            data["blueprint_mode"] = True
+            data["read_only"] = False
+            from flask import jsonify
+            return jsonify(data), code
+
+        cls.app.view_functions["config_center.get_current_config"] = mock_get_current_config
+
         cls.httpd = make_server("127.0.0.1", 0, cls.app, threaded=True)
         cls.port = cls.httpd.server_port
         cls.base_url = f"http://127.0.0.1:{cls.port}"
@@ -993,6 +1009,7 @@ class TestControlHubUiAccessibility(unittest.TestCase):
                 page.click("#btn-preview-config-diff")
                 page.wait_for_selector("#config-diff-preview", state="visible", timeout=5000)
 
+                page.wait_for_selector("#cfg-tab-manifest", state="visible", timeout=5000)
                 page.click("#cfg-tab-manifest")
                 page.wait_for_function(
                     "() => (document.getElementById('cfg-manifest-content')?.textContent || '').includes('2.1.1')",
