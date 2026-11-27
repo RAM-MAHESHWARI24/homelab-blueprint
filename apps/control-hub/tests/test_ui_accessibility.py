@@ -1361,11 +1361,13 @@ class TestControlHubUiAccessibility(unittest.TestCase):
                     self._assert_layout_and_touch_targets(page, width, f"hc:{view_id}@{width}")
                     self._assert_axe_wcag_aa(page, f"hc:{view_id}@{width}x{height}")
 
-                # Return to System view, switch to Hindi, verify heading localization + layout + WCAG
+                # Return to System view, switch to Hindi (preserving active theme), verify layout + WCAG
                 self._navigate_view(page, "system")
                 page.click("#btn-header-menu")
                 page.click('[data-lang-choice="hi"]')
                 self.assertEqual(page.evaluate("() => document.documentElement.lang"), "hi")
+                self.assertEqual(page.evaluate("() => document.documentElement.dataset.theme"), "high-contrast")
+                page.wait_for_timeout(180)
                 self._assert_layout_and_touch_targets(page, width, f"hc-hi-system@{width}")
                 self._assert_axe_wcag_aa(page, f"hc-hi-system@{width}x{height}")
 
