@@ -756,16 +756,16 @@ Make the dashboard pleasant to live with and reachable away from home, once ever
 2. **Session cookies marked `Secure` when served over HTTPS:** `core/auth.py` checks both `request.is_secure` and `X-Forwarded-Proto: https` automatically for reverse proxies such as `tailscale serve`. (**Done**)
 3. **A guide for adding a phone to the tailnet:** Added `docs/TAILSCALE_REMOTE_HTTPS.md` (indexed in `docs/README.md` and root `README.md`) covering MagicDNS HTTPS enablement, `tailscale serve`, `tailscale cert`, and iOS/Android onboarding. (**Done**)
 
-### 4B. Installable app
+### 4B. Installable app — **Done**
 
-1. A Progressive Web App: "Add to Home Screen" on Android and iPhone, app icon, full-screen, offline shell showing the last known status.
-2. Push notifications to the phone for the alerts in 2B.
+1. **A Progressive Web App (`manifest.webmanifest`, `sw.js`, vector icon):** Installable standalone PWA shell with `beforeinstallprompt` menu hook and offline fallback caching for dashboard assets and last-known GET API snapshots (`/api/system/vitals`, `/api/services/status`, `/api/backup/status`, `/api/sleep/status`, `/api/alerts`, `/api/network/speed`). (**Done**)
+2. **Push notifications to the phone/browser for the alerts in 2B:** Opt-in Browser Alerts toggle (`pwa.js` -> `notifyFiringAlerts()`) hooked into `alerts.js` so newly firing critical/warning alerts trigger deduplicated browser/service-worker notifications when granted. (**Done**)
 
-### 4C. History and insight
+### 4C. History and insight — **Done**
 
-1. Graphs for 24 hours, 7 days and 30 days: CPU, temperature, memory, network, disk I/O and disk space, stored in a small time-series file.
-2. A monthly report: uptime, backups passed, updates applied, space used.
-3. Power use estimate and sleep savings, from the suspend schedule.
+1. **Graphs for 24 hours, 7 days and 30 days:** Bounded atomic `telemetry_history.json` rollup store (`core/metrics_history.py`, 5-minute buckets, 30-day retention, `GET /api/history?range=24h|7d|30d`) powering dual HiDPI Retina canvases in `#history-insights-panel` (`historyInsights.js`). (**Done**)
+2. **A monthly report:** `GET /api/insights/monthly` summarizes 30-day host uptime/coverage, backup passes vs errors, update state, and 30-day storage delta. (**Done**)
+3. **Power use estimate and sleep savings:** Calculates monthly/annual kWh and estimated CO₂ saved from the live Sleep Guard schedule and `ACTIVE_IDLE_WATTS` / `SLEEP_STANDBY_WATTS`. (**Done**)
 
 ### 4D. Make it yours
 
