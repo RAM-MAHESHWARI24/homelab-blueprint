@@ -92,6 +92,8 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* Covers Ubuntu Netplan v2 configuration, YAML formatting quirks, and the revert-timer flow (backup, apply, confirm from the new address) that prevents SSH lockout.
 * **[Networking: Tailscale & Samba](NETWORKING_TAILSCALE_SAMBA.md)**
   * *Why it matters:* Tailscale mesh subnet routing for secure remote access without port forwarding, paired with the opt-in Samba shares (`Media` and `Photos`).
+* **[Tailscale Remote HTTPS & Phone Tailnet Setup](TAILSCALE_REMOTE_HTTPS.md)**
+  * *Why it matters:* One-command `tailscale serve` HTTPS reverse proxy with automatic MagicDNS certificates and iOS/Android phone onboarding.
 * **[Gigabit LAN Diagnostics](GIGABIT_LAN_DIAGNOSTICS.md)**
   * *Why it matters:* Troubleshooting PHY auto-negotiation, bad Cat5e/Cat6 patch cables, and isolating 100 Mbps Ethernet link drops.
 

@@ -111,6 +111,8 @@ Teardown reads the install manifest and removes only what the installer created.
 - [Control Hub configuration center & AI Copilot](docs/CONTROL_HUB_CONFIGURATION_CENTER.md)
 - [Control Hub alerts: channels and setup](docs/CONTROL_HUB_ALERTS.md)
 - [Control Hub improvement & De-AI redesign plan](Control%20Hub%20Improvement%20Plan.md)
+- [Networking: Tailscale & Samba](docs/NETWORKING_TAILSCALE_SAMBA.md)
+- [Tailscale Remote HTTPS & phone setup](docs/TAILSCALE_REMOTE_HTTPS.md)
 - [Static IP changes and rollback](docs/NETPLAN_STATIC_IP_QUIRKS.md)
 - [Storage and hardlinks](docs/STORAGE_AND_HARDLINKS.md)
 - [Releasing and the module repositories](docs/RELEASING.md)
