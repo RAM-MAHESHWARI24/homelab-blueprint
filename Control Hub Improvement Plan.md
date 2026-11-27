@@ -734,9 +734,9 @@ Let the owner run the whole server from the dashboard, without opening each app 
 3. **Tailscale status: connected or not, the tailnet IP and whether subnet routing is on.** (**Done** — `probe_tailscale_status()` + `#net-tailscale-body`)
 4. **A port map: which app uses which port, with conflicts flagged.** (**Done** — `build_port_map()` + `#net-ports-tbody` & `#net-port-conflict-callout`)
 
-### 3F. Schedules
+### 3F. Schedules — **Done**
 
-1. One place for every timed job (backup, ML, suspend, TV updates, Recyclarr): next run, last result and run now (the Cron card partly does this). Times can be edited, with a clash warning (for example the backup running after the 00:00 suspend).
+1. **One place for every timed job (backup, ML, suspend, TV updates, Recyclarr, smart auto-import):** next run, last result, and run now, plus live editable schedule modal and clash warnings against the Sleep Guard window and overlapping backups. (**Done** — `detect_schedule_clashes()`, `GET /api/cron/status`, `POST /api/cron/schedule/<job_id>`, `#cron-clash-callout`, `#cron-schedule-modal`)
 
 ### 3G. Access and accounts
 
