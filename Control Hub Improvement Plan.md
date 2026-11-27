@@ -767,18 +767,18 @@ Make the dashboard pleasant to live with and reachable away from home, once ever
 2. **A monthly report:** `GET /api/insights/monthly` summarizes 30-day host uptime/coverage, backup passes vs errors, update state, and 30-day storage delta. (**Done**)
 3. **Power use estimate and sleep savings:** Calculates monthly/annual kWh and estimated CO₂ saved from the live Sleep Guard schedule and `ACTIVE_IDLE_WATTS` / `SLEEP_STANDBY_WATTS`. (**Done**)
 
-### 4D. Make it yours
+### 4D. Make it yours — **Done**
 
-1. Hide, reorder and resize cards; save the layout per device.
-2. Light, dark and system themes; a high-contrast theme.
-3. Kiosk mode for a wall tablet or the TV, read-only, large type.
-4. Language support, starting with English and Hindi.
+1. **Hide and reorder cards (`customize.js`):** Per-device card hide/show & ordering modal (`#customize-layout-modal`, saved in `localStorage` with Reset Default). (**Done**)
+2. **Light, dark, system, and high-contrast themes:** Adds `[data-theme="high-contrast"]` WCAG AAA palette alongside Dark, Light, and Auto in the header appearance switcher. (**Done**)
+3. **Kiosk mode for a wall tablet or TV:** `#btn-kiosk-toggle` and `?kiosk=1` hide navigation chrome & mutating actions while scaling metrics for distance viewing (`Exit Kiosk` button remains accessible). (**Done**)
+4. **Language support (English & Hindi):** Local zero-dependency `i18n.js` (`en` / `hi`) dictionary and switcher for navigation, headings, and controls. (**Done**)
 
-### 4E. Integrations
+### 4E. Integrations — **Done**
 
-1. Home Assistant: expose sensors (disk, backup age, sleep state) and switches (prevent sleep).
-2. UPS (NUT): battery state and a clean shutdown on low battery.
-3. A documented API (`docs/openapi.yaml`) with scoped tokens (read-only, full) instead of one token for everything.
+1. **Home Assistant:** `GET /api/integrations/homeassistant` exposes disk usage, backup age/state, CPU temp, sleep status/skip flag, and copyable REST YAML snippet (`integrations.js`). (**Done**)
+2. **UPS (NUT):** `probe_ups_nut()` (`GET /api/integrations/ups`) reads local `upsc` charge/runtime/load cleanly, detects `low_battery`, and returns an honest `not_installed` state when NUT is absent. (**Done**)
+3. **Documented API with scoped tokens:** `apps/control-hub/docs/openapi.yaml` documents `GET/POST /api/auth/tokens` and `DELETE /api/auth/tokens/<id>` (`read` vs `full` bearer scopes hashed in `tokens.json` with a UI tab under Account -> API Tokens). (**Done**)
 
 ### 4F. Help — **Done**
 
