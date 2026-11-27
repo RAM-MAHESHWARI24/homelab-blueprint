@@ -750,11 +750,11 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 Make the dashboard pleasant to live with and reachable away from home, once everything it shows is true and actionable.
 
-### 4A. Away from home
+### 4A. Away from home — **Done**
 
-1. Reach the dashboard over Tailscale with HTTPS (Tailscale certificates), with no port forwarding.
-2. Session cookies marked `Secure` when served over HTTPS (already automatic in `core/auth.py`).
-3. A guide for adding a phone to the tailnet.
+1. **Reach the dashboard over Tailscale with HTTPS (`tailscale serve` / certificates):** `/api/network/overview` probes `tailscale serve status --json`, surfaces live `https://<dns_name>` status, copyable `sudo tailscale serve --bg <port>` / `tailscale cert` setup commands in Network Health (`networkOverview.js`), and includes an inline setup guide. (**Done**)
+2. **Session cookies marked `Secure` when served over HTTPS:** `core/auth.py` checks both `request.is_secure` and `X-Forwarded-Proto: https` automatically for reverse proxies such as `tailscale serve`. (**Done**)
+3. **A guide for adding a phone to the tailnet:** Added `docs/TAILSCALE_REMOTE_HTTPS.md` (indexed in `docs/README.md` and root `README.md`) covering MagicDNS HTTPS enablement, `tailscale serve`, `tailscale cert`, and iOS/Android onboarding. (**Done**)
 
 ### 4B. Installable app
 
@@ -780,10 +780,10 @@ Make the dashboard pleasant to live with and reachable away from home, once ever
 2. UPS (NUT): battery state and a clean shutdown on low battery.
 3. A documented API (`docs/openapi.yaml`) with scoped tokens (read-only, full) instead of one token for everything.
 
-### 4F. Help
+### 4F. Help — **Done**
 
-1. Keep the AI Copilot export, and add a "Troubleshoot" page that runs the health checks and explains each failure in plain words.
-2. Short how-to pages linked from each card (restore a backup, add a TV, add an indexer, free up space).
+1. **Troubleshoot page + AI Copilot export:** Keeps the token-compact AI Copilot Diagnostics modal and adds `GET /api/troubleshoot` (`widgets/troubleshoot.py`) + `#troubleshoot-modal` (`helpDrawer.js`) running live checks across telemetry, hardlinks, disk headroom, Docker containers, Prowlarr indexers, cloud backups, network/Tailscale HTTPS, and Sleep Guard schedules with plain-word explanations and action jumps. (**Done**)
+2. **Short how-to pages linked from each card:** Contextual `How-To` / `HTTPS Guide` drawers on Backup, TVs, Media Indexers, Storage Cleanup, and Network Health cards (`restore_backup`, `add_tv`, `add_indexer`, `free_space`, `tailscale_https`). (**Done**)
 
 **Gate:** none fixed; each item ships when it is ready, behind a setting if it changes behaviour.
 
