@@ -738,11 +738,11 @@ Let the owner run the whole server from the dashboard, without opening each app 
 
 1. **One place for every timed job (backup, ML, suspend, TV updates, Recyclarr, smart auto-import):** next run, last result, and run now, plus live editable schedule modal and clash warnings against the Sleep Guard window and overlapping backups. (**Done** — `detect_schedule_clashes()`, `GET /api/cron/status`, `POST /api/cron/schedule/<job_id>`, `#cron-clash-callout`, `#cron-schedule-modal`)
 
-### 3G. Access and accounts
+### 3G. Access and accounts — **Done**
 
-1. Signed-in devices: browser, last seen, and "sign out" per device (currently cookies are stateless HMACs of the password hash + token, so per-device revocation needs a server-side session store).
-2. A read-only family view: status, "what's new" and requests, without controls, with its own password or none on the LAN.
-3. Optional second factor (TOTP) for the owner.
+1. **Signed-in devices:** server-side session store (`core/sessions.py` -> `sessions.json`), browser/OS label, IP, last seen, and per-device revocation (`GET /api/auth/sessions`, `DELETE /api/auth/sessions/<id>`, `POST /api/auth/sessions/revoke-others`). (**Done**)
+2. **Read-only family view:** shows server status, Jellyfin "What's New", and pending Seerr requests without settings or mutating controls (`403` RBAC guard + `#family-mode-banner` & `#family-whats-new-panel`), with either a separate family password or automatic local-LAN-only access (`is_local_lan_ip()` excludes Tailscale `100.64.0.0/10` and public WAN). (**Done**)
+3. **Optional second factor (TOTP) for the owner:** pure-stdlib RFC 6238 TOTP (`core/totp.py`, `/api/auth/totp/{setup,enable,disable}`) with 6 one-time recovery codes. (**Done**)
 
 **Gate:** a week of normal use with no SSH session needed for media, photos, storage or settings tasks.
 
