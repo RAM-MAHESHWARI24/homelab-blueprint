@@ -727,12 +727,12 @@ Let the owner run the whole server from the dashboard, without opening each app 
 3. **Export settings (secrets removed) and import them on a new server.** (**Done** — `GET /api/config/export`, `POST /api/config/import`)
 4. **A "support bundle" download:** versions, recent logs and health checks with secrets removed, for asking for help. (**Done** — `GET /api/config/support-bundle` with regex secret scrubber)
 
-### 3E. Network
+### 3E. Network — **Done**
 
-1. Link status per network port, with a warning when it is not running at full speed. The server's Ethernet reports 100 Mbps half duplex today, which usually means a bad cable or port.
-2. Static IP (exists — align `configCenter.js` UI copy and confirmation flow with v2's `120s` revert-timer flow in `setup/static/js/setup.js`), plus the DHCP reservation tip.
-3. Tailscale status: connected or not, the tailnet IP and whether subnet routing is on.
-4. A port map: which app uses which port, with conflicts flagged.
+1. **Link status per network port, with a warning when it is not running at full speed.** (**Done** — `probe_network_interfaces()` duplex/carrier/degraded detection, `GET /api/network/overview`, `#net-link-warning-callout` & `#net-interfaces-tbody`)
+2. **Static IP (aligned `configCenter.js` UI copy and 120s confirmation/probe flow with `setup/static/js/setup.js`), plus the DHCP reservation tip.** (**Done** — `#cfg-dhcp-tip` + `Continue on <ip>` reachability probe in `configCenter.js`)
+3. **Tailscale status: connected or not, the tailnet IP and whether subnet routing is on.** (**Done** — `probe_tailscale_status()` + `#net-tailscale-body`)
+4. **A port map: which app uses which port, with conflicts flagged.** (**Done** — `build_port_map()` + `#net-ports-tbody` & `#net-port-conflict-callout`)
 
 ### 3F. Schedules
 
