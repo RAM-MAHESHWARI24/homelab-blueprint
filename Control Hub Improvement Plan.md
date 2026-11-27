@@ -1,6 +1,6 @@
 # Control Hub Improvement Plan
 
-Nov 25, 2026 · *(Phase 2C `#27`–`#29`, Phase 2D `#30`–`#31b`, and Phase 2E `#32`–`#33` complete; ready for Phase 3)*
+Nov 27, 2026 · *(Phases 1–4 complete across PRs `#45`–`#82`; deployed and verified live on `develop`)*
 
 ## Summary
 
@@ -21,8 +21,8 @@ flowchart LR
     PA --> PB["Pivot Phase B+<br/>De-AI Polish Pass<br/>(PR #57 · Done)"]
     PB --> PC["Pivot Phase C<br/>Full-Depth 'Console' Redesign<br/>(PRs #60-#65 · Done)"]
     PC --> P2["Phase 2C-2E<br/>Updates, Add-a-TV & Lifecycle<br/>(Done)"]
-    P2 --> P3["Phase 3<br/>Media, Photos, Storage & Settings<br/>(Next)"]
-    P3 --> P4["Phase 4<br/>Tailscale HTTPS, PWA & uPlot History"]
+    P2 --> P3["Phase 3A-3G<br/>Media, Photos, Storage, Settings, Net, Schedules & Access<br/>(PRs #70-#74, #77-#79 · Done)"]
+    P3 --> P4["Phase 4A-4F<br/>Tailscale HTTPS, PWA, History, Themes/i18n & Integrations<br/>(PRs #80-#82 · Done)"]
 ```
 
 Each phase starts only after the gate before it passes. Phase 4 items ship one by one when ready.
@@ -829,24 +829,24 @@ Every item in build order, updated after PRs `#45`–`#55` and Audit v2. Effort 
 | C3 | Pivot C3 | Backups, TVs & System | Full-depth `Console` composition for `#/backups` (`.trail` audit spine + `.row--plus`/`.row--minus`), `#/tvs` (ruled ADB Fleet Matrix), `#/system` (24-hour Sleep Guard Pin Axis with cron pins, HiDPI `--color-cool` oscilloscope, ruled Automations & Admin shortcuts), and Netplan YAML diff view | Done (`PR #64`) |
 | C4 | Pivot C4 | Verification Gate C & Docs | `impeccable detect` (`0 anti-patterns`) + `sloplint.mjs --scope app` (`0 FAIL`, `0 REFLEX 24b`, `0 WARN F7`) + 5-view × 3-viewport × 2-theme Playwright & `axe-core` WCAG 2.2 AA gate + refreshed documentation screenshots & runbooks | Done (`C4`) |
 
-### Next Up: Phase 2C–4 Roadmap (Updates, Add-a-TV, Container Lifecycle & Extensions)
+### Shipped in Phase 2C–4 Roadmap (PRs `#66`–`#82`, `develop`)
 
-| # | Phase | Area | Feature | Effort |
-| --- | --- | --- | --- | --- |
-| 27 | 2C | Updates | Wire WIP `core/updates.py` into `Apps` view + alert rule for new releases & major-version warnings (`Done`) | M |
-| 28 | 2C | Updates | One-click update with backup and automatic rollback (via blueprint-side host helper) | L |
-| 29 | 2C | Updates | Self-update of the Control Hub and installer (via audited `sudo` blueprint helper; hidden in standalone mode) | M |
-| 30 | 2D | TVs | Guided "Add a TV" wizard (LAN scan, ADB connect, "Always allow" prompt, model detection, brand notes) | L |
-| 31b | 2D | TVs | TV list CRUD: change IP, test connection, pause updates, remove (move user profiles to `homelab`-owned state or helper) | M |
-| 32–33 | 2E | Apps | Full container lifecycle (start, stop, restart, inline streaming logs drawer, image/restart details) | M |
-| 34–38 | 3A | Media | Per-torrent controls & speed schedule; Seerr requests approve/decline; Radarr/Sonarr calendar & recently added; Prowlarr indexer health + fix hints; Jellyfin scan | L |
-| 39 | 3B | Photos | Immich library overview, ML schedule editor, face-export status, external library health | M |
-| 40–41 | 3C | Storage | Per-folder usage & 30-day fill forecast, one-click cleanup actions, SMART disk health | L |
-| 42–43 | 3D | Settings | Safe Settings editor with diff preview, audited `sudo` apply & undo; install manifest viewer, export/import, redacted support bundle | L |
-| 44 | 3E | Network | Degraded link-speed warning, Tailscale status & subnet routing, live port map with process owner | M |
-| 45 | 3F | Schedules | Editable schedules across all timed jobs with clash warnings (e.g. backup vs sleep window) | M |
-| 46 | 3G | Access | Server-side session store (signed-in devices & per-device sign-out), read-only family view, optional TOTP | M |
-| 47–52 | 4 | Extras | Tailscale HTTPS guide, installable PWA + web push, 24 h / 7 d / 30 d history graphs, custom card layout & i18n, Home Assistant / NUT / scoped API tokens, Troubleshoot & how-to pages | L |
+| # | Phase | Area | Feature | Status | Effort |
+| --- | --- | --- | --- | --- | --- |
+| 27 | 2C | Updates | Wire `core/updates.py` into `Apps` view + alert rule for new releases & major-version warnings | Done (`PR #66`) | M |
+| 28 | 2C | Updates | One-click update with backup and automatic rollback (via `system/helpers/homelab-update`) | Done (`PR #67`) | L |
+| 29 | 2C | Updates | Self-update of the Control Hub and installer (via audited `sudo` blueprint helper; hidden in standalone mode) | Done (`PR #67`) | M |
+| 30 | 2D | TVs | Guided "Add a TV" wizard (LAN scan, ADB connect, "Always allow" prompt, model detection, brand notes) | Done (`PR #68`) | L |
+| 31b | 2D | TVs | TV list CRUD: change IP, test connection, pause updates, remove (`tv_profiles.json`) | Done (`PR #68`) | M |
+| 32–33 | 2E | Apps | Full container lifecycle (start, stop, restart, inline streaming logs drawer, image/restart details) | Done (`PR #69`) | M |
+| 34–38 | 3A | Media | Per-torrent controls & speed schedule; Seerr requests approve/decline; Radarr/Sonarr calendar & recently added; Prowlarr indexer health + fix hints; Jellyfin scan | Done (`PR #70`, `PR #71`) | L |
+| 39 | 3B | Photos | Immich library overview, ML schedule editor, face-export status, external library health | Done (`PR #72`) | M |
+| 40–41 | 3C | Storage | Per-folder usage & 30-day fill forecast, one-click cleanup actions, SMART disk health | Done (`PR #73`) | L |
+| 42–43 | 3D | Settings | Safe Settings editor with diff preview, audited `sudo` apply & undo; install manifest viewer, export/import, redacted support bundle | Done (`PR #74`) | L |
+| 44 | 3E | Network | Degraded link-speed warning, Tailscale status & subnet routing, live port map with process owner | Done (`PR #77`) | M |
+| 45 | 3F | Schedules | Editable schedules across all timed jobs with clash warnings (e.g. backup vs sleep window) | Done (`PR #78`) | M |
+| 46 | 3G | Access | Server-side session store (signed-in devices & per-device sign-out), read-only family view, optional TOTP | Done (`PR #79`) | M |
+| 47–52 | 4 | Extras | Tailscale HTTPS guide, installable PWA + web push, 24 h / 7 d / 30 d history graphs, custom card layout & i18n, Home Assistant / NUT / scoped API tokens, Troubleshoot & how-to pages | Done (`PR #80`–`#82`) | L |
 
 ## Open questions
 

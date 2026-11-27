@@ -31,6 +31,7 @@ DEFAULT_STAGES = [
     ("04-pr61-console-c2", "e4a7879", "PR #61 — Hallmark Console C2 (Bench, Audit Spine & Service Ledger)"),
     ("05-pr63-sidebar", "ef48dc1", "PR #63 — Collapsible Icon-Rail Sidebar & Arrow Toggle"),
     ("06-pr64-console-c3", "f4aee83", "PR #64 — Hallmark Console C3 (Backups Trail, TV Ledger & 24h Sleep Pin Axis)"),
+    ("07-pr82-phase4-complete", "07a9a30", "PR #82 — Phases 2C-4F Complete (Management Hubs, PWA & Integrations)"),
 ]
 
 WORKER_SCRIPT = textwrap.dedent(
@@ -318,6 +319,7 @@ def write_report(stages: list[tuple[str, str, str, dict[str, str]]]) -> None:
         "3. **`8cda9bc` -> `e4a7879` (PR #61 — Console C2):** Replaced Overview's separated cards and Quick Launch tiles with flush 1px hairline grids (`Host Record` audit spine added beside Live Activity), and converted `#/apps` from stacked rows into a ruled multi-column `service-ledger` table on desktop.",
         "4. **`e4a7879` -> `ef48dc1` (PR #63 — Collapsible Sidebar):** Added auto-collapse to an icon-only rail when clicking right-side workspace content, hover/focus module tooltips, and the persistent bottom arrow toggle.",
         "5. **`ef48dc1` -> `f4aee83` (PR #64 — Console C3):** Extended full-depth `Console` composition across `#/backups` (`.trail` audit spine with `.row--plus`/`.row--minus`), `#/tvs` (ruled ADB Fleet Matrix), and `#/system` (`Rim`/`Console` 24h Sleep Guard pin axis with cron pins, HiDPI `--color-cool` NIC oscilloscope, and Netplan diff highlighting).",
+        "6. **`f4aee83` -> `07a9a30` (PR #82 — Phases 2C–4F Complete):** Added Update Centre, Guided Add-a-TV, Media/Photos/Storage hubs, Network & Unified Schedule editors, per-device sessions/Family View/TOTP, Tailscale HTTPS, PWA, 30-day history insights, High-Contrast/i18n/kiosk/layout customization, and Home Assistant/NUT integrations.",
         "",
     ])
 
