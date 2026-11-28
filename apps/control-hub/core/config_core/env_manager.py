@@ -109,6 +109,14 @@ def _ensure_secret(config: Dict[str, Any], key: str, generator) -> str:
     return value
 
 
+def _external_mount_path(config: Dict[str, Any]) -> str:
+    """Container path for the photo external library; an unusable value falls back to /mnt/media."""
+    path = str(config.get("photo_external_mount_path") or "/mnt/media").strip().rstrip("/")
+    if not path.startswith("/") or ":" in path or any(c.isspace() for c in path) or path in ("", "/data"):
+        return "/mnt/media"
+    return path
+
+
 def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Renders every module's environment file from its .env.example template.
@@ -147,6 +155,13 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Opti
     media_admin_pass = config["media_admin_pass"]
 
     tv_enabled = any(str(m) in ("tv_autoupdater", "tv_updater", "tv-updater") for m in (config.get("enabled_services") or []))
+    services = [str(m) for m in (config.get("enabled_services") or ["media", "photos", "control_hub"])]
+    media_backup_enabled = (
+        any(m in ("media", "mediaserver") for m in services)
+        and any(m in ("photo_backup", "immich_backup") for m in services)
+        and bool(config.get("gdrive_remote"))
+        and config.get("media_backup", True) is not False
+    )
 
     def render(module_id: str, module_dir: Path, updates: Dict[str, Any]) -> Path:
         template = module_dir / ".env.example"
@@ -205,7 +220,7 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Opti
                 "ENABLE_TMDB_BYPASS": "true" if config.get("enable_tmdb_bypass") else "false",
                 "SEERR_NODE_OPTIONS": (
                     "--dns-result-order=ipv4first --require /app/config/tmdb-interceptor.js"
-                    if config.get("enable_tmdb_bypass") else ""
+                    if config.get("enable_tmdb_bypass") else "--dns-result-order=ipv4first"
                 ),
                 "COMPOSE_PROFILES": "byparr" if config.get("enable_byparr") else "",
                 "DNS_OVERRIDE": "true" if config.get("dns_override") else "",
@@ -231,6 +246,8 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Opti
                 "THUMBS_LOCATION": config.get("photo_thumbs_dir", f"{photo_state}/thumbs"),
                 "ENCODED_VIDEO_LOCATION": config.get("photo_video_dir", f"{photo_state}/encoded-video"),
                 "EXTERNAL_LIBRARY_LOCATION": memories_dir,
+                "EXTERNAL_LIBRARY_MOUNT_PATH": _external_mount_path(config),
+                "EXTERNAL_LIBRARY_MOUNT_MODE": "rw" if str(config.get("photo_external_mount_mode", "ro")).strip() == "rw" else "ro",
                 "GALLERY_PORT": config.get("gallery_port", 2283),
                 "TZ": tz,
                 "DB_PASSWORD": pg_pass,
@@ -255,7 +272,15 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Opti
                 "QBITTORRENT_USER": qbit_user,
                 "QBITTORRENT_PASS": qbit_pass,
                 "HDD_DATA": data_dir,
+                "HDD_MEMORIES": memories_dir,
+                "PHOTO_UPLOAD_DIR": config.get("photo_upload_dir", f"{memories_dir.rstrip('/')}/uploads"),
+                "GDRIVE_REMOTE": config.get("gdrive_remote", ""),
+                "IMMICH_DB_USER": config.get("postgres_user", "postgres"),
+                "IMMICH_DB_NAME": config.get("postgres_db", "immich"),
+                "TZ": tz,
                 # Set only when the TV module is part of this install; empty hides the TV card.
+                # "Back up now" for the media apps' settings; empty hides the button.
+                "MEDIA_BACKUP_SCRIPT": str(root_path / "apps" / "mediaserver" / "scripts" / "media_config_backup.py") if media_backup_enabled else "",
                 "TV_UPDATER_DIR": str(root_path / "apps" / "tv-autoupdater") if tv_enabled else "",
                 "TV_UPDATER_PY": str(root_path / "apps" / "tv-autoupdater" / "tv_updater.py") if tv_enabled else "",
                 "TV_UPDATER_STATE_FILE": str(_STATE_DIR / "tv-autoupdater" / "state.json"),

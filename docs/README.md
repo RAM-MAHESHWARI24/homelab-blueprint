@@ -92,6 +92,8 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* Covers Ubuntu Netplan v2 configuration, YAML formatting quirks, and the revert-timer flow (backup, apply, confirm from the new address) that prevents SSH lockout.
 * **[Networking: Tailscale & Samba](NETWORKING_TAILSCALE_SAMBA.md)**
   * *Why it matters:* Tailscale mesh subnet routing for secure remote access without port forwarding, paired with the opt-in Samba shares (`Media` and `Photos`).
+* **[Tailscale Remote HTTPS & Phone Tailnet Setup](TAILSCALE_REMOTE_HTTPS.md)**
+  * *Why it matters:* One-command `tailscale serve` HTTPS reverse proxy with automatic MagicDNS certificates and iOS/Android phone onboarding.
 * **[Gigabit LAN Diagnostics](GIGABIT_LAN_DIAGNOSTICS.md)**
   * *Why it matters:* Troubleshooting PHY auto-negotiation, bad Cat5e/Cat6 patch cables, and isolating 100 Mbps Ethernet link drops.
 
@@ -108,8 +110,14 @@ Find the most efficient entry point based on your current task:
 
 * **[Installing v2 on an Existing Server](INSTALL_ON_EXISTING_SERVER.md)**
   * *Why it matters:* Backup, reuse of the existing Immich database password and version, cut-over and rollback for a host that already runs these apps.
+* **[Control Hub Alerts: Channels and Setup](CONTROL_HUB_ALERTS.md)**
+  * *Why it matters:* What triggers an alert and step-by-step setup for ntfy (public, account or self-hosted with a password), Telegram, Discord and email, with quiet hours and error fixes.
 * **[Control Hub Configuration Center](CONTROL_HUB_CONFIGURATION_CENTER.md)**
-  * *Why it matters:* Architectural guide to the live node dashboard at `:7575`, real-time port polling, live `os.link` storage testing, and secret regeneration.
+  * *Why it matters:* Architectural guide to the 5-view Operations Console at `:7575`, real-time 13-service port polling, live `os.link` storage testing, 120-second Netplan static IP confirmation, and AI Copilot diagnostics.
+* **[Control Hub Improvement & De-AI Redesign Plan](../Control%20Hub%20Improvement%20Plan.md)**
+  * *Why it matters:* Complete audit history, Pivot Phases A & B implementation record, and the Pivot Phase C full-depth Hallmark `Console` (`console: graphite` / `console: paper`) + Impeccable redesign specification.
+* **[Control Hub Visual History](CONTROL_HUB_VISUAL_HISTORY.md)**
+  * *Why it matters:* Side-by-side automated Playwright captures tracking every Control Hub UI revision across `Overview` (Dark & Light) and `Apps`.
 * **[Master Verification & Test Report](HOMELAB_VERIFICATION_AND_TEST_REPORT.md)**
   * *Why it matters:* Complete test documentation including 13 visual proof screenshots, risk matrices, and deployment verification artifacts.
 * **[Early Setup Wizard Test Results](SETUP_WIZARD_TEST_RESULTS.md)**
@@ -167,10 +175,10 @@ Every primary module in this monorepo includes a dedicated, colocated `README.md
 ├── ARCHITECTURE.md                          # Full Monorepo Architecture & Hardware Tiers
 ├── setup/README.md                          # Phase 1 Zero-Dependency Setup Wizard
 ├── apps/
-│   ├── control-hub/README.md                # Cyber-HUD Dashboard & Host Telemetry Daemon
+│   ├── control-hub/README.md                # 5-View Operations Console & Host Telemetry Daemon
 │   ├── mediaserver/README.md                # Docker Compose Media Stack (Jellyfin, *arrs, qBit)
 │   ├── noodle-gallery/README.md             # Photo Cloud, PostgreSQL VectorChord & Face Recognition
-│   ├── tv-updater/README.md                 # Smart TV Fleet ADB Wireless App Synchronizer
+│   ├── tv_autoupdater/README.md             # Smart TV Fleet ADB Wireless App Synchronizer
 │   └── immich-face-xmp-exporter/README.md   # Non-Destructive Bidirectional Face XMP Sidecar Sync
 ├── system/README.md                         # Host Systemd Services, Cron Jobs & Sleep Daemons
 └── testing/README.md                        # Master QA Verification Plan & CI Automation

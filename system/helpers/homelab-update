@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""
+homelab-update: audited blueprint helper for one-click app updates and self-updates.
+
+Installed to /usr/local/sbin/homelab-update by setup and granted one sudoers
+line for the Control Hub service user. Keeps /opt/homelab-blueprint git-clean
+by storing per-app version pin overrides in /etc/homelab/<project>.pins.yml,
+backing up app config mounts before pull/recreate, and rolling back both the
+pin and config snapshot automatically if the updated container fails health.
+
+Subcommands (output is single-line JSON):
+    homelab-update status
+    homelab-update app CONTAINER TAG [--allow-major]
+    homelab-update self-update [--tag vX.Y.Z]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+ETC_DIR = Path(os.environ.get("HOMELAB_ETC_DIR", "/etc/homelab"))
+STATE_DIR = Path(os.environ.get("HOMELAB_STATE_DIR", "/var/lib/homelab"))
+BACKUPS_DIR = STATE_DIR / "update-backups"
+INSTALLED_JSON = STATE_DIR / "installed.json"
+CONFIG_JSON = ETC_DIR / "config.json"
+DOCKER_BIN = os.environ.get("DOCKER_BIN", "docker")
+GIT_BIN = os.environ.get("GIT_BIN", "git")
+HEALTH_TIMEOUT = int(os.environ.get("HOMELAB_UPDATE_HEALTH_TIMEOUT", "180"))
+RETAIN_BACKUPS = 3
+
+CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+TAG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}$")
+SEMVER_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+DISALLOWED_TAGS = {"latest", "release", "main", "develop", "master", "edge", "nightly"}
+SAFE_BACKUP_DESTINATIONS = ("/config", "/app/config")
+MANUAL_MAJOR_IMAGES = ("postgres", "immich", "gallery-server", "gallery-machine-learning", "sonarr")
+
+
+class UpdateError(RuntimeError):
+    """Domain error returned as clean JSON."""
+
+
+def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 120) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout)
+
+
+def _atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.chmod(tmp, mode)
+    tmp.replace(path)
+
+
+def _split_image(image: str) -> Tuple[str, str]:
+    ref = image.split("@", 1)[0]
+    repo, sep, tag = ref.rpartition(":")
+    if not sep or "/" in tag:
+        return ref, "latest"
+    return repo, tag
+
+
+def _major_num(tag: str) -> Optional[int]:
+    m = re.match(r"^v?(\d+)", tag.strip())
+    return int(m.group(1)) if m else None
+
+
+def _resolve_install_dir() -> Path:
+    env_dir = os.environ.get("HOMELAB_INSTALL_DIR", "").strip()
+    if env_dir:
+        return Path(env_dir)
+    try:
+        manifest = json.loads(INSTALLED_JSON.read_text(encoding="utf-8"))
+        val = str(manifest.get("install_dir") or "").strip()
+        if val:
+            return Path(val)
+    except (OSError, ValueError):
+        pass
+    return Path("/opt/homelab-blueprint")
+
+
+def _pins_file(project: str) -> Path:
+    return ETC_DIR / f"{project}.pins.yml"
+
+
+def _load_pins(path: Path) -> Dict[str, str]:
+    if not path.is_file():
+        return {}
+    pins: Dict[str, str] = {}
+    current_service: Optional[str] = None
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if raw.strip() == "services:":
+            continue
+        m_svc = re.match(r"^\s{2}([A-Za-z0-9_.-]+):\s*$", raw)
+        if m_svc:
+            current_service = m_svc.group(1)
+            continue
+        m_img = re.match(r"^\s{4}image:\s*(\S+)\s*$", raw)
+        if m_img and current_service:
+            pins[current_service] = m_img.group(1)
+            current_service = None
+    return pins
+
+
+def _format_pins(pins: Dict[str, str]) -> str:
+    if not pins:
+        return ""
+    lines = ["# Managed by homelab-update; included automatically by Control Hub & setup.", "services:"]
+    for svc in sorted(pins):
+        lines.append(f"  {svc}:")
+        lines.append(f"    image: {pins[svc]}")
+    return "\n".join(lines) + "\n"
+
+
+def _restore_pins(path: Path, prev_text: Optional[str]) -> None:
+    if prev_text is None:
+        path.unlink(missing_ok=True)
+    else:
+        _atomic_write(path, prev_text, mode=0o600)
+
+
+def _inspect_container(container: str) -> Dict:
+    res = _run([DOCKER_BIN, "inspect", container], timeout=20)
+    if res.returncode != 0:
+        raise UpdateError(f"Container '{container}' not found: {(res.stderr or res.stdout).strip()[:200]}")
+    try:
+        items = json.loads(res.stdout or "[]")
+    except ValueError as exc:
+        raise UpdateError(f"Invalid docker inspect output: {exc}") from exc
+    if not items:
+        raise UpdateError(f"Container '{container}' returned empty metadata.")
+    return items[0]
+
+
+def _backup_config_mounts(container: str, mounts: List[Dict]) -> Optional[Path]:
+    config_sources: List[Tuple[str, Path]] = []
+    for m in mounts or []:
+        if m.get("Type") != "bind":
+            continue
+        dest = str(m.get("Destination") or "").rstrip("/")
+        src = Path(str(m.get("Source") or ""))
+        if dest in SAFE_BACKUP_DESTINATIONS and src.exists():
+            config_sources.append((dest.lstrip("/") or "config", src))
+    if not config_sources:
+        return None
+    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    archive = BACKUPS_DIR / f"{container}-{ts}.tar.gz"
+    with tarfile.open(archive, "w:gz") as tf:
+        for arc_prefix, src in config_sources:
+            tf.add(str(src), arcname=arc_prefix)
+    # Prune older archives for the same container
+    existing = sorted(BACKUPS_DIR.glob(f"{container}-*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in existing[RETAIN_BACKUPS:]:
+        stale.unlink(missing_ok=True)
+    return archive
+
+
+def _restore_config_mounts(archive: Optional[Path], mounts: List[Dict]) -> Optional[str]:
+    if not archive or not archive.is_file():
+        return None
+    targets = {
+        (str(m.get("Destination") or "").rstrip("/").lstrip("/") or "config"): Path(str(m.get("Source") or ""))
+        for m in mounts or []
+        if m.get("Type") == "bind" and str(m.get("Destination") or "").rstrip("/") in SAFE_BACKUP_DESTINATIONS
+    }
+    if not targets:
+        return None
+    try:
+        with tarfile.open(archive, "r:gz") as tf:
+            for member in tf.getmembers():
+                parts = Path(member.name).parts
+                if not parts or ".." in parts:
+                    continue
+                root_key = parts[0]
+                dest_dir = targets.get(root_key)
+                if dest_dir is None:
+                    continue
+                rel = Path(*parts[1:]) if len(parts) > 1 else None
+                if rel is None:
+                    continue
+                out_path = dest_dir / rel
+                if member.isdir():
+                    out_path.mkdir(parents=True, exist_ok=True)
+                elif member.isfile():
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    src_f = tf.extractfile(member)
+                    if src_f is not None:
+                        with src_f, open(out_path, "wb") as dst_f:
+                            shutil.copyfileobj(src_f, dst_f)
+        return None
+    except Exception as exc:
+        return str(exc)[:200]
+
+
+def _compose_cmd(project: str, working_dir: Path, config_files_csv: str, pins_path: Path) -> List[str]:
+    cmd = [DOCKER_BIN, "compose"]
+    env_file = ETC_DIR / f"{project}.env"
+    if env_file.is_file():
+        cmd += ["--env-file", str(env_file)]
+    cfg_paths = [Path(p.strip()) for p in config_files_csv.split(",") if p.strip()]
+    if not cfg_paths:
+        cfg_paths = [working_dir / "docker-compose.yml"]
+    for p in cfg_paths:
+        if p != pins_path:
+            cmd += ["-f", str(p)]
+    if pins_path.is_file():
+        cmd += ["-f", str(pins_path)]
+    return cmd
+
+
+def _wait_container_healthy(container: str, timeout: int) -> Tuple[bool, str]:
+    deadline = time.time() + max(5, timeout)
+    last_state = "unknown"
+    stable_ticks = 0
+    while time.time() < deadline:
+        res = _run([DOCKER_BIN, "inspect", container], timeout=15)
+        if res.returncode != 0:
+            last_state = "missing"
+            time.sleep(2)
+            continue
+        try:
+            info = json.loads(res.stdout or "[]")[0]
+        except (ValueError, IndexError):
+            time.sleep(2)
+            continue
+        state = info.get("State") or {}
+        status = str(state.get("Status") or "").lower()
+        health = str((state.get("Health") or {}).get("Status") or "").lower()
+        last_state = f"{status}:{health or 'none'}"
+        if status in ("exited", "dead"):
+            return False, f"container {status} (exit code {state.get('ExitCode')})"
+        if health == "healthy":
+            return True, "healthy"
+        if health == "unhealthy":
+            return False, "healthcheck reported unhealthy"
+        if not health and status == "running":
+            stable_ticks += 1
+            if stable_ticks >= 3:
+                return True, "running"
+        time.sleep(2)
+    return False, f"timed out waiting for health ({last_state})"
+
+
+def update_app(container: str, new_tag: str, allow_major: bool = False) -> Dict:
+    container = container.strip()
+    new_tag = new_tag.strip()
+    if not CONTAINER_RE.match(container):
+        raise UpdateError("Invalid container name.")
+    if not TAG_RE.match(new_tag) or new_tag.lower() in DISALLOWED_TAGS:
+        raise UpdateError("Target tag must be a concrete pinned version tag.")
+
+    info = _inspect_container(container)
+    cfg = info.get("Config") or {}
+    labels = cfg.get("Labels") or {}
+    project = labels.get("com.docker.compose.project")
+    service = labels.get("com.docker.compose.service")
+    working_dir_str = labels.get("com.docker.compose.project.working_dir")
+    config_files_csv = labels.get("com.docker.compose.project.config_files") or ""
+    if not (project and service and working_dir_str):
+        raise UpdateError(f"Container '{container}' is not Compose-managed; cannot update automatically.")
+
+    working_dir = Path(working_dir_str)
+    prev_image = str(cfg.get("Image") or "")
+    repo, prev_tag = _split_image(prev_image)
+    if prev_tag.lower() == new_tag.lower():
+        return {"ok": True, "changed": False, "container": container, "image": prev_image, "message": "Already at requested version."}
+
+    cur_maj, new_maj = _major_num(prev_tag), _major_num(new_tag)
+    if cur_maj is not None and new_maj is not None and cur_maj != new_maj and not allow_major:
+        raise UpdateError(f"Refusing major version jump ({prev_tag} -> {new_tag}); review release notes and upgrade manually.")
+    if cur_maj != new_maj and any(tok in repo.lower() for tok in MANUAL_MAJOR_IMAGES):
+        raise UpdateError(f"'{repo}' major upgrades require manual migration checks first.")
+
+    mounts = info.get("Mounts") or []
+    backup_archive = _backup_config_mounts(container, mounts)
+
+    pins_path = _pins_file(project)
+    prev_pins_text = pins_path.read_text(encoding="utf-8") if pins_path.is_file() else None
+    pins = _load_pins(pins_path)
+    target_image = f"{repo}:{new_tag}"
+    pins[service] = target_image
+    _atomic_write(pins_path, _format_pins(pins), mode=0o600)
+
+    compose = _compose_cmd(project, working_dir, config_files_csv, pins_path)
+    profile_args = ["--profile", "*"] if (working_dir / "docker-compose.yml").exists() else []
+
+    def rollback(reason: str, restore_config: bool) -> Dict:
+        _restore_pins(pins_path, prev_pins_text)
+        cfg_restore_err = _restore_config_mounts(backup_archive, mounts) if restore_config else None
+        rb_compose = _compose_cmd(project, working_dir, config_files_csv, pins_path)
+        rb_up = _run([*rb_compose, *profile_args, "up", "-d", "--no-deps", service], cwd=working_dir, timeout=300)
+        rb_ok = rb_up.returncode == 0
+        if rb_ok:
+            rb_ok, _ = _wait_container_healthy(container, min(90, HEALTH_TIMEOUT))
+        return {
+            "ok": False,
+            "container": container,
+            "previous_image": prev_image,
+            "target_image": target_image,
+            "backup_file": str(backup_archive) if backup_archive else None,
+            "rolled_back": True,
+            "rollback_ok": rb_ok and cfg_restore_err is None,
+            "rollback_error": cfg_restore_err,
+            "error": reason,
+        }
+
+    pull = _run([*compose, *profile_args, "pull", service], cwd=working_dir, timeout=600)
+    if pull.returncode != 0:
+        return rollback(f"Image pull failed: {(pull.stderr or pull.stdout).strip()[-240:]}", restore_config=False)
+
+    up = _run([*compose, *profile_args, "up", "-d", "--no-deps", service], cwd=working_dir, timeout=300)
+    if up.returncode != 0:
+        return rollback(f"Container recreate failed: {(up.stderr or up.stdout).strip()[-240:]}", restore_config=True)
+
+    healthy, detail = _wait_container_healthy(container, HEALTH_TIMEOUT)
+    if not healthy:
+        return rollback(f"Post-update health check failed ({detail}); rolled back to {prev_tag}.", restore_config=True)
+
+    return {
+        "ok": True,
+        "changed": True,
+        "container": container,
+        "service": service,
+        "project": project,
+        "previous_image": prev_image,
+        "target_image": target_image,
+        "backup_file": str(backup_archive) if backup_archive else None,
+        "rolled_back": False,
+        "health": detail,
+    }
+
+
+def _schedule_hub_restart() -> None:
+    systemd_run = shutil.which("systemd-run")
+    if systemd_run:
+        _run([systemd_run, "--on-active=2", "--unit=homelab-hub-restart", "systemctl", "restart", "control-hub.service"], timeout=15)
+        return
+    subprocess.Popen(
+        ["bash", "-c", "sleep 2 && systemctl restart control-hub.service >/dev/null 2>&1"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _git_cmd(install_dir: Path, *args: str) -> List[str]:
+    return [GIT_BIN, "-c", f"safe.directory={install_dir}", "-C", str(install_dir), *args]
+
+
+def _git_status(install_dir: Path) -> Dict:
+    if not (install_dir / ".git").exists():
+        return {"git_repo": False, "git_clean": False, "git_ref": None}
+    ref = _run(_git_cmd(install_dir, "describe", "--tags", "--always"), timeout=15)
+    dirty = _run(_git_cmd(install_dir, "status", "--porcelain"), timeout=15)
+    return {
+        "git_repo": True,
+        "git_ref": (ref.stdout or "").strip() if ref.returncode == 0 else None,
+        "git_clean": dirty.returncode == 0 and not (dirty.stdout or "").strip(),
+    }
+
+
+def blueprint_status() -> Dict:
+    install_dir = _resolve_install_dir()
+    info = _git_status(install_dir)
+    return {
+        "ok": True,
+        "install_dir": str(install_dir),
+        "installed_mode": INSTALLED_JSON.is_file() and CONFIG_JSON.is_file(),
+        **info,
+    }
+
+
+def self_update(target_tag: Optional[str] = None) -> Dict:
+    install_dir = _resolve_install_dir()
+    status = _git_status(install_dir)
+    if not status["git_repo"]:
+        raise UpdateError(f"Blueprint directory '{install_dir}' is not a Git repository.")
+    if not status["git_clean"]:
+        raise UpdateError(f"'{install_dir}' has local changes; commit or stash them before self-updating.")
+    if not CONFIG_JSON.is_file():
+        raise UpdateError(f"Missing installer configuration at '{CONFIG_JSON}'; cannot re-apply setup.")
+
+    prev_head_res = _run(_git_cmd(install_dir, "rev-parse", "HEAD"), timeout=15)
+    if prev_head_res.returncode != 0:
+        raise UpdateError("Could not read current HEAD commit.")
+    prev_head = prev_head_res.stdout.strip()
+
+    fetch = _run(_git_cmd(install_dir, "fetch", "--tags", "--force", "origin"), timeout=120)
+    if fetch.returncode != 0:
+        raise UpdateError(f"git fetch failed: {(fetch.stderr or fetch.stdout).strip()[:240]}")
+
+    chosen_tag = (target_tag or "").strip()
+    if chosen_tag:
+        if not SEMVER_TAG_RE.match(chosen_tag):
+            raise UpdateError("Release tag must look like vX.Y.Z.")
+        if not chosen_tag.startswith("v"):
+            chosen_tag = f"v{chosen_tag}"
+    else:
+        tags_res = _run(_git_cmd(install_dir, "tag", "-l", "v*", "--sort=-v:refname"), timeout=15)
+        tags = [t.strip() for t in (tags_res.stdout or "").splitlines() if SEMVER_TAG_RE.match(t.strip())]
+        if not tags:
+            raise UpdateError("No release tags (vX.Y.Z) found on origin.")
+        chosen_tag = tags[0]
+
+    target_sha_res = _run(_git_cmd(install_dir, "rev-parse", "--verify", f"refs/tags/{chosen_tag}^{{commit}}"), timeout=15)
+    if target_sha_res.returncode != 0:
+        raise UpdateError(f"Release tag '{chosen_tag}' does not exist on origin.")
+    if target_sha_res.stdout.strip() == prev_head:
+        return {"ok": True, "changed": False, "tag": chosen_tag, "message": f"Already running release {chosen_tag}."}
+
+    checkout = _run(_git_cmd(install_dir, "checkout", "--detach", f"refs/tags/{chosen_tag}"), timeout=30)
+    if checkout.returncode != 0:
+        raise UpdateError(f"Could not switch to release {chosen_tag}: {(checkout.stderr or checkout.stdout).strip()[:200]}")
+
+    def rollback_self(reason: str) -> Dict:
+        _run(_git_cmd(install_dir, "checkout", prev_head), timeout=30)
+        return {"ok": False, "tag": chosen_tag, "rolled_back": True, "previous_head": prev_head[:12], "error": reason}
+
+    venv_pip = install_dir / "apps" / "control-hub" / "venv" / "bin" / "pip"
+    req_file = install_dir / "apps" / "control-hub" / "requirements.txt"
+    if venv_pip.is_file() and req_file.is_file():
+        pip_res = _run([str(venv_pip), "install", "-q", "-r", str(req_file)], cwd=install_dir, timeout=300)
+        if pip_res.returncode != 0:
+            return rollback_self(f"pip install failed: {(pip_res.stderr or pip_res.stdout).strip()[:200]}")
+
+    py_bin = shutil.which("python3") or sys.executable
+    installer = install_dir / "setup" / "server.py"
+    apply_res = _run([py_bin, str(installer), "--headless", "--config", str(CONFIG_JSON)], cwd=install_dir, timeout=1800)
+    if apply_res.returncode != 0:
+        return rollback_self(f"Installer re-apply failed: {(apply_res.stderr or apply_res.stdout).strip()[-240:]}")
+
+    _schedule_hub_restart()
+    return {
+        "ok": True,
+        "changed": True,
+        "tag": chosen_tag,
+        "previous_head": prev_head[:12],
+        "restart_scheduled": True,
+    }
+
+
+def main(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(prog="homelab-update")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+
+    p_app = sub.add_parser("app")
+    p_app.add_argument("container")
+    p_app.add_argument("tag")
+    p_app.add_argument("--allow-major", action="store_true")
+
+    p_self = sub.add_parser("self-update")
+    p_self.add_argument("--tag", default=None)
+
+    try:
+        args = parser.parse_args(argv[1:])
+    except SystemExit as exc:
+        return int(exc.code or 64)
+
+    try:
+        if args.cmd == "status":
+            out = blueprint_status()
+        elif args.cmd == "app":
+            out = update_app(args.container, args.tag, allow_major=bool(args.allow_major))
+        else:
+            out = self_update(target_tag=args.tag)
+    except UpdateError as exc:
+        out = {"ok": False, "error": str(exc)}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        out = {"ok": False, "error": str(exc)[:220]}
+
+    print(json.dumps(out))
+    return 0 if out.get("ok", True) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

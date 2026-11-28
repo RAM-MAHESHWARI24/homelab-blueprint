@@ -270,7 +270,12 @@ class TestSimulatedCloudBackup(unittest.TestCase):
         text = script_path.read_text(encoding="utf-8")
         self.assertIn("--backup-dir", text, "Must retain accidental deletion protection buffer")
         self.assertIn("--track-renames", text, "Must retain server-side move tracking")
-        self.assertIn("-mtime +7 -delete", text, "Must enforce 7-day database dump retention")
+        self.assertIn('retention --names-file "$WORK/local.txt" --keep "$KEEP_LOCAL_DUMPS"', text,
+                      "Must enforce count-based local dump retention")
+        self.assertIn('--monthly "$KEEP_DRIVE_MONTHLY"', text, "Must keep monthly dumps on the remote")
+        self.assertIn("--protect", text, "Retention must never delete the dump just uploaded")
+        self.assertIn("flock -n", text, "Only one backup run at a time")
+        self.assertIn("is missing or empty", text, "Pre-flight must refuse to mirror an empty photo folder")
 
 
 class TestSystemPowerAndHostDaemons(unittest.TestCase):
@@ -334,6 +339,15 @@ class TestSystemPowerAndHostDaemons(unittest.TestCase):
         log_content = self.log_file.read_text(encoding="utf-8")
         self.assertIn("[DRY_RUN] Dry run enabled", log_content)
 
+    def test_suspend_script_defers_on_jellyfin_playback(self):
+        """TC-SYS-05: Verify server-suspend.sh contains all ADR-0003 stream/download/SMB deferral guards"""
+        script_path = REPO_ROOT / "apps" / "control-hub" / "host" / "server-suspend.sh"
+        text = script_path.read_text(encoding="utf-8")
+        self.assertIn("smbstatus -S", text)
+        self.assertIn("/api/v2/transfer/info", text)
+        self.assertIn("/Sessions", text)
+        self.assertIn("Active Jellyfin media playback", text)
+
 
 class TestUniversalHardwareDetection(unittest.TestCase):
     """Module 10: Dynamic Hardware Probing & Custom Hardware Adaptability"""
@@ -371,12 +385,16 @@ class TestUniversalHardwareDetection(unittest.TestCase):
         self.assertGreaterEqual(cpu_specs["cores"], 1)
 
         root_dev, data_dev, data_mount = detect_storage_devices()
-        self.assertTrue(len(root_dev) > 0)
-        self.assertTrue(len(data_dev) > 0)
         self.assertTrue(len(data_mount) > 0)
+        if Path("/proc/mounts").exists():
+            self.assertTrue(root_dev and len(root_dev) > 0)
+            self.assertTrue(data_dev is None or len(data_dev) > 0)
+        else:
+            # Non-Linux dev hosts must not fabricate fake 'sda'/'sdb' block names
+            self.assertIsNone(root_dev)
 
         nic = detect_active_nic("eth0")
-        self.assertTrue(len(nic) > 0)
+        self.assertTrue(nic and len(nic) > 0)
 
 
 class TestTeardownAndPackagingStandards(unittest.TestCase):
@@ -522,6 +540,94 @@ class TestTeardownAndPackagingStandards(unittest.TestCase):
             self.assertEqual(len(diff_after["missing_keys"]), 0)
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_homelab_update_helper_backup_and_rollback(self):
+        """TC-UPDATE-HELPER-01: Verify system/helpers/homelab-update writes pins, backs up /config, and rolls back on health failure"""
+        import importlib.util
+        import json
+        from importlib.machinery import SourceFileLoader
+
+        helper_path = REPO_ROOT / "system" / "helpers" / "homelab-update"
+        self.assertTrue(helper_path.exists())
+        sudoers_text = (REPO_ROOT / "system" / "systemd" / "homelab-sudoers.example").read_text(encoding="utf-8")
+        self.assertIn("/usr/local/sbin/homelab-update *", sudoers_text)
+
+        loader = SourceFileLoader("homelab_update_helper", str(helper_path))
+        spec = importlib.util.spec_from_loader("homelab_update_helper", loader)
+        helper = importlib.util.module_from_spec(spec)
+        loader.exec_module(helper)
+
+        tmp = Path(tempfile.mkdtemp(prefix="homelab_upd_test_"))
+        try:
+            etc_dir = tmp / "etc"
+            state_dir = tmp / "state"
+            cfg_dir = tmp / "radarr_cfg"
+            work_dir = tmp / "stack"
+            etc_dir.mkdir()
+            state_dir.mkdir()
+            cfg_dir.mkdir()
+            work_dir.mkdir()
+            (cfg_dir / "config.xml").write_text("<Config>v1-good</Config>", encoding="utf-8")
+            (work_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+            old_etc, old_state, old_backups, old_timeout = helper.ETC_DIR, helper.STATE_DIR, helper.BACKUPS_DIR, helper.HEALTH_TIMEOUT
+            helper.ETC_DIR = etc_dir
+            helper.STATE_DIR = state_dir
+            helper.BACKUPS_DIR = state_dir / "update-backups"
+            helper.HEALTH_TIMEOUT = 10
+
+            inspect_payload = [{
+                "Config": {
+                    "Image": "lscr.io/linuxserver/radarr:7.0.3-ls1",
+                    "Labels": {
+                        "com.docker.compose.project": "mediaserver",
+                        "com.docker.compose.service": "radarr",
+                        "com.docker.compose.project.working_dir": str(work_dir),
+                        "com.docker.compose.project.config_files": str(work_dir / "docker-compose.yml"),
+                    },
+                },
+                "Mounts": [{"Type": "bind", "Source": str(cfg_dir), "Destination": "/config"}],
+                "State": {"Status": "running", "Health": {"Status": "unhealthy"}},
+            }]
+
+            def fake_run_rollback(cmd, cwd=None, timeout=120):
+                if cmd[:2] == [helper.DOCKER_BIN, "inspect"]:
+                    return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(inspect_payload), stderr="")
+                if "up" in cmd:
+                    # Simulate container mutating config before failing health when upgrading to ls2
+                    pins_now = (etc_dir / "mediaserver.pins.yml").read_text(encoding="utf-8") if (etc_dir / "mediaserver.pins.yml").exists() else ""
+                    if "7.0.4-ls2" in pins_now:
+                        (cfg_dir / "config.xml").write_text("<Config>CORRUPTED</Config>", encoding="utf-8")
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            # Simulate rollback restoring health on the second up call
+            inspect_calls = {"n": 0}
+
+            def fake_run_seq(cmd, cwd=None, timeout=120):
+                if cmd[:2] == [helper.DOCKER_BIN, "inspect"]:
+                    inspect_calls["n"] += 1
+                    payload = json.loads(json.dumps(inspect_payload))
+                    # 1st inspect reads metadata; 2nd checks new version (unhealthy); 3rd verifies rollback healthy
+                    if inspect_calls["n"] >= 3:
+                        payload[0]["State"]["Health"]["Status"] = "healthy"
+                    return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+                return fake_run_rollback(cmd, cwd=cwd, timeout=timeout)
+
+            try:
+                orig_run = helper._run
+                helper._run = fake_run_seq
+                res = helper.update_app("radarr", "7.0.4-ls2")
+                self.assertFalse(res["ok"])
+                self.assertTrue(res["rolled_back"])
+                self.assertTrue(res["rollback_ok"])
+                self.assertFalse((etc_dir / "mediaserver.pins.yml").exists())
+                self.assertEqual((cfg_dir / "config.xml").read_text(encoding="utf-8"), "<Config>v1-good</Config>")
+                self.assertTrue(res["backup_file"] and Path(res["backup_file"]).is_file())
+            finally:
+                helper._run = orig_run
+                helper.ETC_DIR, helper.STATE_DIR, helper.BACKUPS_DIR, helper.HEALTH_TIMEOUT = old_etc, old_state, old_backups, old_timeout
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

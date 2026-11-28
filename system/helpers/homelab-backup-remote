@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""
+homelab-backup-remote: list, test or change the rclone remote of the nightly backups.
+
+Installed to /usr/local/sbin by the blueprint installer and run as root through one
+sudoers entry, so the Control Hub (an unprivileged service) can offer "Change remote"
+without touching root-owned files itself.
+
+    homelab-backup-remote list            remotes in root's rclone config + the current one
+    homelab-backup-remote test REMOTE     does it answer, free space, which backup folders exist
+    homelab-backup-remote set REMOTE      test, then switch both backups to REMOTE
+
+REMOTE is `name:` or `name:path/` for a remote that exists in root's rclone config. The
+value is checked strictly (letters, digits and . _ - @ + and space in the name; a plain
+relative path) and passed to rclone as one argument, never through a shell.
+
+`set` rewrites the GDRIVE_REMOTE= line of /etc/cron.d/immich-backup and
+/etc/cron.d/media-backup (both scripts read their remote there, for the nightly run and
+for "Run now"), the same line in /etc/homelab/control-hub.env and homelab.env, and
+gdrive_remote in /etc/homelab/config.json so a later re-run of setup keeps it. Every
+file keeps its owner and mode and is replaced atomically. Output is JSON.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional
+
+CRON_FILES = [Path(p) for p in os.environ.get(
+    "BACKUP_REMOTE_CRON_FILES", "/etc/cron.d/immich-backup:/etc/cron.d/media-backup").split(":")]
+ETC_DIR = Path(os.environ.get("HOMELAB_ETC_DIR", "/etc/homelab"))
+ENV_FILES = [ETC_DIR / "control-hub.env", ETC_DIR / "homelab.env"]
+CONFIG_JSON = ETC_DIR / "config.json"
+RCLONE = os.environ.get("RCLONE_BIN", "rclone")
+
+NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@+ -]{0,63}$")
+PATH_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@+ /-]{0,199}$")
+LINE_RE = re.compile(r"^GDRIVE_REMOTE=.*$", re.M)
+
+
+class Invalid(ValueError):
+    pass
+
+
+def parse_remote(value: str) -> Dict[str, str]:
+    """Splits and checks `name:path`; returns the normalised form the backup scripts use."""
+    value = (value or "").strip()
+    name, sep, path = value.partition(":")
+    if not sep or not NAME_RE.match(name):
+        raise Invalid("A remote looks like name: or name:folder/ (letters, digits, . _ - @ +).")
+    path = path.strip()
+    if path:
+        if path.startswith("/") or not PATH_RE.match(path) or ".." in path.split("/"):
+            raise Invalid("The folder must be a plain relative path such as homelab/backups/.")
+        path = path.rstrip("/") + "/"
+    return {"name": name, "path": path, "remote": f"{name}:{path}"}
+
+
+def rclone(args: List[str], timeout: int = 90) -> subprocess.CompletedProcess:
+    return subprocess.run([RCLONE, *args], capture_output=True, text=True, timeout=timeout)
+
+
+def list_remotes() -> List[Dict[str, str]]:
+    res = rclone(["listremotes", "--long"], timeout=30)
+    out = []
+    for line in res.stdout.splitlines():
+        name, _, kind = line.partition(":")
+        if name.strip():
+            out.append({"name": name.strip(), "type": kind.strip() or "unknown"})
+    return out
+
+
+def current_remote() -> Optional[str]:
+    for f in CRON_FILES:
+        try:
+            m = LINE_RE.search(f.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if m:
+            return m.group(0).split("=", 1)[1].strip() or None
+    return None
+
+
+def last_line(res: subprocess.CompletedProcess) -> str:
+    lines = (res.stderr or res.stdout or "no output").strip().splitlines()
+    return lines[-1] if lines else "no output"
+
+
+def test_remote(value: str) -> Dict:
+    r = parse_remote(value)
+    names = {x["name"] for x in list_remotes()}
+    if r["name"] not in names:
+        raise Invalid(f"There is no rclone remote named '{r['name']}' (configured: {', '.join(sorted(names)) or 'none'}). "
+                      "Create it on the server with: sudo rclone config")
+    result = {"remote": r["remote"], "ok": False, "error": None, "free_bytes": None, "total_bytes": None,
+              "folders": {"Memories": False, "Immich_Backup/database": False, "Media_Backup": False}}
+    try:
+        lsd = rclone(["lsd", r["remote"]], timeout=120)
+    except subprocess.TimeoutExpired:
+        result["error"] = "The remote did not answer within 2 minutes."
+        return result
+    if lsd.returncode != 0:
+        if "directory not found" in (lsd.stderr or "").lower() and r["path"]:
+            # The folder does not exist yet: fine, the first backup creates it. The remote itself must answer.
+            root = rclone(["lsd", f"{r['name']}:"], timeout=120)
+            if root.returncode != 0:
+                result["error"] = last_line(root)
+                return result
+            lsd_out = ""
+        else:
+            result["error"] = last_line(lsd)
+            return result
+    else:
+        lsd_out = lsd.stdout
+    top = {line.split()[-1] for line in lsd_out.splitlines() if line.strip()}
+    result["folders"]["Memories"] = "Memories" in top
+    result["folders"]["Media_Backup"] = "Media_Backup" in top
+    if "Immich_Backup" in top:
+        sub = rclone(["lsd", f"{r['remote']}Immich_Backup"], timeout=120)
+        result["folders"]["Immich_Backup/database"] = any(
+            line.split()[-1] == "database" for line in sub.stdout.splitlines() if line.strip())
+    about = rclone(["about", r["remote"], "--json"], timeout=120)
+    if about.returncode == 0:
+        try:
+            info = json.loads(about.stdout)
+            result["free_bytes"], result["total_bytes"] = info.get("free"), info.get("total")
+        except ValueError:
+            pass
+    result["ok"] = True
+    return result
+
+
+def replace_atomic(path: Path, text: str) -> None:
+    st = path.stat()
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    if hasattr(os, "chown"):
+        os.chown(tmp, st.st_uid, st.st_gid)
+    os.chmod(tmp, st.st_mode & 0o7777)
+    os.replace(tmp, path)
+
+
+def set_remote(value: str) -> Dict:
+    tested = test_remote(value)
+    if not tested["ok"]:
+        return {"ok": False, "error": f"Not changed: {tested['error']}", "test": tested}
+    remote = tested["remote"]
+    changed = []
+    for f in CRON_FILES + ENV_FILES:
+        try:
+            text = f.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if LINE_RE.search(text):
+            new = LINE_RE.sub(lambda _: f"GDRIVE_REMOTE={remote}", text)
+            if new != text:
+                replace_atomic(f, new)
+                changed.append(str(f))
+    try:
+        cfg = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+        if cfg.get("gdrive_remote") != remote:
+            cfg["gdrive_remote"] = remote
+            replace_atomic(CONFIG_JSON, json.dumps(cfg, indent=2) + "\n")
+            changed.append(str(CONFIG_JSON))
+    except (OSError, ValueError):
+        pass
+    return {"ok": True, "remote": remote, "changed": changed, "test": tested}
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) < 2 or argv[1] not in ("list", "test", "set") or (argv[1] != "list" and len(argv) != 3):
+        print(__doc__.strip().split("\n\n")[2], file=sys.stderr)
+        return 64
+    try:
+        if argv[1] == "list":
+            out = {"remotes": list_remotes(), "current": current_remote()}
+        elif argv[1] == "test":
+            out = test_remote(argv[2])
+        else:
+            out = set_remote(argv[2])
+    except Invalid as exc:
+        out = {"ok": False, "error": str(exc)}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        out = {"ok": False, "error": str(exc)[:200]}
+    print(json.dumps(out))
+    return 0 if out.get("ok", True) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

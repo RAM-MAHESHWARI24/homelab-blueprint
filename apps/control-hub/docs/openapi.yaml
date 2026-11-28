@@ -4,7 +4,7 @@ info:
   description: >
     High-performance, ultra-lean management daemon and REST API engine for homelab clusters.
     Engineered for ultra-low resource footprints (<25MB RAM, <1% idle CPU).
-  version: 2.1.1
+  version: 2.2.0
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -19,9 +19,11 @@ servers:
         description: LAN IP of the target homelab server
 
 # Every route except the public probes (/api/health, /api/livez, /api/readyz,
-# /api/docs, /api/openapi.yaml) requires `Authorization: Bearer <token>`.
-# The token lives in /etc/homelab/control-hub.token (shown by `./setup.sh token`);
-# whoever holds it controls a daemon that is root-equivalent on the host.
+# /api/docs, /api/openapi.yaml) and /api/auth/login + /api/auth/status needs
+# either the `hub_session` cookie (set by POST /api/auth/login with the dashboard
+# password) or `Authorization: Bearer <token>`. The token lives in
+# /etc/homelab/control-hub.token (shown by `./setup.sh token`) and is meant for
+# scripts. Whoever signs in controls a daemon that is root-equivalent on the host.
 security:
   - bearerToken: []
 
@@ -42,7 +44,7 @@ paths:
                 properties:
                   status: { type: string, example: "ok" }
                   service: { type: string, example: "control-hub" }
-                  version: { type: string, example: "2.1.1" }
+                  version: { type: string, example: "2.2.0" }
                   uptime_seconds: { type: number, example: 342.1 }
 
   /api/livez:
@@ -121,6 +123,34 @@ paths:
                   link_speed_mbps: { type: integer, example: 1000 }
                   active_nic: { type: string, example: "eth0" }
 
+  /api/network/overview:
+    get:
+      summary: Network Link Health, Tailscale & Port Map
+      description: Returns per-NIC link speed/duplex warnings, Tailscale mesh/subnet-router state, and the blueprint service port map with conflict flags.
+      tags: [Network]
+      responses:
+        '200':
+          description: Network overview payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: success }
+                  active_nic: { type: string, example: eth0 }
+                  current_ip: { type: string, example: 192.168.1.31 }
+                  default_gateway: { type: string, example: 192.168.1.1 }
+                  interfaces:
+                    type: array
+                    items: { type: object }
+                  tailscale: { type: object }
+                  ports:
+                    type: array
+                    items: { type: object }
+                  port_conflicts:
+                    type: array
+                    items: { type: object }
+
   /api/speedtest/latest:
     get:
       summary: Latest WAN Speedtest Results
@@ -176,6 +206,29 @@ paths:
         '200':
           description: Toggle state updated
 
+  /api/torrents/{torrent_hash}/action:
+    post:
+      summary: Per-torrent queue action
+      description: Pause, resume, delete (optional delete_files), or change priority for one torrent.
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{success, hash, action}"
+
+  /api/torrents/limits:
+    get:
+      summary: Read qBittorrent global and alternative speed limits
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{success, dl_limit_kbps, up_limit_kbps, alt_speed_enabled, scheduler_enabled}"
+    post:
+      summary: Update qBittorrent global caps, toggle alt-speed mode, or configure evening schedule
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{success: true}"
+
   /api/storage/operations:
     get:
       summary: Storage Mount Capacities
@@ -193,6 +246,34 @@ paths:
       responses:
         '200':
           description: Container status matrix
+
+  /api/services/action/{service_id}:
+    post:
+      summary: Start, Stop, or Restart a Container Service
+      description: Executes `docker start`, `docker stop`, or `docker restart` on a catalog or existing Docker container.
+      tags: [Cluster Management]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: "jellyfin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [start, stop, restart] }
+      responses:
+        '200':
+          description: Action completed
+        '400':
+          description: Invalid action or container name
+        '404':
+          description: Container not found
 
   /api/services/restart/{service_id}:
     post:
@@ -251,14 +332,115 @@ paths:
         '200':
           description: Tonight's schedule updated
 
+  /api/sleep/schedule-permanent:
+    post:
+      summary: Update Permanent Nightly Sleep Schedule
+      description: Updates `/etc/server-suspend.conf` and `/etc/cron.d/server-suspend` (including enabling/disabling nightly sleep).
+      tags: [Power Automation]
+      responses:
+        '200':
+          description: Permanent schedule updated
+
   /api/backup/status:
     get:
       summary: Google Drive Cloud Backup Status
-      description: Returns the last execution timestamp, sync state, and uploaded volume for the Rclone cloud backup job.
+      description: >-
+        Photo backup state read from the status.json the backup script writes. `health`
+        holds the computed state (unknown, syncing, synced, error, interrupted or stale:
+        no good run for more than BACKUP_STALE_HOURS, default 26), `is_red`, the last good
+        run and its age, the next run from /etc/cron.d/immich-backup, the pre-flight checks
+        of the last run, the last 7 runs, transfer totals and retention (kept, deleted by
+        the last run, deleted by the next run). Values that cannot be read are null.
       tags: [Backup]
       responses:
         '200':
           description: Backup execution telemetry
+
+  /api/backup/remotes:
+    get:
+      summary: rclone remotes available for the backups
+      description: >-
+        Remotes in root's rclone config (name and type) and the remote the backups use now,
+        read through the blueprint's root helper homelab-backup-remote. 404 on installs
+        without the helper.
+      tags: [Backup]
+      responses:
+        '200':
+          description: "{remotes: [{name, type}], current}"
+        '404':
+          description: Not available on this install
+
+  /api/backup/remote/test:
+    post:
+      summary: Test a backup remote
+      description: >-
+        `remote` is `name:` or `name:folder/`. The helper checks the value strictly, that the
+        remote exists in root's rclone config and answers, its free space, and which backup
+        folders already exist (Memories, Immich_Backup/database, Media_Backup). Nothing is changed.
+      tags: [Backup]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remote]
+              properties:
+                remote: { type: string, example: "gdrive:homelab/" }
+      responses:
+        '200':
+          description: "{ok, remote, error, free_bytes, total_bytes, folders}"
+
+  /api/backup/remote:
+    put:
+      summary: Switch both backups to another remote
+      description: >-
+        Tests the remote again, then rewrites GDRIVE_REMOTE in /etc/cron.d/immich-backup and
+        /etc/cron.d/media-backup, /etc/homelab/control-hub.env and homelab.env, and gdrive_remote
+        in /etc/homelab/config.json. Takes effect from the next backup run.
+      tags: [Backup]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remote]
+              properties:
+                remote: { type: string, example: "gdrive:homelab/" }
+      responses:
+        '200':
+          description: "{ok, remote, changed, test} or {ok: false, error}"
+
+  /api/backup/restore-test:
+    post:
+      summary: Run the photo backup restore test now
+      description: >-
+        Asks systemd to start photo-restore-test.service (through a fixed sudoers entry), which
+        restores the newest remote dump into a throwaway database and records the result in
+        status.json. /api/backup/status reports `restore` ({installed, running, next}) and the last
+        result under `health.restore_test`.
+      tags: [Backup]
+      responses:
+        '200':
+          description: "{success, message}; success is false when a test is already running"
+        '404':
+          description: The restore test is not installed
+
+  /api/backup/media/run:
+    post:
+      summary: Back up the media apps' settings now
+      description: >-
+        Starts the media module's settings backup (it moves itself into its own systemd unit).
+        Its state appears under `media` in /api/backup/status: the same health fields as the
+        photo backup plus `archive`, `archive_size` and `can_run`; `media` is null when the
+        backup is not installed.
+      tags: [Backup]
+      responses:
+        '200':
+          description: "{success, message}; success is false when a run is already in progress"
+        '404':
+          description: Not installed (MEDIA_BACKUP_SCRIPT is not set)
 
   /api/backup/sync:
     post:
@@ -272,20 +454,127 @@ paths:
   /api/cron/status:
     get:
       summary: Cron & Automation Task Timers
-      description: Returns next execution schedules and historical statuses for all scheduled homelab tasks.
+      description: Returns next execution schedules, last run statuses, editable schedule fields, and clash warnings for all installed homelab tasks.
       tags: [Automation]
       responses:
         '200':
-          description: Cron status overview
+          description: Cron status overview with jobs and schedule clashes
+
+  /api/cron/schedule/{job_id}:
+    post:
+      summary: Edit or Preview a Job Schedule
+      description: Updates or previews (`preview_only: true`) the daily execution time of an installed job and evaluates schedule clashes against Sleep Guard.
+      tags: [Automation]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                time: { type: string, example: "22:00" }
+                stop_time: { type: string, example: "10:00" }
+                wake_time: { type: string, example: "06:00" }
+                enabled: { type: boolean, default: true }
+                preview_only: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Updated or previewed schedule and clash warnings
 
   /api/tv-updater/status:
     get:
       summary: Android TV Updater Fleet Status
-      description: Returns target Android TV IP, connection state, installed app versions, and available updates.
+      description: >-
+        Returns each TV's address, connection state, installed app versions and available
+        updates. `name` is the user's nickname, else the model the TV reported (for example
+        "Xiaomi MIBOX4"), else the profile name; `model`/`model_label` are null until the TV
+        has been online once. `details` holds manufacturer, model, codename, Android version,
+        the TV's own device name and when it was last seen. Versions of an offline TV come
+        from when it was last seen and say so.
       tags: [Fleet Management]
       responses:
         '200':
           description: TV fleet status
+
+  /api/tv-updater/devices/{device_id}/nickname:
+    put:
+      summary: Give a TV a nickname
+      description: >-
+        Stores a name of the user's choice (at most 40 characters, whitespace collapsed) in
+        nicknames.json in the TV auto-updater's state directory. An empty name removes it, and
+        the dashboard shows the detected model again.
+      tags: [Fleet Management]
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: { type: string, example: living_room_tv }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string, maxLength: 40, example: Living room }
+      responses:
+        '200':
+          description: "{success, device_id, nickname}"
+
+  /api/tv-updater/scan-lan:
+    post:
+      summary: Scan LAN subnet for TVs with ADB network port open
+      tags: [Fleet Management]
+      responses:
+        '200':
+          description: "{success, candidates}"
+
+  /api/tv-updater/connect:
+    post:
+      summary: Connect to an ADB TV endpoint and read model & Android version
+      tags: [Fleet Management]
+      responses:
+        '200':
+          description: "{success, connected, needs_auth, suggested_name, apps, message}"
+
+  /api/tv-updater/devices:
+    post:
+      summary: Add a new managed Android TV profile
+      tags: [Fleet Management]
+      responses:
+        '201':
+          description: "{success, device}"
+
+  /api/tv-updater/devices/{device_id}:
+    patch:
+      summary: Update TV name, IP/port, paused state, or app selection
+      tags: [Fleet Management]
+      responses:
+        '200':
+          description: "{success, device}"
+    delete:
+      summary: Remove a TV profile from the fleet
+      tags: [Fleet Management]
+      responses:
+        '200':
+          description: "{success, removed}"
+
+  /api/tv-updater/devices/{device_id}/test:
+    post:
+      summary: Test ADB connectivity to a configured TV
+      tags: [Fleet Management]
+      responses:
+        '200':
+          description: "{success, connected, needs_auth, message}"
+        '400':
+          description: Name too long or contains control characters
+        '404':
+          description: Unknown TV, or the TV module is not installed
 
   /api/config/current:
     get:
@@ -310,10 +599,55 @@ paths:
         '403':
           description: Environment directory is root-owned; apply the change through setup.sh
 
+  /api/auth/login:
+    post:
+      summary: Sign in with the dashboard password
+      description: Sets the HttpOnly `hub_session` cookie (SameSite=Strict, about 400 days). The API token is also accepted as the password. 10 wrong attempts in 5 minutes from one address answer 429.
+      tags: [Auth]
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { password: { type: string } } }
+      responses:
+        '200': { description: Signed in; cookie set }
+        '401': { description: Wrong password }
+        '409': { description: No dashboard password set (run `sudo ./setup.sh password`) }
+        '429': { description: Too many wrong attempts }
+  /api/auth/status:
+    get:
+      summary: Whether this request is signed in and whether a password is set
+      tags: [Auth]
+      security: []
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema: { type: object, properties: { authenticated: { type: boolean }, password_set: { type: boolean } } }
+  /api/auth/logout:
+    post:
+      summary: Sign this browser out (clears the cookie)
+      tags: [Auth]
+      responses:
+        '200': { description: Signed out }
+  /api/auth/password:
+    post:
+      summary: Change the dashboard password
+      description: Needs the current password. Signs out every other browser; this one stays signed in.
+      tags: [Auth]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { current: { type: string }, new: { type: string, minLength: 8 } } }
+      responses:
+        '200': { description: Changed }
+        '400': { description: New password shorter than 8 characters }
+        '403': { description: Current password wrong }
   /api/auth/check:
     get:
-      summary: Validate the bearer token
-      description: Returns 200 when the Authorization header carries the daemon's token, 401 otherwise.
+      summary: Validate the session cookie or bearer token
+      description: Returns 200 when the request is signed in (cookie, token, or LAN family access), 401 otherwise.
       tags: [Auth]
       responses:
         '200':
@@ -325,8 +659,61 @@ paths:
                 properties:
                   status: { type: string, example: ok }
                   authenticated: { type: boolean, example: true }
+                  role: { type: string, enum: [owner, family] }
+                  session_id: { type: string, nullable: true }
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/auth/sessions:
+    get:
+      summary: List signed-in browser sessions (owner only)
+      tags: [Auth]
+      responses:
+        '200': { description: Active sessions with device label, IP, role, and timestamps }
+        '403': { description: Owner sign-in required }
+  /api/auth/sessions/{session_id}:
+    delete:
+      summary: Sign out a specific signed-in device session (owner only)
+      tags: [Auth]
+      parameters:
+        - { in: path, name: session_id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Session revoked }
+        '404': { description: Session not found }
+  /api/auth/sessions/revoke-others:
+    post:
+      summary: Sign out every browser session except the caller (owner only)
+      tags: [Auth]
+      responses:
+        '200': { description: Revoked count }
+  /api/auth/access:
+    get:
+      summary: Read Family View and owner 2FA settings (owner only)
+      tags: [Auth]
+      responses:
+        '200': { description: Family & TOTP configuration flags }
+    post:
+      summary: Update read-only Family View settings (password or local LAN open)
+      tags: [Auth]
+      responses:
+        '200': { description: Updated family configuration }
+  /api/auth/totp/setup:
+    post:
+      summary: Generate a pending TOTP secret and otpauth URI for the owner
+      tags: [Auth]
+      responses:
+        '200': { description: Base32 secret, grouped display secret, and otpauth:// URI }
+  /api/auth/totp/enable:
+    post:
+      summary: Verify a 6-digit TOTP code and enable owner 2FA with one-time recovery codes
+      tags: [Auth]
+      responses:
+        '200': { description: Enabled with 6 recovery codes }
+  /api/auth/totp/disable:
+    post:
+      summary: Disable owner TOTP 2FA after confirming the owner password
+      tags: [Auth]
+      responses:
+        '200': { description: 2FA disabled }
 
   /api/config/netplan-preview:
     post:
@@ -370,6 +757,129 @@ paths:
       responses:
         '200':
           description: Pending state and seconds left on the revert timer
+
+  /api/config/preview:
+    post:
+      summary: Validate configuration changes and return a redacted diff preview
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Validation status and field-level diff list
+
+  /api/config/undo:
+    post:
+      summary: Restore the previous `/etc/homelab/config.json` snapshot via `homelab-config-apply`
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Snapshot restored cleanly
+
+  /api/config/manifest:
+    get:
+      summary: Return `/var/lib/homelab/installed.json` blueprint installation manifest
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Installed modules, compose stacks, units, and crons
+
+  /api/config/export:
+    get:
+      summary: Export portable settings JSON with all secrets removed
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Secret-free settings export
+
+  /api/config/import:
+    post:
+      summary: Preview or apply an imported settings JSON payload (secrets stripped)
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Import validation diff or applied result
+
+  /api/config/support-bundle:
+    get:
+      summary: Download a secret-free diagnostic bundle (system snapshot, containers, scrubbed logs)
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Sanitized JSON diagnostic bundle
+
+  /api/alerts:
+    get:
+      summary: Alert settings, open alerts and recent history
+      description: >
+        Channels (ntfy, Telegram, Discord, email; secrets returned as "********"), rules with
+        their thresholds, quiet hours, the daily summary, alerts open now, the last 30 sent or
+        held alerts, each channel's last delivery result and whether quiet hours are on now.
+      tags: [Alerts]
+      responses:
+        '200':
+          description: Alert overview
+
+  /api/alerts/config:
+    put:
+      summary: Save alert channels, rules and quiet hours
+      description: >
+        Partial update. A secret sent back as "********" keeps the stored value. Unknown keys
+        are ignored. Stored 0600 in the Control Hub state directory (ALERTS_CONFIG_FILE).
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channels: { type: object }
+                rules: { type: object }
+                quiet_hours:
+                  type: object
+                  properties:
+                    enabled: { type: boolean }
+                    start: { type: string, example: "23:00" }
+                    end: { type: string, example: "07:00" }
+                daily_summary:
+                  type: object
+                  properties:
+                    enabled: { type: boolean }
+                    time: { type: string, example: "08:00" }
+      responses:
+        '200':
+          description: Saved; same body as GET /api/alerts
+        '400':
+          description: A value was invalid (for example an ntfy topic shorter than 12 characters)
+
+  /api/alerts/test:
+    post:
+      summary: Send a test message to one channel
+      description: Uses the stored settings with any unsaved values from the request applied on top; nothing is saved.
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel: { type: string, enum: [ntfy, telegram, discord, email] }
+                channels: { type: object }
+      responses:
+        '200':
+          description: "{channel, ok, error}"
+        '400':
+          description: Unknown channel or invalid value
+
+  /api/alerts/check:
+    post:
+      summary: Check every rule now
+      description: Runs the same evaluation the background thread runs every minute and returns the overview plus `sent_now`.
+      tags: [Alerts]
+      responses:
+        '200':
+          description: Overview with the alerts sent by this check
 
   /api/indexers/status:
     get:
@@ -431,6 +941,264 @@ paths:
           description: Per-indexer results
         '400':
           description: Malformed body
+
+  /api/backup/library-stats:
+    get:
+      summary: Photo library sizes, remote quota, and Immich/Noodle Postgres asset & face totals
+      tags: [Backups]
+      responses:
+        '200':
+          description: Photo library stats payload
+
+  /api/photos/overview:
+    get:
+      summary: Photo library overview, per-user usage, ML schedule/queue, face export, and folder health
+      description: >
+        Combines Immich PostgreSQL asset/user/library metrics, /etc/cron.d/immich-ml schedule,
+        Redis BullMQ ML job queues, Face-to-XMP export telemetry, and disk free/readability probes.
+      tags: [Backups]
+      responses:
+        '200':
+          description: Comprehensive photos hub overview
+
+  /api/photos/ml/schedule:
+    post:
+      summary: Update Immich Machine Learning daily start/stop schedule
+      tags: [Backups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_time, stop_time]
+              properties:
+                enabled: { type: boolean, default: true }
+                start_time: { type: string, example: "06:05" }
+                stop_time: { type: string, example: "10:00" }
+      responses:
+        '200':
+          description: Updated ML cron schedule
+        '400':
+          description: Invalid HH:MM schedule or identical start/stop times
+
+  /api/photos/ml/action:
+    post:
+      summary: Start or stop the Immich Machine Learning container immediately
+      tags: [Backups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [start, stop] }
+      responses:
+        '200':
+          description: ML container action applied
+        '400':
+          description: Invalid action
+
+  /api/storage/overview:
+    get:
+      summary: Per-folder storage usage, 30-day fill forecast, cleanup suggestions, and SMART health
+      description: >
+        Returns cached per-folder sizes (Movies, TV Shows, Downloads, Photos, Backups, App Data),
+        linear fill forecast computed from recorded disk snapshots, safe cleanup candidates,
+        and physical drive SMART telemetry from homelab-storage-ops.
+      tags: [System]
+      responses:
+        '200':
+          description: Storage analytics overview
+
+  /api/storage/cleanup:
+    post:
+      summary: Execute one safe storage cleanup action
+      tags: [System]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target: { type: string, enum: [torrents_seeded, qbit_logs, docker_prune, old_dumps] }
+      responses:
+        '200':
+          description: Cleanup finished with count and freed bytes
+        '400':
+          description: Unknown cleanup target
+
+  /api/updates:
+    get:
+      summary: Container and Blueprint release updates
+      description: Compares running pinned Docker container tags and Control Hub against cached upstream GitHub releases.
+      tags: [Services]
+      responses:
+        '200':
+          description: "{checked_at, checked_at_str, pending, majors, rows}"
+
+  /api/updates/check:
+    post:
+      summary: Force an upstream GitHub release check
+      description: Refreshes release versions from GitHub if at least 10 minutes have elapsed since the previous check.
+      tags: [Services]
+      responses:
+        '200':
+          description: Updated release comparison with `throttled` flag
+
+  /api/updates/apply:
+    post:
+      summary: Apply one or all safe app updates with backup and automatic rollback
+      description: Invokes /usr/local/sbin/homelab-update in a background job; returns 404 when the blueprint helper is absent or 400 for manual major upgrades.
+      tags: [Services]
+      responses:
+        '202':
+          description: Background update job started
+        '400':
+          description: Manual migration required or invalid target
+        '404':
+          description: Blueprint update helper not installed
+
+  /api/updates/self-update:
+    post:
+      summary: Self-update Control Hub and Blueprint release checkout
+      description: Checks out the release tag and re-applies installer config via homelab-update (hidden in standalone mode).
+      tags: [Services]
+      responses:
+        '202':
+          description: Self-update job started
+
+  /api/updates/policy:
+    post:
+      summary: Toggle automatic patch-only updates
+      description: Saves auto-patch policy (`auto_patch` boolean; majors and minors are never auto-applied).
+      tags: [Services]
+      responses:
+        '200':
+          description: Updated policy state
+
+  /api/updates/job:
+    get:
+      summary: Poll running or last update job status
+      tags: [Services]
+      responses:
+        '200':
+          description: "{running, kind, target, ok, rolled_back, message, results}"
+
+  /api/indexers/health:
+    get:
+      summary: Prowlarr indexer health & diagnostics
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{installed, reachable, total, failing, indexers}"
+
+  /api/indexers/test-all:
+    post:
+      summary: Run Prowlarr connectivity tests across all configured indexers
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{status, results}"
+
+  /api/media/overview:
+    get:
+      summary: Media pipeline overview (Seerr requests, 7-day *Arr calendar, missing items, Jellyfin recent)
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{requests, calendar, library}"
+
+  /api/media/requests/{req_id}/{decision}:
+    post:
+      summary: Approve or decline a pending Seerr request
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{success, id, decision}"
+
+  /api/media/jellyfin/scan:
+    post:
+      summary: Trigger a Jellyfin library scan
+      tags: [Media Ingest]
+      responses:
+        '200':
+          description: "{success, message}"
+
+  /api/troubleshoot:
+    get:
+      summary: Run unified read-only troubleshoot checks across Control Hub subsystems
+      description: Checks telemetry sampler, storage headroom, /data hardlink invariant, Docker services, Prowlarr indexers, backups, network/Tailscale HTTPS, and Sleep Guard schedules with plain-English explanations and fix steps.
+      tags: [Diagnostics]
+      responses:
+        '200':
+          description: "{overall_status, ok_count, warn_count, fail_count, checks, generated_at}"
+        '403':
+          description: Restricted to owner role
+
+  /api/history:
+    get:
+      summary: Query downsampled 24h / 7d / 30d hardware & throughput history
+      tags: [Diagnostics]
+      parameters:
+        - name: range
+          in: query
+          schema: { type: string, enum: [24h, 7d, 30d], default: 24h }
+      responses:
+        '200':
+          description: "{range, raw_samples, points, stats}"
+
+  /api/insights/monthly:
+    get:
+      summary: Monthly 30-day uptime/backup/update/storage report and Sleep Guard power savings estimate
+      tags: [Diagnostics]
+      responses:
+        '200':
+          description: "{monthly_report, power_savings, generated_at}"
+
+  /api/integrations/homeassistant:
+    get:
+      summary: Flat sensor export and REST YAML snippet for Home Assistant
+      tags: [Integrations]
+      responses:
+        '200':
+          description: "{sensors, ups, endpoints, yaml_snippet}"
+
+  /api/integrations/ups:
+    get:
+      summary: Local NUT (`upsc`) battery charge, runtime, and low-battery warning
+      tags: [Integrations]
+      responses:
+        '200':
+          description: "{installed, status, on_battery, battery_charge, battery_runtime_s, low_battery}"
+
+  /api/auth/tokens:
+    get:
+      summary: List scoped API tokens (full-scope owner access required)
+      tags: [Auth]
+      responses:
+        '200':
+          description: "{tokens}"
+        '403':
+          description: Read-only token or family role denied
+    post:
+      summary: Create a scoped bearer token (`read` or `full`)
+      tags: [Auth]
+      responses:
+        '201':
+          description: "{token, record} (plaintext token returned once at creation)"
+
+  /api/auth/tokens/{token_id}:
+    delete:
+      summary: Revoke a scoped API token
+      tags: [Auth]
+      responses:
+        '200':
+          description: "{revoked}"
 
 components:
   securitySchemes:

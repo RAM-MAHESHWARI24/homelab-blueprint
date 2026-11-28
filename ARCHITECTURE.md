@@ -25,8 +25,8 @@ The blueprint is built from the ground up to **auto-detect host hardware and dyn
        ▼                            ▼                            ▼
 ┌──────────────┐             ┌──────────────┐             ┌──────────────┐
 │  GPU Render  │             │   NETWORK    │             │ CONTROL HUB  │
-│ Nodes (DRI)  │             │ NIC Link &   │             │ Real-Time    │
-│ QSV vs Play  │             │ IP Gateway   │             │ HUD Display  │
+│ Nodes (DRI)  │             │ NIC Link &   │             │   5-View     │
+│ QSV vs Play  │             │ IP Gateway   │             │  Operations  │
 └──────────────┘             └──────────────┘             └──────────────┘
 ```
 
@@ -75,9 +75,9 @@ All media ingestion containers (`qbittorrent`, `sonarr`, `radarr`, `bazarr`) sha
 
 ### 3. Automated RTC S3 Sleep & Self-Healing
 To prolong hardware lifespan and minimize electrical draw:
-* System suspends to RAM (S3) at **12:00 AM** (configured via `/etc/cron.d/server-suspend`).
+* System suspends to RAM (S3) at **12:00 AM** (configured via `/etc/cron.d/server-suspend` and `/etc/server-suspend.conf`).
 * System wakes automatically via hardware motherboard RTC alarm at **06:00 AM**.
-* Active backup detection (`immich_backup_gdrive.sh`, `rclone`, `pg_dumpall`) automatically defers sleep until completion.
+* Active condition guards in `apps/control-hub/host/server-suspend.sh` automatically defer sleep when qBittorrent downloads, LAN SMB file streams, Jellyfin playback sessions, photo/media backups (`immich_backup_gdrive.sh`, `media_config_backup.py`, `photo-restore-test`, `rclone`, `pg_dumpall`), or `/run/server-suspend.skip` overrides are active.
 * Post-resume self-healing verifies network connectivity, resets Prowlarr backoff penalties, and triggers Arr library syncs.
 * **Architecture Decision:** See [ADR-0003: ACPI S3 Suspend-to-RAM with RTC Wake](docs/adr/0003-acpi-s3-sleep-guard-power-automation.md).
 

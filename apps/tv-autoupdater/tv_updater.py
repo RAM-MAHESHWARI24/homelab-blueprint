@@ -27,6 +27,7 @@ Two-Tier State-Machine Architecture:
 """
 
 import os
+import re
 import sys
 import time
 import json
@@ -34,6 +35,7 @@ import socket
 import struct
 import shutil
 import hashlib
+import ipaddress
 import logging
 import argparse
 import zipfile
@@ -54,6 +56,13 @@ INSTALLED_DIR = STATE_DIR / "installed_apks"
 LOG_FILE = Path(os.getenv("TV_AUTOUPDATER_LOG", str(STATE_DIR / "tv_updater.log")))
 STATE_FILE = STATE_DIR / "state.json"
 DEVICES_CACHE_FILE = STATE_DIR / "devices_cache.json"
+# What each TV reports about itself (written here), user nicknames, and
+# user-managed TV profiles (all writable by the unprivileged service user).
+DEVICE_INFO_FILE = STATE_DIR / "device_info.json"
+NICKNAMES_FILE = STATE_DIR / "nicknames.json"
+TV_PROFILES_FILE = STATE_DIR / "tv_profiles.json"
+DEVICE_INFO_MAX_AGE_SEC = 6 * 3600
+NICKNAME_MAX_LEN = 40
 INCOMPATIBLE_CACHE_FILE = STATE_DIR / "incompatible_apks.json"
 
 for _d in (CACHE_DIR, INCOMING_DIR, INSTALLED_DIR):
@@ -107,7 +116,21 @@ APK_SIGNATURES = {
 # always allowed: placing a file there is the operator's explicit decision).
 ALLOW_UNPINNED_APPS = False
 
-DHCP_SUBNET_PREFIX = "192.168.1"
+def _detect_default_subnet_prefix() -> str:
+    """Derives the local /24 subnet prefix from the host's outbound LAN IPv4 address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("1.1.1.1", 80))
+            ip = s.getsockname()[0]
+        parts = ip.split(".")
+        if len(parts) == 4 and not ip.startswith("127."):
+            return ".".join(parts[:3])
+    except OSError:
+        pass
+    return "192.168.1"
+
+
+DHCP_SUBNET_PREFIX = _detect_default_subnet_prefix()
 DHCP_SCAN_RANGE = (32, 100)
 
 # Optional user configuration override via config.json
@@ -132,15 +155,33 @@ if CONFIG_FILE.exists():
 
 HEADERS = {"User-Agent": "tv-autoupdater/2.0 (+https://github.com/RAM-MAHESHWARI24/homelab-blueprint)"}
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Configure logging. Skip StreamHandler when stdout is already redirected to LOG_FILE
+# (e.g. cron `>> tv-autoupdater.log 2>&1`), otherwise every line is written twice.
+def _stdout_is_log_file(log_path: Path) -> bool:
+    if os.getenv("TV_AUTOUPDATER_LOG_STDOUT", "1") == "0":
+        return True
+    try:
+        out_stat = os.fstat(sys.stdout.fileno())
+        log_stat = log_path.stat()
+        return (out_stat.st_dev, out_stat.st_ino) == (log_stat.st_dev, log_stat.st_ino)
+    except Exception:
+        return False
+
+
+# A named logger that does not propagate: the Control Hub imports this module for
+# telemetry, and configuring the root logger here would pull the hub's own HTTP
+# access log into tv-autoupdater.log. Echo to stdout only when run as a script.
+log = logging.getLogger("tv_autoupdater")
+log.setLevel(logging.INFO)
+log.propagate = False
+if not log.handlers:
+    _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    _log_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8")]
+    if __name__ == "__main__" and not _stdout_is_log_file(LOG_FILE):
+        _log_handlers.append(logging.StreamHandler(sys.stdout))
+    for _handler in _log_handlers:
+        _handler.setFormatter(_formatter)
+        log.addHandler(_handler)
 
 # -------------------------------------------------------------
 # STATE MANAGEMENT
@@ -187,15 +228,14 @@ def load_state() -> dict:
                     data["upstream_apps"] = {}
                 return data
         except Exception as e:
-            logging.warning(f"Could not load state.json ({e}), using defaults.")
+            log.warning(f"Could not load state.json ({e}), using defaults.")
     return default_state
 
 def save_state(state: dict):
     try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2)
+        _write_json_atomic(STATE_FILE, state)
     except Exception as e:
-        logging.error(f"Failed to save state.json: {e}")
+        log.error(f"Failed to save state.json: {e}")
 
 # -------------------------------------------------------------
 # AUTO-DISCOVERY & NETWORK PROBING
@@ -204,7 +244,7 @@ def save_state(state: dict):
 def load_cached_ips() -> dict:
     if DEVICES_CACHE_FILE.exists():
         try:
-            with open(DEVICES_CACHE_FILE, "r") as f:
+            with open(DEVICES_CACHE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
@@ -212,8 +252,7 @@ def load_cached_ips() -> dict:
 
 def save_cached_ips(cache: dict):
     try:
-        with open(DEVICES_CACHE_FILE, "w") as f:
-            json.dump(cache, f, indent=2)
+        _write_json_atomic(DEVICES_CACHE_FILE, cache)
     except Exception:
         pass
 
@@ -248,9 +287,9 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
     - If missing, scans DHCP subnet range in parallel.
     - Matches hardware model to profile.
     """
-    profiles_to_check = TARGET_PROFILES
+    profiles_to_check = get_target_profiles()
     if target_profile_ids is not None:
-        profiles_to_check = [p for p in TARGET_PROFILES if p["id"] in target_profile_ids]
+        profiles_to_check = [p for p in profiles_to_check if p["id"] in target_profile_ids]
 
     if not profiles_to_check:
         return []
@@ -288,7 +327,7 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
                 if profile["id"] in found_profile_ids:
                     continue
                 if any(m in model.lower() for m in profile["match_models"]):
-                    logging.info(f"Auto-Discovered {profile['name']} at new IP: {ip} (Model: {model})")
+                    log.info(f"Auto-Discovered {profile['name']} at new IP: {ip} (Model: {model})")
                     online_tvs.append({**profile, "ip": ip, "model": model})
                     found_profile_ids.add(profile["id"])
                     cached_ips[profile["id"]] = ip
@@ -300,6 +339,411 @@ def discover_online_tvs(target_profile_ids: list = None) -> list:
 # -------------------------------------------------------------
 # ZERO-PERFORMANCE-LOSS SAFETY GUARDS
 # -------------------------------------------------------------
+
+def _read_json(path: Path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def _write_json_atomic(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def get_target_profiles() -> list:
+    """Returns user-managed TV profiles from STATE_DIR when present, else configured defaults."""
+    if TV_PROFILES_FILE.is_file():
+        data = _read_json(TV_PROFILES_FILE, [])
+        if isinstance(data, list):
+            return data
+    return [dict(p) for p in TARGET_PROFILES]
+
+
+def save_target_profiles(profiles: list) -> None:
+    _write_json_atomic(TV_PROFILES_FILE, profiles)
+
+
+def _valid_ipv4(ip: str) -> str:
+    raw = str(ip or "").strip()
+    addr = ipaddress.IPv4Address(raw)
+    return str(addr)
+
+
+def _valid_port(port) -> int:
+    try:
+        p = int(port or 5555)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("ADB port must be an integer between 1 and 65535.") from exc
+    if not (1 <= p <= 65535):
+        raise ValueError("ADB port must be between 1 and 65535.")
+    return p
+
+
+def _normalize_apps_list(apps) -> list:
+    valid_pkgs = {a["package"] for a in MANAGED_APPS}
+    by_id = {a["id"]: a["package"] for a in MANAGED_APPS}
+    if apps is None:
+        return [a["package"] for a in MANAGED_APPS]
+    if not isinstance(apps, list):
+        raise ValueError("apps must be a list of managed app package IDs.")
+    chosen = []
+    for item in apps:
+        pkg = by_id.get(str(item), str(item))
+        if pkg in valid_pkgs and pkg not in chosen:
+            chosen.append(pkg)
+    return chosen
+
+
+def _slugify_tv_id(name: str, existing_ids: set) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "android_tv"
+    base = base[:36]
+    candidate = base
+    n = 2
+    while candidate in existing_ids:
+        candidate = f"{base}_{n}"
+        n += 1
+    return candidate
+
+
+def scan_lan_adb_devices(port: int = 5555) -> list:
+    """Scans the configured LAN subnet range for open ADB TCP endpoints (fast parallel probe)."""
+    port = _valid_port(port)
+    profiles = get_target_profiles()
+    cached_ips = load_cached_ips()
+    known_by_ip = {}
+    for p in profiles:
+        known_ip = cached_ips.get(p["id"], p.get("default_ip"))
+        if known_ip:
+            known_by_ip[known_ip] = p
+
+    candidates = [f"{DHCP_SUBNET_PREFIX}.{i}" for i in range(DHCP_SCAN_RANGE[0], DHCP_SCAN_RANGE[1] + 1)]
+    for known_ip in known_by_ip:
+        if known_ip not in candidates:
+            candidates.insert(0, known_ip)
+
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        hits = list(executor.map(lambda ip: is_port_open(ip, port, timeout=0.35), candidates))
+
+    results = []
+    for ip, is_open in zip(candidates, hits, strict=False):
+        if not is_open:
+            continue
+        prof = known_by_ip.get(ip)
+        results.append({
+            "ip": ip,
+            "port": port,
+            "already_added": prof is not None,
+            "device_id": prof["id"] if prof else None,
+            "name": prof.get("name") if prof else None,
+        })
+    return results
+
+
+def connect_adb_tv(ip: str, port: int = 5555) -> dict:
+    """Connects to an Android TV via ADB over TCP and reads model & OS metadata."""
+    clean_ip = _valid_ipv4(ip)
+    adb_port = _valid_port(port)
+    target = f"{clean_ip}:{adb_port}"
+
+    if not is_port_open(clean_ip, adb_port, timeout=1.2):
+        return {
+            "ok": False,
+            "connected": False,
+            "needs_auth": False,
+            "ip": clean_ip,
+            "port": adb_port,
+            "message": f"Port {adb_port} on {clean_ip} did not respond. Verify Network/ADB debugging is enabled and the TV is awake.",
+        }
+
+    try:
+        conn = subprocess.run(["adb", "connect", target], capture_output=True, text=True, timeout=6)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "ok": False,
+            "connected": False,
+            "needs_auth": False,
+            "ip": clean_ip,
+            "port": adb_port,
+            "message": f"ADB connect failed: {str(exc)[:180]}",
+        }
+
+    out = f"{conn.stdout or ''} {conn.stderr or ''}".lower()
+    if "failed to authenticate" in out or "unauthorized" in out:
+        return {
+            "ok": False,
+            "connected": False,
+            "needs_auth": True,
+            "ip": clean_ip,
+            "port": adb_port,
+            "message": "Look at your TV screen and choose 'Always allow from this computer', then tap Retry Connection.",
+        }
+
+    # Verify authorization state via `adb devices` + property probe
+    info = probe_device_info(clean_ip)
+    if not info:
+        try:
+            devs = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=4).stdout or ""
+        except Exception:
+            devs = ""
+        if f"{target}\tunauthorized" in devs:
+            return {
+                "ok": False,
+                "connected": False,
+                "needs_auth": True,
+                "ip": clean_ip,
+                "port": adb_port,
+                "message": "Look at your TV screen and choose 'Always allow from this computer', then tap Retry Connection.",
+            }
+        if "connected" not in out:
+            return {
+                "ok": False,
+                "connected": False,
+                "needs_auth": False,
+                "ip": clean_ip,
+                "port": adb_port,
+                "message": f"Could not connect to {target}: {(conn.stderr or conn.stdout or 'no response').strip()[:160]}",
+            }
+
+    suggested = model_label(info) or info.get("device_name") or f"Android TV ({clean_ip.split('.')[-1]})"
+    return {
+        "ok": True,
+        "connected": True,
+        "needs_auth": False,
+        "ip": clean_ip,
+        "port": adb_port,
+        "model": info.get("model"),
+        "manufacturer": info.get("manufacturer"),
+        "device": info.get("device"),
+        "android": info.get("android"),
+        "sdk": info.get("sdk"),
+        "device_name": info.get("device_name"),
+        "suggested_name": suggested[:NICKNAME_MAX_LEN],
+        "apps": [{"id": a["id"], "package": a["package"], "name": a["name"]} for a in MANAGED_APPS],
+        "message": f"Connected to {suggested}" + (f" (Android {info['android']})" if info.get("android") else "") + ".",
+    }
+
+
+def add_tv_profile(name: str, ip: str, port: int = 5555, apps=None, probe: dict = None) -> dict:
+    """Adds a new managed Android TV profile to STATE_DIR/tv_profiles.json."""
+    clean_name = " ".join(str(name or "").split())
+    if not clean_name:
+        raise ValueError("TV name is required.")
+    if len(clean_name) > NICKNAME_MAX_LEN:
+        raise ValueError(f"TV name can have at most {NICKNAME_MAX_LEN} characters.")
+    if any(not ch.isprintable() for ch in clean_name):
+        raise ValueError("TV name cannot contain control characters.")
+    clean_ip = _valid_ipv4(ip)
+    adb_port = _valid_port(port)
+    chosen_apps = _normalize_apps_list(apps)
+
+    profiles = get_target_profiles()
+    existing_ids = {p["id"] for p in profiles}
+    pid = _slugify_tv_id(clean_name, existing_ids)
+
+    probe = probe or {}
+    match_models = []
+    for k in ("model", "device"):
+        v = str(probe.get(k) or "").strip().lower()
+        if v and v not in match_models:
+            match_models.append(v)
+
+    profile = {
+        "id": pid,
+        "name": clean_name,
+        "match_models": match_models,
+        "default_ip": clean_ip,
+        "port": adb_port,
+        "paused": False,
+        "apps": chosen_apps,
+    }
+    profiles.append(profile)
+    save_target_profiles(profiles)
+
+    cached_ips = load_cached_ips()
+    cached_ips[pid] = clean_ip
+    save_cached_ips(cached_ips)
+
+    if any(probe.get(k) for k in ("model", "manufacturer", "android", "device")):
+        dev_info = _read_json(DEVICE_INFO_FILE, {})
+        dev_info[pid] = {
+            "manufacturer": probe.get("manufacturer"),
+            "model": probe.get("model"),
+            "device": probe.get("device"),
+            "android": probe.get("android"),
+            "sdk": probe.get("sdk"),
+            "device_name": probe.get("device_name"),
+            "ip": clean_ip,
+            "last_seen": int(time.time()),
+            "probed_at": int(time.time()),
+        }
+        _write_json_atomic(DEVICE_INFO_FILE, dev_info)
+
+    return profile
+
+
+def update_tv_profile(profile_id: str, name: str = None, ip: str = None, port=None, paused=None, apps=None) -> dict:
+    """Updates an existing TV profile (rename, change IP/port, pause/resume, or app filter)."""
+    profiles = get_target_profiles()
+    idx = next((i for i, p in enumerate(profiles) if p["id"] == profile_id), None)
+    if idx is None:
+        raise KeyError(profile_id)
+    prof = dict(profiles[idx])
+
+    if name is not None:
+        clean_name = " ".join(str(name).split())
+        if not clean_name:
+            raise ValueError("TV name cannot be empty.")
+        if len(clean_name) > NICKNAME_MAX_LEN:
+            raise ValueError(f"TV name can have at most {NICKNAME_MAX_LEN} characters.")
+        if any(not ch.isprintable() for ch in clean_name):
+            raise ValueError("TV name cannot contain control characters.")
+        prof["name"] = clean_name
+        # Clear stale nickname override so the explicit rename shows cleanly
+        names = load_nicknames()
+        if profile_id in names:
+            names.pop(profile_id, None)
+            _write_json_atomic(NICKNAMES_FILE, names)
+
+    if ip is not None:
+        clean_ip = _valid_ipv4(ip)
+        prof["default_ip"] = clean_ip
+        cached_ips = load_cached_ips()
+        cached_ips[profile_id] = clean_ip
+        save_cached_ips(cached_ips)
+
+    if port is not None:
+        prof["port"] = _valid_port(port)
+
+    if paused is not None:
+        prof["paused"] = bool(paused)
+
+    if apps is not None:
+        prof["apps"] = _normalize_apps_list(apps)
+
+    profiles[idx] = prof
+    save_target_profiles(profiles)
+    return prof
+
+
+def remove_tv_profile(profile_id: str) -> None:
+    """Removes a TV profile and its cached IP/nickname."""
+    profiles = get_target_profiles()
+    kept = [p for p in profiles if p["id"] != profile_id]
+    if len(kept) == len(profiles):
+        raise KeyError(profile_id)
+    save_target_profiles(kept)
+
+    cached_ips = load_cached_ips()
+    if profile_id in cached_ips:
+        cached_ips.pop(profile_id, None)
+        save_cached_ips(cached_ips)
+    names = load_nicknames()
+    if profile_id in names:
+        names.pop(profile_id, None)
+        _write_json_atomic(NICKNAMES_FILE, names)
+
+
+def test_tv_connection(profile_id: str) -> dict:
+    """Tests live ADB connectivity for an existing TV profile and updates its last_error."""
+    profiles = get_target_profiles()
+    prof = next((p for p in profiles if p["id"] == profile_id), None)
+    if prof is None:
+        raise KeyError(profile_id)
+    cached_ips = load_cached_ips()
+    ip = cached_ips.get(profile_id, prof["default_ip"])
+    port = prof.get("port", 5555)
+
+    res = connect_adb_tv(ip, port=port)
+    state = load_state()
+    dev_state = state.setdefault("devices", {}).setdefault(profile_id, {})
+    if res.get("ok"):
+        dev_state["last_error"] = None
+        cached_ips[profile_id] = res["ip"]
+        save_cached_ips(cached_ips)
+        if any(res.get(k) for k in ("model", "manufacturer", "android", "device")):
+            dev_info = _read_json(DEVICE_INFO_FILE, {})
+            entry = dev_info.setdefault(profile_id, {})
+            for k in ("manufacturer", "model", "device", "android", "sdk", "device_name"):
+                if res.get(k):
+                    entry[k] = res[k]
+            entry["ip"] = res["ip"]
+            entry["last_seen"] = int(time.time())
+            entry["probed_at"] = int(time.time())
+            _write_json_atomic(DEVICE_INFO_FILE, dev_info)
+    else:
+        dev_state["last_error"] = res.get("message")
+    save_state(state)
+    return res
+
+
+def load_nicknames() -> dict:
+    return _read_json(NICKNAMES_FILE, {})
+
+
+def set_nickname(profile_id: str, nickname: str):
+    """Saves the name a user gave a TV (empty removes it). Returns the stored name or None."""
+    if profile_id not in {p["id"] for p in get_target_profiles()}:
+        raise KeyError(profile_id)
+    name = " ".join(str(nickname or "").split())
+    if len(name) > NICKNAME_MAX_LEN:
+        raise ValueError(f"A name can have at most {NICKNAME_MAX_LEN} characters.")
+    if any(not ch.isprintable() for ch in name):
+        raise ValueError("A name cannot contain control characters.")
+    names = load_nicknames()
+    if name:
+        names[profile_id] = name
+    else:
+        names.pop(profile_id, None)
+    _write_json_atomic(NICKNAMES_FILE, names)
+    return name or None
+
+
+_INFO_PROPS = (
+    ("manufacturer", "ro.product.manufacturer"),
+    ("model", "ro.product.model"),
+    ("device", "ro.product.device"),
+    ("android", "ro.build.version.release"),
+    ("sdk", "ro.build.version.sdk"),
+)
+
+
+def probe_device_info(device_ip: str) -> dict:
+    """Asks the TV for its manufacturer, model, codename, Android version and device name."""
+    script = "; ".join(f"getprop {prop}" for _, prop in _INFO_PROPS) + "; settings get global device_name"
+    try:
+        # `adb -s ip:port` only works on an existing connection (none after a reboot).
+        subprocess.run(["adb", "connect", f"{device_ip}:5555"], capture_output=True, text=True, timeout=5)
+        res = adb_cmd(device_ip, ["shell", script], timeout=6)
+    except Exception:
+        return {}
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    if res.returncode != 0 or len(lines) < len(_INFO_PROPS):
+        return {}
+    info = {key: lines[i] for i, (key, _) in enumerate(_INFO_PROPS) if lines[i]}
+    if len(lines) > len(_INFO_PROPS) and lines[len(_INFO_PROPS)] not in ("", "null"):
+        info["device_name"] = lines[len(_INFO_PROPS)]
+    return info if info.get("model") else {}
+
+
+def model_label(info: dict):
+    """'Xiaomi MIBOX4' from what the TV reported, or None before it was ever seen."""
+    model = (info or {}).get("model")
+    if not model:
+        return None
+    maker = (info.get("manufacturer") or "").strip()
+    if maker and not model.lower().startswith(maker.lower()):
+        return f"{maker.capitalize() if maker.islower() else maker} {model}"
+    return model
+
 
 def adb_cmd(device_ip: str, args: list, timeout: int = 60) -> subprocess.CompletedProcess:
     target = f"{device_ip}:5555"
@@ -382,7 +826,7 @@ def get_apk_details(apk_path: Path) -> dict:
                 break
         return info
     except Exception as e:
-        logging.warning(f"Error inspecting APK {apk_path.name} via aapt: {e}")
+        log.warning(f"Error inspecting APK {apk_path.name} via aapt: {e}")
         return {}
 
 def get_installed_version_code(device_ip: str, package_name: str) -> int:
@@ -522,7 +966,7 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
     manual = INCOMING_DIR in apk_path.parents
     sig_ok, sig_reason = verify_apk_signature(apk_path, package_name or get_apk_details(apk_path).get("package", ""), manual=manual)
     if not sig_ok:
-        logging.error(f"Refusing to install {apk_path.name} on {device_name}: {sig_reason}")
+        log.error(f"Refusing to install {apk_path.name} on {device_name}: {sig_reason}")
         return False
     if force:
         fg_pkg = get_foreground_package(device_ip)
@@ -532,17 +976,17 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
         safe, reason = is_safe_to_install(device_ip, device_name, package_name)
 
     if not safe:
-        logging.info(f"Skipping installation of {apk_path.name} on {device_name}: {reason}")
+        log.info(f"Skipping installation of {apk_path.name} on {device_name}: {reason}")
         return False
 
-    logging.info(f"Installing {apk_path.name} on {device_name} ({reason})...")
+    log.info(f"Installing {apk_path.name} on {device_name} ({reason})...")
     res = adb_cmd(device_ip, ["install", "-r", str(apk_path)], timeout=120)
     out = (res.stdout.strip() + " " + res.stderr.strip()).strip()
     if "Success" in res.stdout:
-        logging.info(f"Successfully installed {apk_path.name} on {device_name}!")
+        log.info(f"Successfully installed {apk_path.name} on {device_name}!")
         return True
     elif "INSTALL_FAILED_UPDATE_INCOMPATIBLE" in out:
-        logging.warning(
+        log.warning(
             f"Signature mismatch on {device_name} for {apk_path.name}: "
             f"Package signatures do not match previously installed version (different developer signing key). "
             f"Android OS blocks in-place upgrades across differing certificates."
@@ -550,22 +994,22 @@ def silent_install(device_ip: str, device_name: str, apk_path: Path, package_nam
         mark_incompatible(apk_path.name, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")
         return False
     else:
-        logging.error(f"Failed to install {apk_path.name} on {device_name}: {out}")
+        log.error(f"Failed to install {apk_path.name} on {device_name}: {out}")
         return False
 
 def download_file(url: str, dest_path: Path) -> bool:
     temp_path = dest_path.with_suffix(".tmp")
     try:
-        logging.info(f"Downloading from {url}...")
+        log.info(f"Downloading from {url}...")
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=60) as resp, open(temp_path, "wb") as out_f:
             while chunk := resp.read(65536):
                 out_f.write(chunk)
         temp_path.replace(dest_path)
-        logging.info(f"Downloaded: {dest_path.name} ({dest_path.stat().st_size // 1024} KB)")
+        log.info(f"Downloaded: {dest_path.name} ({dest_path.stat().st_size // 1024} KB)")
         return True
     except Exception as e:
-        logging.error(f"Download failed for {url}: {e}")
+        log.error(f"Download failed for {url}: {e}")
         if temp_path.exists():
             temp_path.unlink()
         return False
@@ -578,9 +1022,9 @@ def _verified_download(cached_apk: Path, package: str) -> bool:
     """Discards a downloaded APK whose signing certificate does not match the pin."""
     ok, reason = verify_apk_signature(cached_apk, package)
     if ok:
-        logging.info(f"{cached_apk.name}: {reason}")
+        log.info(f"{cached_apk.name}: {reason}")
         return True
-    logging.error(f"{cached_apk.name}: {reason}; discarding download")
+    log.error(f"{cached_apk.name}: {reason}; discarding download")
     try:
         cached_apk.unlink()
     except OSError:
@@ -596,7 +1040,7 @@ def fetch_upstream_smarttube() -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
-        logging.warning(f"Could not check SmartTube GitHub API: {e}")
+        log.warning(f"Could not check SmartTube GitHub API: {e}")
         return {}
 
     tag_name = data.get("tag_name", "").strip()
@@ -638,7 +1082,7 @@ def fetch_upstream_cloudstream() -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             releases = json.loads(resp.read().decode())
     except Exception as e:
-        logging.warning(f"Could not check CloudStream GitHub API: {e}")
+        log.warning(f"Could not check CloudStream GitHub API: {e}")
         return {}
 
     prerelease = next((r for r in releases if r.get("prerelease")), None)
@@ -685,7 +1129,7 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
         # No sync needed
         return False
 
-    logging.info("Initiating Daily Upstream Sync (GitHub release APIs; signing keys pinned)...")
+    log.info("Initiating Daily Upstream Sync (GitHub release APIs; signing keys pinned)...")
     updated = False
 
     st_meta = fetch_upstream_smarttube()
@@ -700,9 +1144,9 @@ def sync_upstream_if_needed(state: dict, force: bool = False) -> bool:
 
     state["last_upstream_check"] = now
     save_state(state)
-    logging.info("Daily Upstream Sync complete. Current upstream catalog:")
+    log.info("Daily Upstream Sync complete. Current upstream catalog:")
     for pkg, meta in state["upstream_apps"].items():
-        logging.info(f"  • {pkg}: vCode {meta.get('version_code')} ({meta.get('version_name')}) -> {meta.get('apk_filename')}")
+        log.info(f"  • {pkg}: vCode {meta.get('version_code')} ({meta.get('version_name')}) -> {meta.get('apk_filename')}")
 
     return updated
 
@@ -722,18 +1166,23 @@ def evaluate_pending_work(state: dict, force_reinstall: bool = False, target_pro
     upstream_apps = state.get("upstream_apps", {})
     pending_devices = {}
 
-    profiles_to_check = TARGET_PROFILES
+    profiles_to_check = [p for p in get_target_profiles() if not p.get("paused")]
     if target_profile_id:
-        profiles_to_check = [p for p in TARGET_PROFILES if p["id"] == target_profile_id]
+        profiles_to_check = [p for p in get_target_profiles() if p["id"] == target_profile_id]
 
     for profile in profiles_to_check:
+        if profile.get("paused"):
+            continue
         pid = profile["id"]
+        allowed_pkgs = set(profile.get("apps") or [a["package"] for a in MANAGED_APPS])
         dev_installed = state.get("devices", {}).get(pid, {}).get("installed", {})
         device_pending = []
 
         # Check each managed app
         for app_def in MANAGED_APPS:
             pkg = app_def["package"]
+            if pkg not in allowed_pkgs:
+                continue
             if target_pkg and pkg != target_pkg and app_def["id"] != target_pkg:
                 continue
 
@@ -778,14 +1227,14 @@ def process_manual_incoming(online_tvs: list):
     if not apk_files or not online_tvs:
         return
 
-    logging.info(f"Processing manual drops: {[f.name for f in apk_files]}")
+    log.info(f"Processing manual drops: {[f.name for f in apk_files]}")
     for apk_path in apk_files:
         info = get_apk_details(apk_path)
         pkg = info.get("package")
         code = info.get("version_code", -1)
 
         if not pkg:
-            logging.warning(f"Could not read package name from {apk_path.name}; skipping.")
+            log.warning(f"Could not read package name from {apk_path.name}; skipping.")
             continue
 
         all_done = True
@@ -801,9 +1250,9 @@ def process_manual_incoming(online_tvs: list):
             archive_name = f"{time.strftime('%Y%m%d_%H%M%S')}_{apk_path.name}"
             try:
                 apk_path.rename(INSTALLED_DIR / archive_name)
-                logging.info(f"Moved {apk_path.name} -> installed_apks/{archive_name}")
+                log.info(f"Moved {apk_path.name} -> installed_apks/{archive_name}")
             except Exception as e:
-                logging.warning(f"Failed to archive {apk_path.name}: {e}")
+                log.warning(f"Failed to archive {apk_path.name}: {e}")
 
 def run_opportunistic_deployment(
     state: dict,
@@ -830,23 +1279,24 @@ def run_opportunistic_deployment(
         remaining_sec = max(0, UPSTREAM_CHECK_INTERVAL_SEC - elapsed)
         rem_hours = int(remaining_sec // 3600)
         rem_mins = int((remaining_sec % 3600) // 60)
-        logging.info(
-            f"All target TVs (Mi Box 4, Mi TV 4A, Acer TV) are completely up to date. "
+        target_names = ", ".join(p.get("name", p.get("id", "TV")) for p in get_target_profiles()) or "configured"
+        log.info(
+            f"All target TVs ({target_names}) are completely up to date. "
             f"Zero pending tasks. Quiescent: stopping polling. Next daily upstream sync in {rem_hours}h {rem_mins}m."
         )
         return
 
     pending_names = [pending_devices[pid]["profile"]["name"] for pid in pending_devices]
-    logging.info(f"Pending tasks detected for: {', '.join(pending_names)} (force_install={force_install})")
+    log.info(f"Pending tasks detected for: {', '.join(pending_names)} (force_install={force_install})")
 
     # Step 3: Probe ONLY the pending devices (leaving already-updated TVs untouched)
     online_tvs = discover_online_tvs(target_profile_ids=list(pending_devices.keys()))
 
     if not online_tvs:
-        logging.info(f"Pending TV(s) ({', '.join(pending_names)}) are currently offline/sleeping. Will retry on next 15-min interval.")
+        log.info(f"Pending TV(s) ({', '.join(pending_names)}) are currently offline/sleeping. Will retry on next 15-min interval.")
         return
 
-    logging.info(f"Discovered Online Pending TVs: {[{d['name']: d['ip']} for d in online_tvs]}")
+    log.info(f"Discovered Online Pending TVs: {[{d['name']: d['ip']} for d in online_tvs]}")
 
     # Process any manual APK drops first
     process_manual_incoming(online_tvs)
@@ -877,21 +1327,26 @@ def run_opportunistic_deployment(
 
             curr_code = dev_installed.get(pkg, -1)
             if not force_reinstall and curr_code >= target_code:
-                logging.info(f"{app_name} is already up to date on {name} (vCode {curr_code}).")
+                log.info(f"{app_name} is already up to date on {name} (vCode {curr_code}).")
                 continue
 
             if not apk_path.exists():
-                logging.warning(f"Target APK {apk_filename} missing from cache; skipping.")
+                log.warning(f"Target APK {apk_filename} missing from cache; skipping.")
                 continue
 
-            logging.info(f"{action} requested for {app_name} on {name}: current vCode {curr_code} -> target vCode {target_code} (force={force_install})")
+            log.info(f"{action} requested for {app_name} on {name}: current vCode {curr_code} -> target vCode {target_code} (force={force_install})")
             success = silent_install(ip, name, apk_path, pkg, force=force_install)
+            dev_rec = state.setdefault("devices", {}).setdefault(pid, {})
             if success:
                 new_code = get_installed_version_code(ip, pkg)
                 if new_code >= target_code or force_reinstall:
                     dev_installed[pkg] = new_code if new_code > 0 else target_code
+                    dev_rec["last_update"] = int(time.time())
+                    dev_rec["last_error"] = None
                     save_state(state)
-                    logging.info(f"Successfully deployed {app_name} to {name} ({action}: vCode {dev_installed[pkg]})!")
+                    log.info(f"Successfully deployed {app_name} to {name} ({action}: vCode {dev_installed[pkg]})!")
+            else:
+                dev_rec["last_error"] = f"{app_name} update deferred or failed on {name}"
 
     save_state(state)
 
@@ -904,7 +1359,7 @@ def deploy_single_app(device_id: str, package_or_id: str, force: bool = False) -
     cached_ips = load_cached_ips()
 
     # Find profile
-    profile = next((p for p in TARGET_PROFILES if p["id"] == device_id or p["name"].lower() == device_id.lower()), None)
+    profile = next((p for p in get_target_profiles() if p["id"] == device_id or p["name"].lower() == device_id.lower()), None)
     if not profile:
         return False, f"Device profile '{device_id}' not found."
 
@@ -939,16 +1394,22 @@ def deploy_single_app(device_id: str, package_or_id: str, force: bool = False) -
         if not apk_path.exists():
             return False, f"Target APK '{apk_filename}' is missing from cache. Run upstream sync first."
 
-    logging.info(f"Direct deployment: {apk_path.name} on {name} ({ip}), force={force}...")
+    log.info(f"Direct deployment: {apk_path.name} on {name} ({ip}), force={force}...")
     success = silent_install(ip, name, apk_path, pkg, force=force)
+    dev_rec = state.setdefault("devices", {}).setdefault(pid, {})
     if success:
         live_code = get_installed_version_code(ip, pkg)
         if live_code > 0:
-            state.setdefault("devices", {}).setdefault(pid, {}).setdefault("installed", {})[pkg] = live_code
-            save_state(state)
+            dev_rec.setdefault("installed", {})[pkg] = live_code
+        dev_rec["last_update"] = int(time.time())
+        dev_rec["last_error"] = None
+        save_state(state)
         return True, f"Successfully deployed {apk_path.name} to {name}!"
     else:
-        return False, f"Installation of {apk_path.name} on {name} failed or was postponed (App is open in foreground; use Force Mode to bypass)."
+        msg = f"Installation of {apk_path.name} on {name} failed or was postponed (App is open in foreground; use Force Mode to bypass)."
+        dev_rec["last_error"] = msg
+        save_state(state)
+        return False, msg
 
 def get_cluster_telemetry(fast_probe: bool = True) -> dict:
     """
@@ -959,26 +1420,43 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
     cached_ips = load_cached_ips()
     upstream_apps = state.get("upstream_apps", {})
     last_upstream = state.get("last_upstream_check", 0)
-    last_upstream_str = time.strftime('%Y-%m-%d %I:%M %p IST', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
+    last_upstream_str = time.strftime('%Y-%m-%d %H:%M %Z', time.localtime(last_upstream)) if last_upstream > 0 else "Never"
 
     devices_data = []
     total_online = 0
     all_up_to_date = True
     pending_updates_count = 0
+    device_info = _read_json(DEVICE_INFO_FILE, {})
+    info_changed = False
+    nicknames = load_nicknames()
+    now = time.time()
 
-    for profile in TARGET_PROFILES:
+    profiles = get_target_profiles()
+    for profile in profiles:
         pid = profile["id"]
         pname = profile["name"]
         ip = cached_ips.get(pid, profile["default_ip"])
+        is_paused = bool(profile.get("paused", False))
+        allowed_pkgs = set(profile.get("apps") or [a["package"] for a in MANAGED_APPS])
         is_online = is_port_open(ip, profile["port"], timeout=0.35)
         
-        dev_installed = state.setdefault("devices", {}).setdefault(pid, {}).setdefault("installed", {})
+        dev_rec = state.setdefault("devices", {}).setdefault(pid, {})
+        dev_installed = dev_rec.setdefault("installed", {})
         fg_pkg = ""
-        fg_app_name = "Home Screen / Launcher"
+        fg_app_name = "Home Screen / Launcher" if is_online else None
         media_playing = False
 
+        info = device_info.setdefault(pid, {})
         if is_online:
             total_online += 1
+            if now - info.get("last_seen", 0) >= 60 or info.get("ip") != ip:
+                info.update(ip=ip, last_seen=int(now))
+                info_changed = True
+            if fast_probe and (not info.get("model") or now - info.get("probed_at", 0) >= DEVICE_INFO_MAX_AGE_SEC):
+                probed = probe_device_info(ip)
+                if probed:
+                    info.update(probed, probed_at=int(now))
+                    info_changed = True
             if fast_probe:
                 try:
                     fg_pkg = get_foreground_package(ip)
@@ -1013,6 +1491,8 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         app_list = []
         for app_def in MANAGED_APPS:
             pkg = app_def["package"]
+            if pkg not in allowed_pkgs:
+                continue
             aname = app_def["name"]
             inst_code = dev_installed.get(pkg, -1)
             up_info = upstream_apps.get(pkg, {})
@@ -1041,6 +1521,9 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
             else:
                 status_code = "UP_TO_DATE"
                 status_text = f"Up to date (vCode {inst_code})"
+            if not is_online and inst_code > 0:
+                # Versions come from the last time the TV was reachable.
+                status_text += " when last seen"
 
             app_list.append({
                 "package": pkg,
@@ -1057,13 +1540,33 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
                 "is_foreground": (fg_pkg == pkg)
             })
 
+        label = model_label(info)
+        nickname = nicknames.get(pid)
+        last_seen = info.get("last_seen")
         devices_data.append({
             "id": pid,
-            "name": pname,
+            "name": nickname or label or pname,
+            "nickname": nickname,
+            "profile_name": pname,
             "ip": ip,
             "port": profile["port"],
-            "model": profile.get("match_models", ["android"])[0].upper(),
+            "model": info.get("model"),
+            "model_label": label,
+            "details": {
+                "manufacturer": info.get("manufacturer"),
+                "model": info.get("model"),
+                "codename": info.get("device"),
+                "android": info.get("android"),
+                "sdk": info.get("sdk"),
+                "device_name": info.get("device_name"),
+                "last_seen": time.strftime("%Y-%m-%d %H:%M", time.localtime(last_seen)) if last_seen else None,
+            },
             "is_online": is_online,
+            "paused": is_paused,
+            "apps_filter": sorted(allowed_pkgs),
+            "last_update": dev_rec.get("last_update"),
+            "last_update_str": time.strftime("%Y-%m-%d %H:%M", time.localtime(dev_rec["last_update"])) if dev_rec.get("last_update") else None,
+            "last_error": dev_rec.get("last_error"),
             "foreground_pkg": fg_pkg,
             "foreground_app_name": fg_app_name,
             "is_media_playing": media_playing,
@@ -1071,6 +1574,11 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         })
 
     save_state(state)
+    if info_changed:
+        try:
+            _write_json_atomic(DEVICE_INFO_FILE, device_info)
+        except OSError as e:
+            log.warning(f"Could not save {DEVICE_INFO_FILE}: {e}")
 
     incoming_files = [f.name for f in INCOMING_DIR.glob("*.apk")]
     if incoming_files:
@@ -1080,14 +1588,15 @@ def get_cluster_telemetry(fast_probe: bool = True) -> dict:
         "status": "synced" if all_up_to_date else ("pending" if total_online > 0 else "offline"),
         "all_up_to_date": all_up_to_date,
         "pending_updates_count": pending_updates_count,
-        "total_devices": len(TARGET_PROFILES),
+        "total_devices": len(profiles),
         "online_devices": total_online,
         "last_upstream_check": last_upstream,
         "last_upstream_check_str": last_upstream_str,
         "devices": devices_data,
+        "managed_apps": [{"id": a["id"], "package": a["package"], "name": a["name"]} for a in MANAGED_APPS],
         "upstream_apps": upstream_apps,
         "incoming_apks": incoming_files,
-        "schedule": "Every 15 min (06:00 - 23:59 IST)"
+        "schedule": "Every 15 min (06:00 - 23:59)"
     }
 
 # -------------------------------------------------------------

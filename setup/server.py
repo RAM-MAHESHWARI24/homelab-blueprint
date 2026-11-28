@@ -126,7 +126,7 @@ class SetupApiHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
 
         if path == "/api/health":
-            self.send_json({"status": "healthy", "service": "Homelab Setup Wizard", "version": "2.1.1"})
+            self.send_json({"status": "healthy", "service": "Homelab Setup Wizard", "version": "2.2.0"})
             return
 
         if path.startswith("/api/"):
@@ -335,9 +335,10 @@ def run_headless(config_path: str, dry_run: bool = False) -> int:
         creds = result.get("credentials", {})
         safe_print("\nDeployment completed successfully.")
         safe_print(f"  Control Hub: {result.get('dashboard_url')}")
+        safe_print("  Sign in with the master password chosen in setup (change it in the dashboard under Account,")
+        safe_print("  or with: sudo ./setup.sh password). Each browser signs in once.")
         if creds.get("control_hub_token"):
-            safe_print(f"  Control Hub token: {creds['control_hub_token']}")
-            safe_print("  (also stored in /etc/homelab/control-hub.token; show again with ./setup.sh token)")
+            safe_print(f"  API token for scripts: {creds['control_hub_token']}  (./setup.sh token)")
         return 0
 
     safe_print("\nDeployment encountered errors:")

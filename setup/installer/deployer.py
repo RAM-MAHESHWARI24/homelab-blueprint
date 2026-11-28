@@ -28,6 +28,9 @@ from core.config_core import (
     ETC_DIR,
     STATE_DIR,
     CONTROL_HUB_TOKEN_FILE,
+    PASSWORD_FILE,
+    read_password_hash,
+    set_password,
     SERVICE_USER,
     module_appdata_dir,
     is_linux_host,
@@ -43,6 +46,7 @@ from .host import (
     run_command_input,
     ensure_system_user,
     install_file,
+    SYSTEMD_DIR,
     install_systemd_unit,
     install_cron,
     install_sudoers,
@@ -51,7 +55,7 @@ from .host import (
 )
 from .manifest import InstallManifest
 
-BLUEPRINT_VERSION = "2.1.1"
+BLUEPRINT_VERSION = "2.2.0"
 
 # Accepted module ids and legacy aliases coming from older configs / the UI.
 MODULE_ALIASES = {
@@ -142,6 +146,10 @@ class Deployment:
             "MEMORIES_DIR": str(self.config.get("hdd_memories", "/mnt/hdd/Memories")),
             "HOST_USER": str(self.config.get("host_user") or SERVICE_USER),
             "GDRIVE_REMOTE": str(self.config.get("gdrive_remote") or ""),
+            "KEEP_LOCAL_DUMPS": str(int(self.config.get("photo_backup_keep_local", 3))),
+            "KEEP_DRIVE_DUMPS": str(int(self.config.get("photo_backup_keep_remote", 14))),
+            "KEEP_DRIVE_MONTHLY": str(int(self.config.get("photo_backup_keep_monthly", 12))),
+            "MEDIA_APPDATA_DIR": str(self.config.get("config_dir") or module_appdata_dir("mediaserver")),
         }
 
     # ---------------------------------------------------------------- step 1
@@ -333,9 +341,15 @@ class Deployment:
             self.fail("media", f"wire_arr.py {subcommand} failed: {res['stderr'][-400:] or 'see log'}")
         return res.ok
 
+    def _pins_override_for(self, stack_name: str) -> List[str]:
+        """Preserves app version overrides written by homelab-update across setup re-runs."""
+        pins_file = self.etc_dir / f"{stack_name}.pins.yml"
+        return [str(pins_file)] if pins_file.is_file() else []
+
     def module_media(self) -> None:
         module_dir = self.root / "apps" / "mediaserver"
         extra_files = ["docker-compose.dns.yml"] if self.config.get("dns_override") else []
+        extra_files.extend(self._pins_override_for(module_dir.name))
 
         if self.dry_run:
             self.log("Would seed qBittorrent.conf with the chosen password, start the media stack and wire "
@@ -369,6 +383,11 @@ class Deployment:
         if self._wire_script("wire", wire_args):
             self.log("Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.")
             self.log("No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).")
+        if self.linux:
+            autoimport_cron = module_dir / "host" / "cron" / "mediaserver-autoimport"
+            if autoimport_cron.exists():
+                install_cron(autoimport_cron, "mediaserver-autoimport", self.manifest, variables=self.template_vars())
+                self.log("Installed Radarr/Sonarr title-verified auto-import cron job.")
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
 
@@ -408,6 +427,7 @@ class Deployment:
                 write_private_file(path, override, self.manifest, mode=0o600)
                 self.log(f"Photo images pinned by configuration ({path}).")
             extra.append(str(path))
+        extra.extend(self._pins_override_for(module_dir.name))
         self._compose("photos", module_dir, self.etc_dir / "noodle-gallery.env", extra)
 
     def module_ml_schedule(self) -> None:
@@ -444,7 +464,16 @@ class Deployment:
             self.fail("photo_backup", "no rclone remote configured (gdrive_remote); run `rclone config` first and re-run with the remote name")
             return
         if not shutil.which("rclone"):
-            self.warn("rclone is not installed; the nightly photo backup will fail until it is (https://rclone.org/install/).")
+            self.fail("photo_backup", "rclone is not installed; install it (https://rclone.org/install/), run `sudo rclone config`, then re-run setup")
+            return
+        # A typo in the remote name or an expired login would otherwise install cleanly
+        # and fail every night. Check it now and refuse the module with rclone's own error.
+        check = run_command(["rclone", "lsd", remote], timeout=120)
+        if not check.ok:
+            detail = (check["stderr"] or check["stdout"] or "no output").strip().splitlines()[-1]
+            self.fail("photo_backup", f"rclone remote '{remote}' did not answer: {detail}. Fix it with `sudo rclone config` and re-run setup.")
+            return
+        self.log(f"rclone remote '{remote}' answers.")
         backup_dir = self.state_dir / "photo-backups"
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
@@ -456,6 +485,51 @@ class Deployment:
         install_cron(cron, "immich-backup", self.manifest, variables=self.template_vars())
         self.services_launched.append("photo_backup")
         self.log(f"Nightly photo backup installed (22:00, rclone remote '{remote}').")
+        self._install_restore_test()
+        helper = self.root / "system" / "helpers" / "homelab-backup-remote"
+        if helper.exists():
+            # "Change remote" in the Control Hub (list/test/set through one sudoers entry).
+            install_helper_script(helper, self.manifest)
+        if "media" in self.modules and self.config.get("media_backup", True):
+            self._install_media_backup(remote)
+
+    def _install_restore_test(self) -> None:
+        """Monthly restore test of the newest remote dump (systemd timer, outside the hub's cgroup)."""
+        base = self.root / "apps" / "immich-face-xmp-exporter"
+        script = base / "scripts" / "photo_restore_test.sh"
+        service = base / "host" / "systemd" / "photo-restore-test.service"
+        timer = base / "host" / "systemd" / "photo-restore-test.timer"
+        if not (script.exists() and service.exists() and timer.exists()):
+            self.warn("restore test files are missing; skipped")
+            return
+        install_helper_script(script, self.manifest, name="photo_restore_test.sh")
+        # The service is started by the timer (or "Run restore test now"); it is not enabled itself.
+        install_file(service, SYSTEMD_DIR / "photo-restore-test.service", self.manifest, mode=0o644)
+        self.manifest.add_unit("photo-restore-test.service")
+        res = install_systemd_unit(timer, "photo-restore-test.timer", self.manifest, variables=self.template_vars())
+        if res.ok:
+            self.log("Monthly photo backup restore test scheduled (first Sunday, 11:00).")
+        else:
+            self.warn(f"could not enable photo-restore-test.timer: {res['stderr']}")
+
+    def _install_media_backup(self, remote: str) -> None:
+        """The media apps' settings go to the same remote (Media_Backup/) at 21:30."""
+        cron = self.root / "apps" / "mediaserver" / "host" / "cron" / "media-backup"
+        script = self.root / "apps" / "mediaserver" / "scripts" / "media_config_backup.py"
+        if not cron.exists() or not script.exists():
+            self.warn("media settings backup files are missing; skipped")
+            return
+        backup_dir = self.state_dir / "media-backups"
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(backup_dir, 0o755)
+            self.manifest.add_dir(backup_dir)
+        except OSError as e:
+            self.fail("photo_backup", f"could not create {backup_dir}: {e}")
+            return
+        install_cron(cron, "media-backup", self.manifest, variables=self.template_vars())
+        self.services_launched.append("media_backup")
+        self.log(f"Nightly media settings backup installed (21:30, to '{remote}Media_Backup').")
 
     def module_samba(self) -> None:
         """Optional: LAN shares for the media and photo folders, included from the distro smb.conf."""
@@ -533,6 +607,30 @@ class Deployment:
         self.services_launched.append("tailscale")
         self.log("IP forwarding enabled for Tailscale subnet routing.")
 
+    def _set_dashboard_password(self) -> None:
+        """
+        People sign in to the dashboard with a password: control_hub_password when given,
+        otherwise the master password (media_admin_pass, which defaults to the qBittorrent
+        password). A password already set (perhaps changed in the dashboard) is kept
+        unless the profile names control_hub_password explicitly.
+        """
+        explicit = str(self.config.get("control_hub_password") or "")
+        if read_password_hash() and not explicit:
+            self.log("Dashboard password already set; kept.")
+            return
+        password = explicit or str(self.config.get("media_admin_pass") or self.config.get("qbittorrent_pass") or "")
+        try:
+            set_password(password, owner=SERVICE_USER)
+        except ValueError as exc:
+            self.warn(f"Dashboard password not set ({exc}); set one with `sudo ./setup.sh password`.")
+            return
+        except OSError as exc:
+            self.fail("control_hub", f"could not write {PASSWORD_FILE}: {exc}")
+            return
+        self.manifest.add_file(PASSWORD_FILE)
+        source = "control_hub_password" if explicit else "the master password"
+        self.log(f"Dashboard password set from {source}; change it in the dashboard (Account) or with `sudo ./setup.sh password`.")
+
     def module_control_hub(self) -> None:
         ch_dir = self.root / "apps" / "control-hub"
         unit_src = self.root / "system" / "systemd" / "control-hub.service"
@@ -562,11 +660,19 @@ class Deployment:
             self.fail("control_hub", f"pip install failed: {res['stderr']}")
             return
 
-        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         if not res.ok:
             self.fail("control_hub", f"could not create service user: {res['stderr']}")
             return
         run_command(["chown", "-R", f"{SERVICE_USER}:{SERVICE_USER}", str(ch_dir / "venv")], timeout=120)
+        hub_state_dir = self.state_dir / "control-hub"
+        try:
+            hub_state_dir.mkdir(parents=True, exist_ok=True)
+            run_command(["chown", f"{SERVICE_USER}:{SERVICE_USER}", str(hub_state_dir)], timeout=30)
+            os.chmod(hub_state_dir, 0o750)
+            self.manifest.add_dir(hub_state_dir)
+        except OSError as exc:
+            self.warn(f"could not prepare {hub_state_dir}: {exc}")
 
         # The unit runs as `homelab` with WorkingDirectory inside the checkout. A clone
         # under a 0750 home directory fails with status=200/CHDIR; say so up front.
@@ -583,6 +689,7 @@ class Deployment:
             self.fail("control_hub", "no Control Hub token was generated")
             return
         write_private_file(CONTROL_HUB_TOKEN_FILE, token + "\n", self.manifest, mode=0o640, owner_group=SERVICE_USER)
+        self._set_dashboard_password()
         # The daemon reads /etc/homelab/control-hub.env; make it group-readable for the service user.
         env_file = self.etc_dir / "control-hub.env"
         if env_file.exists():
@@ -599,6 +706,15 @@ class Deployment:
             if not res.ok:
                 self.fail("control_hub", f"sudoers validation failed: {res['stderr']}")
                 return
+        update_helper = self.root / "system" / "helpers" / "homelab-update"
+        if update_helper.exists():
+            install_helper_script(update_helper, self.manifest)
+        storage_helper = self.root / "system" / "helpers" / "homelab-storage-ops"
+        if storage_helper.exists():
+            install_helper_script(storage_helper, self.manifest)
+        config_helper = self.root / "system" / "helpers" / "homelab-config-apply"
+        if config_helper.exists():
+            install_helper_script(config_helper, self.manifest)
 
         if not unit_src.exists():
             self.fail("control_hub", "system/systemd/control-hub.service template missing")
@@ -607,8 +723,25 @@ class Deployment:
         if not res.ok:
             self.fail("control_hub", f"systemctl enable --now failed: {res['stderr']}")
             return
+        self._install_storage_sizes_timer()
         self.services_launched.append("control_hub")
         self.log(f"Control Hub service enabled on port {self.config.get('control_hub_port', 7575)}.")
+
+    def _install_storage_sizes_timer(self) -> None:
+        """Root hourly timer that measures folder sizes outside Control Hub's cgroup and writes 0644 JSON."""
+        svc = self.root / "system" / "systemd" / "homelab-storage-sizes.service"
+        tmr = self.root / "system" / "systemd" / "homelab-storage-sizes.timer"
+        if not (svc.exists() and tmr.exists()):
+            return
+        install_file(svc, SYSTEMD_DIR / "homelab-storage-sizes.service", self.manifest, mode=0o644, variables=self.template_vars())
+        self.manifest.add_unit("homelab-storage-sizes.service")
+        res = install_systemd_unit(tmr, "homelab-storage-sizes.timer", self.manifest, variables=self.template_vars())
+        if res.ok:
+            # Kick off one initial measurement asynchronously so the dashboard has accurate sizes quickly.
+            run_command(["systemctl", "start", "--no-block", "homelab-storage-sizes.service"], timeout=15)
+            self.log("Hourly storage-size measurement timer enabled (homelab-storage-sizes.timer).")
+        else:
+            self.warn(f"could not enable homelab-storage-sizes.timer: {res['stderr']}")
 
     def module_tv_autoupdater(self) -> None:
         cron_src = self.root / "apps" / "tv-autoupdater" / "host" / "cron" / "tv-autoupdater"
@@ -621,7 +754,7 @@ class Deployment:
         if not cron_src.exists():
             self.fail("tv_autoupdater", "cron template apps/tv-autoupdater/host/cron/tv-autoupdater missing")
             return
-        ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         state_dir = self.state_dir / "tv-autoupdater"
         try:
             state_dir.mkdir(parents=True, exist_ok=True)
@@ -652,6 +785,9 @@ class Deployment:
             self.fail("sleep_guard", "server-suspend.sh or its cron template is missing")
             return
         install_helper_script(script, self.manifest)
+        override = script.with_name("server-suspend-override.sh")
+        if override.exists():
+            install_helper_script(override, self.manifest)
         conf_dst = Path("/etc/server-suspend.conf")
         if conf_example.exists() and not conf_dst.exists():
             shutil.copy2(conf_example, conf_dst)
@@ -736,7 +872,7 @@ class Deployment:
         if self.dry_run:
             self.log(f"Would create system user '{SERVICE_USER}' (docker group).")
             return
-        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"])
+        res = ensure_system_user(SERVICE_USER, self.manifest, extra_groups=["docker"], home_dir=self.state_dir / "home")
         if not res.ok:
             self.fail("host", f"could not create service user '{SERVICE_USER}': {res['stderr']}")
         else:

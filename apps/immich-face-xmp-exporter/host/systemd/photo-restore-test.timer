@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly restore test of the photo database backup
+
+[Timer]
+# First Sunday of the month at 11:00 (a missed run happens at the next boot).
+OnCalendar=Sun *-*-01..07 11:00:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

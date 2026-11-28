@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore test of the photo database backup (loads the newest remote dump into a throwaway database)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/photo_restore_test.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h

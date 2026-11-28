@@ -98,6 +98,65 @@ def test_photos_image_override():
     print("  [OK] pins accepted, floating tags refused")
 
 
+def test_photo_external_mount():
+    """An existing library can keep the container path and mode its database recorded."""
+    import shutil
+    import tempfile
+    sys.path.insert(0, str(REPO_ROOT / "apps" / "control-hub"))
+    from core.config_core.env_manager import load_env_file, sync_all_blueprint_envs
+
+    print("Testing photo external library mount settings...")
+    cases = [
+        ({}, "/mnt/media", "ro"),
+        ({"photo_external_mount_path": "/mnt/hdd/Memories/", "photo_external_mount_mode": "rw"}, "/mnt/hdd/Memories", "rw"),
+        ({"photo_external_mount_path": "relative:bad", "photo_external_mount_mode": "yes"}, "/mnt/media", "ro"),
+    ]
+    for extra, want_path, want_mode in cases:
+        tmp = Path(tempfile.mkdtemp(prefix="photo_mount_"))
+        try:
+            module = tmp / "apps" / "noodle-gallery"
+            module.mkdir(parents=True)
+            shutil.copy(REPO_ROOT / "apps" / "noodle-gallery" / ".env.example", module / ".env.example")
+            out = sync_all_blueprint_envs(str(tmp), dict(extra))
+            env = load_env_file(out["noodle_gallery_env"])
+            assert env.get("EXTERNAL_LIBRARY_MOUNT_PATH") == want_path, (extra, env.get("EXTERNAL_LIBRARY_MOUNT_PATH"))
+            assert env.get("EXTERNAL_LIBRARY_MOUNT_MODE") == want_mode, (extra, env.get("EXTERNAL_LIBRARY_MOUNT_MODE"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    compose = (REPO_ROOT / "apps" / "noodle-gallery" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${EXTERNAL_LIBRARY_MOUNT_PATH:-/mnt/media}:${EXTERNAL_LIBRARY_MOUNT_MODE:-ro}" in compose
+    print("  [OK] defaults /mnt/media:ro, overrides kept, bad values fall back")
+
+
+def test_no_stdlib_shadowing():
+    """Scripts run directly put their folder first on sys.path, so a file named after a
+    standard module (token.py, secrets.py, ...) breaks any stdlib import of it."""
+    import subprocess
+    print("Testing that no file shadows a standard library module...")
+    files = subprocess.run(["git", "ls-files", "*.py"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.split()
+    names = getattr(sys, "stdlib_module_names", None)
+    if not names:  # Python < 3.10
+        print("  [SKIP] sys.stdlib_module_names needs Python 3.10+")
+        return
+    bad = [f for f in files if Path(f).stem in names]
+    assert not bad, f"rename these files, they shadow standard modules: {bad}"
+    print(f"  [OK] {len(files)} files checked")
+
+
+def test_sudoers_template_sudo_rs():
+    """sudo-rs (Ubuntu 26.04) accepts a wildcard only as a whole last argument."""
+    print("Testing the sudoers template against sudo-rs rules...")
+    tpl = (REPO_ROOT / "system" / "systemd" / "homelab-sudoers.example").read_text(encoding="utf-8")
+    for line in tpl.splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or "NOPASSWD:" not in line:
+            continue
+        args = line.split("NOPASSWD:", 1)[1].split()
+        for i, arg in enumerate(args):
+            if any(c in arg for c in "*?[") and not (arg == "*" and i == len(args) - 1):
+                raise AssertionError(f"sudo-rs rejects this wildcard: {line.strip()}")
+    print("  [OK] wildcards only as a whole trailing argument")
+
+
 def run_tests():
     SetupApiHandler.token = TEST_TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", PORT), SetupApiHandler)
@@ -197,6 +256,9 @@ def run_tests():
 
         test_exit_waits_for_netplan_confirm()
         test_photos_image_override()
+        test_photo_external_mount()
+        test_no_stdlib_shadowing()
+        test_sudoers_template_sudo_rs()
 
         print("ALL TESTS PASSED WITH 100% SUCCESS!")
     finally:

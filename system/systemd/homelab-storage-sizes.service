@@ -1,0 +1,14 @@
+[Unit]
+Description=Measure homelab storage folder sizes for Control Hub
+Documentation=https://github.com/RAM-MAHESHWARI24/homelab-blueprint
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Nice=19
+IOSchedulingClass=idle
+WorkingDirectory={{INSTALL_DIR}}/apps/control-hub
+EnvironmentFile=-{{ETC_DIR}}/control-hub.env
+ExecStart={{PYTHON}} {{INSTALL_DIR}}/apps/control-hub/core/storage_sizes.py --once

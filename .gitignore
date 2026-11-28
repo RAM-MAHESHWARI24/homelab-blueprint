@@ -34,6 +34,8 @@ devices_cache.json
 incompatible_apks.json
 .faces_export_cache.json
 speedtest_cache.json
+alerts.json
+alerts_state.json
 
 # 5. Application Binaries & Downloads
 *.apk

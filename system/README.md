@@ -24,12 +24,56 @@ While application workloads (Jellyfin, qBittorrent, Immich, Radarr) run inside i
 
 ---
 
+## 🔐 Root Helper: `helpers/homelab-backup-remote`
+
+Installed to `/usr/local/sbin/homelab-backup-remote` with the photo backup, and allowed for the
+`homelab` service account by one sudoers line. It lets the Control Hub list, test and switch the
+rclone remote of both backups without the dashboard touching root-owned files:
+
+```bash
+sudo homelab-backup-remote list                  # remotes in root's rclone config, current one
+sudo homelab-backup-remote test gdrive:homelab/  # answers? free space? which folders exist?
+sudo homelab-backup-remote set gdrive:homelab/   # test, then rewrite GDRIVE_REMOTE everywhere
+```
+
+`set` rewrites `GDRIVE_REMOTE=` in `/etc/cron.d/immich-backup`, `/etc/cron.d/media-backup`,
+`/etc/homelab/control-hub.env` and `homelab.env`, and `gdrive_remote` in
+`/etc/homelab/config.json`, keeping each file's owner and mode. The remote is validated strictly
+(`name:` or `name:folder/`, no leading `-`, no `..`, no absolute path) and must exist in root's
+rclone config; it is passed to rclone as a single argument, never through a shell. Output is JSON.
+
+### `helpers/homelab-update`
+
+Installed to `/usr/local/sbin/homelab-update` with the Control Hub and allowed via one sudoers
+drop-in entry (`/usr/local/sbin/homelab-update *`). It lets the Control Hub apply safe pinned
+container updates with automatic config backup + healthcheck + rollback, and self-update the
+blueprint checkout on release tags:
+
+```bash
+sudo homelab-update status                          # install dir, git clean/ref state
+sudo homelab-update app qbittorrent 5.3.1_v2.1.3-ls490   # backup config, update pin override, pull/up, rollback on failure
+sudo homelab-update self-update --tag v2.2.0        # fetch release tag in /opt/homelab-blueprint & re-apply setup
+```
+
+App version overrides are stored atomically in `/etc/homelab/<project>.pins.yml` so the blueprint Git
+checkout stays clean during updates and re-running the installer preserves pinned app upgrades.
+
+### `helpers/homelab-storage-ops`
+
+Installed to `/usr/local/sbin/homelab-storage-ops` with the Control Hub (`NOPASSWD: /usr/local/sbin/homelab-storage-ops *`). It reads configured paths strictly from `/etc/homelab/control-hub.env` (never accepts arbitrary paths) so the Control Hub can inspect physical drive SMART health (`lsblk` + `smartctl -H -A -j`), count rotated qBittorrent logs / excess old local dumps, and clean only allow-listed `qbit_logs` or excess `old_dumps`.
+
+### `helpers/homelab-config-apply`
+
+Installed to `/usr/local/sbin/homelab-config-apply` with the Control Hub (`NOPASSWD: /usr/local/sbin/homelab-config-apply *`). Validates configuration edits from stdin JSON, computes redacted diffs (`preview`), snapshots `/etc/homelab/config.json.bak` (`0600`) and re-renders `.env` files (`apply`), restores the previous snapshot (`undo`), or emits secret-free portable config (`export`). Install metadata is tracked in `/var/lib/homelab/installed.json`.
+
 ## 📂 Component Directory Structure
 
 ```
 system/
 ├── systemd/
 │   ├── control-hub.service               # Systemd daemon for Control Hub Flask runtime (unprivileged)
+│   ├── homelab-storage-sizes.service     # Root oneshot unit that measures folder sizes accurately (0644 JSON)
+│   ├── homelab-storage-sizes.timer       # Hourly timer for homelab-storage-sizes.service
 │   └── homelab-sudoers.example           # Least-privilege sudoers whitelist (/etc/sudoers.d/)
 ├── networking/
 │   ├── 99-tailscale.conf                 # Sysctl kernel tuning (UDP buffers, IP forwarding)
@@ -84,7 +128,7 @@ Host scripts and cron templates now live with the module they belong to, so each
 | `server-suspend.sh` | `apps/control-hub/host/` | `/usr/local/sbin/server-suspend.sh` | Run by the cron below |
 | `server-suspend.conf.example` | `apps/control-hub/host/` | `/etc/server-suspend.conf` | Sleep and wake times |
 | `cron/server-suspend` | `apps/control-hub/host/` | `/etc/cron.d/server-suspend` | 00:00, checks whether the server can sleep |
-| `cron/immich-ml` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-ml` | Starts the photo ML container at 06:00, stops it at 10:00 |
+| `cron/immich-ml` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-ml` | Starts the photo ML container at 06:05, stops it at 10:00 |
 | `cron/immich-backup` | `apps/immich-face-xmp-exporter/host/` | `/etc/cron.d/immich-backup` | 22:00, database dump, XMP export and rclone mirror |
 | `cron/tv-autoupdater` | `apps/tv-autoupdater/host/` | `/etc/cron.d/tv-autoupdater` | Every 15 minutes from 06:00 to 23:45 |
 | `post-wake-arr.sh` | `apps/mediaserver/host/` | `/etc/server-suspend.d/50-mediaserver.sh` | After every resume |

@@ -1,18 +1,50 @@
 /**
- * Widget: Nightly Google Drive Sync (Noodle Gallery Cloud Backup)
- * Renders 4-stage sync stepper, dynamic library intelligence summary strip,
- * 1-click terminal streaming modal, and facial recognition breakdown modal.
+ * Widget: Photo & Media Cloud Backup Monitor
+ * Provider-agnostic labels, partial-permission warning visibility,
+ * dynamic module visibility (auto-hides Backups nav if uninstalled),
+ * remote switcher modal, restore test, and log viewer.
  */
 
-import { $ } from "../shared/dom.js";
+import { $, setCardSummary } from "../shared/dom.js";
 import { state } from "../state.js";
 import { ENDPOINTS } from "../config.js";
+import { openModal, registerModal } from "../shared/modal.js";
 import { showToast } from "../shared/toast.js";
+import { renderOverview } from "./overview.js";
 
 const backupStatusBadge = $("backup-status-badge");
+const backupSection = $("backup-section");
+const backupHealth = $("backup-health");
+const backupHealthTitle = $("backup-health-title");
+const backupHealthDetail = $("backup-health-detail");
+const backupNextRun = $("backup-next-run");
+const backupPreflight = $("backup-preflight");
+const backupHistory = $("backup-history");
+const backupHistoryCount = $("backup-history-count");
+const backupRetention = $("backup-retention");
+const mediaBackup = $("media-backup");
+const mediaBackupBadge = $("media-backup-badge");
+const mediaBackupLine = $("media-backup-line");
+const mediaBackupMsg = $("media-backup-msg");
+const btnMediaBackupRun = $("btn-media-backup-run");
+const restoreTest = $("restore-test");
+const restoreTestText = $("restore-test-text");
+const btnRestoreTestRun = $("btn-restore-test-run");
+const btnChangeRemote = $("btn-change-remote");
+const remoteModal = $("remote-modal");
+const remoteSelect = $("remote-select");
+const remoteFolder = $("remote-folder");
+const remoteResult = $("remote-result");
+const remoteCurrent = $("remote-current");
+const remoteSave = $("remote-save");
+const remoteTestBtn = $("remote-test");
+let testedRemote = null;
 const backupLastTime = $("backup-last-time");
 const backupDbSize = $("backup-db-size");
+const backupRemoteMirror = $("backup-remote-mirror");
 const backupStatusMsg = $("backup-status-msg");
+const backupModalSubPath = $("backup-modal-sub-path");
+const libraryModalSubPath = $("library-modal-sub-path");
 
 const btnSyncCard = $("btn-sync-card");
 const cardSyncSpinner = $("card-sync-spinner");
@@ -35,19 +67,23 @@ const modalSyncSpinner = $("modal-sync-spinner");
 const modalSyncIcon = $("modal-sync-icon");
 const modalSyncBtnText = $("modal-sync-btn-text");
 
-// Summary Strip
 const btnOpenLibraryDetails = $("btn-open-library-details");
 const libValDisk = $("lib-val-disk");
 const libValGdrive = $("lib-val-gdrive");
 const libValAssets = $("lib-val-assets");
 const libValFaces = $("lib-val-faces");
+const libSubDisk = $("lib-sub-disk");
+const libSubGdrive = $("lib-sub-gdrive");
+const libSubAssets = $("lib-sub-assets");
+const libSubFaces = $("lib-sub-faces");
+const libPartialWarning = $("lib-partial-warning");
 
-// Library Modal
 const immichLibraryModal = $("immich-library-modal");
 const immichModalClose = $("immich-modal-close");
 const immichModalDismiss = $("immich-modal-dismiss");
 const immichModalRefresh = $("immich-modal-refresh");
 const modalLibDisk = $("modal-lib-disk");
+const modalLibDiskLabel = $("modal-lib-disk-label");
 const modalLibGdriveUsed = $("modal-lib-gdrive-used");
 const modalLibGdriveFree = $("modal-lib-gdrive-free");
 const modalLibGdrivePct = $("modal-lib-gdrive-pct");
@@ -61,7 +97,6 @@ const modalLibUnhiddenPeople = $("modal-lib-unhidden-people");
 const modalLibNamedAssets = $("modal-lib-named-assets");
 const modalLibFaceInstances = $("modal-lib-face-instances");
 
-// Stepper items
 const stepFace = $("step-face");
 const stepDump = $("step-dump");
 const stepRclone = $("step-rclone");
@@ -70,57 +105,56 @@ const stepConn1 = $("step-conn-1");
 const stepConn2 = $("step-conn-2");
 const stepConn3 = $("step-conn-3");
 
-let isSyncingActive = false;
+let onModuleVisibilityChange = null;
+export function setBackupVisibilityCallback(fn) {
+  onModuleVisibilityChange = fn;
+}
+
+function formatTb(gb) {
+  if (typeof gb !== "number" || Number.isNaN(gb)) return "Unknown";
+  return gb >= 1024 ? `${(gb / 1024).toFixed(2)} TB` : `${gb.toFixed(1)} GB`;
+}
 
 function updateSyncUiState(syncing) {
-  isSyncingActive = syncing;
-
   if (btnSyncCard) {
     btnSyncCard.disabled = syncing;
-    if (syncing) {
-      btnSyncCard.classList.add("is-syncing");
-      if (cardSyncSpinner) cardSyncSpinner.style.display = "inline-block";
-      if (cardSyncIcon) cardSyncIcon.style.display = "none";
-      if (cardSyncLabel) cardSyncLabel.textContent = "Syncing GDrive...";
-    } else {
-      btnSyncCard.classList.remove("is-syncing");
-      if (cardSyncSpinner) cardSyncSpinner.style.display = "none";
-      if (cardSyncIcon) cardSyncIcon.style.display = "inline-block";
-      if (cardSyncLabel) cardSyncLabel.textContent = "Sync to GDrive";
-    }
+    btnSyncCard.classList.toggle("is-syncing", syncing);
+    if (cardSyncSpinner) cardSyncSpinner.style.display = syncing ? "inline-block" : "none";
+    if (cardSyncIcon) cardSyncIcon.style.display = syncing ? "none" : "inline-block";
+    if (cardSyncLabel) cardSyncLabel.textContent = syncing ? "Backing up..." : "Run backup now";
   }
 
   if (btnModalTriggerSync) {
     btnModalTriggerSync.disabled = syncing;
-    if (syncing) {
-      btnModalTriggerSync.classList.add("is-syncing");
-      if (modalSyncSpinner) modalSyncSpinner.style.display = "inline-block";
-      if (modalSyncIcon) modalSyncIcon.style.display = "none";
-      if (modalSyncBtnText) modalSyncBtnText.textContent = "Syncing Noodle Gallery to GDrive...";
-      if (modalSyncBanner) modalSyncBanner.classList.add("is-syncing");
-      if (syncLiveTag) syncLiveTag.style.display = "inline-block";
-      if (modalSyncBannerText) modalSyncBannerText.textContent = "Google Drive sync active: Exporting face XMP sidecars, dumping database, and syncing /mnt/hdd/Memories...";
-    } else {
-      btnModalTriggerSync.classList.remove("is-syncing");
-      if (modalSyncSpinner) modalSyncSpinner.style.display = "none";
-      if (modalSyncIcon) modalSyncIcon.style.display = "inline-block";
-      if (modalSyncBtnText) modalSyncBtnText.textContent = "Sync Noodle Gallery to GDrive Now";
-      if (modalSyncBanner) modalSyncBanner.classList.remove("is-syncing");
-      if (syncLiveTag) syncLiveTag.style.display = "none";
-      if (modalSyncBannerText) modalSyncBannerText.textContent = "Ready to sync Noodle Gallery (Faces, DB Dump & Photos) to Google Drive.";
+    btnModalTriggerSync.classList.toggle("is-syncing", syncing);
+    if (modalSyncSpinner) modalSyncSpinner.style.display = syncing ? "inline-block" : "none";
+    if (modalSyncIcon) modalSyncIcon.style.display = syncing ? "none" : "inline-block";
+    if (modalSyncBtnText) modalSyncBtnText.textContent = syncing ? "Backing up..." : "Run backup now";
+    if (modalSyncBanner) modalSyncBanner.classList.toggle("is-syncing", syncing);
+    if (syncLiveTag) syncLiveTag.style.display = syncing ? "inline-block" : "none";
+    if (modalSyncBannerText) {
+      modalSyncBannerText.textContent = syncing
+        ? "Backup running: the log below refreshes every few seconds."
+        : "Runs the same backup as the nightly job: pre-flight, face tags, database dump, photo mirror.";
     }
   }
 }
 
-function renderBackupStepper(currentStage, isSyncing, isError) {
+function renderBackupStepper(currentStage, status) {
   const steps = [
     { elem: stepFace, num: 1 },
     { elem: stepDump, num: 2 },
     { elem: stepRclone, num: 3 },
-    { elem: stepVerify, num: 4 }
+    { elem: stepVerify, num: 4 },
   ];
-
   const connectors = [stepConn1, stepConn2, stepConn3];
+  const isSyncing = status === "syncing";
+  const isError = status === "error";
+  const isSynced = status === "synced";
+  const stepperEl = $("sync-stepper");
+  if (stepperEl) {
+    stepperEl.hidden = !(isSyncing || isError);
+  }
 
   steps.forEach(({ elem, num }) => {
     if (!elem) return;
@@ -128,108 +162,505 @@ function renderBackupStepper(currentStage, isSyncing, isError) {
 
     if (isError && currentStage === num) {
       elem.className = "step-item step-error";
-      if (circle) circle.innerHTML = "✕";
+      if (circle) circle.textContent = "✕";
     } else if (isSyncing) {
       if (num < currentStage) {
         elem.className = "step-item step-done";
-        if (circle) circle.innerHTML = "✓";
+        if (circle) circle.textContent = "✓";
       } else if (num === currentStage) {
         elem.className = "step-item step-active";
-        if (circle) circle.innerHTML = `<span class="step-spin">⟳</span>`;
+        if (circle) circle.textContent = "…";
       } else {
         elem.className = "step-item";
-        if (circle) circle.innerHTML = `${num}`;
+        if (circle) circle.textContent = `${num}`;
       }
+    } else if (isSynced && currentStage >= num) {
+      elem.className = "step-item step-done";
+      if (circle) circle.textContent = "✓";
+    } else if (isError && num < currentStage) {
+      elem.className = "step-item step-done";
+      if (circle) circle.textContent = "✓";
     } else {
-      if (currentStage >= 4 || !isError) {
-        elem.className = "step-item step-done";
-        if (circle) circle.innerHTML = "✓";
-      } else if (num <= currentStage) {
-        elem.className = "step-item step-done";
-        if (circle) circle.innerHTML = "✓";
-      } else {
-        elem.className = "step-item";
-        if (circle) circle.innerHTML = `${num}`;
-      }
+      elem.className = "step-item";
+      if (circle) circle.textContent = `${num}`;
     }
   });
 
   connectors.forEach((conn, idx) => {
     if (!conn) return;
     const precedingStepNum = idx + 1;
-    if (isSyncing) {
-      conn.className = (precedingStepNum < currentStage) ? "step-connector connector-done" : "step-connector";
+    if (isSynced && currentStage >= 4) {
+      conn.className = "step-connector connector-done";
+    } else if ((isSyncing || isError) && precedingStepNum < currentStage) {
+      conn.className = "step-connector connector-done";
     } else {
-      conn.className = (currentStage >= 4 || precedingStepNum < currentStage) ? "step-connector connector-done" : "step-connector";
+      conn.className = "step-connector";
     }
   });
+}
+
+const BADGES = {
+  syncing: ["badge-status-syncing", "Running"],
+  synced: ["badge-status-synced", "Verified"],
+  error: ["badge-status-error", "Failed"],
+  stale: ["badge-status-error", "Stale"],
+  interrupted: ["badge-status-error", "Interrupted"],
+  unknown: ["badge-status-unknown", "Not run yet"],
+};
+
+const OUTCOME_TEXT = { synced: "Succeeded", error: "Failed" };
+
+function formatDuration(seconds) {
+  if (typeof seconds !== "number" || seconds < 0) return null;
+  if (seconds < 60) return `${seconds} s`;
+  const m = Math.floor(seconds / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function renderHealth(health, data) {
+  const stateName = health ? health.state : (data.status || "unknown");
+  if (backupHealth) backupHealth.dataset.state = stateName;
+  if (backupSection) backupSection.classList.toggle("is-alert", Boolean(health && health.is_red));
+
+  if (backupHealthTitle) {
+    let title;
+    if (!health) title = data.reason || data.message || "No backup run recorded yet";
+    else if (health.state === "syncing") title = "Backup running";
+    else if (health.state === "synced") title = `Last good backup ${health.age || ""}`.trim();
+    else if (health.state === "unknown") title = "No backup run yet";
+    else title = health.message;
+    backupHealthTitle.textContent = title;
+  }
+  if (backupHealthDetail) {
+    let detail = "";
+    if (health && !["synced", "unknown", "syncing"].includes(health.state)) {
+      detail = health.last_good ? `Last good backup ${health.age}.` : "No good backup recorded yet.";
+    }
+    backupHealthDetail.textContent = detail;
+  }
+  if (backupNextRun) backupNextRun.textContent = (health && health.next_run) || data.schedule || "Not scheduled";
+
+  if (backupPreflight) {
+    backupPreflight.replaceChildren();
+    const checks = (health && health.preflight && health.preflight.checks) || [];
+    const show = checks.some((c) => !c.ok) && health.state !== "syncing";
+    if (show) {
+      checks.forEach((c) => {
+        const li = el("li", c.ok ? "preflight-ok" : "preflight-fail");
+        li.append(el("span", "preflight-mark", c.ok ? "OK" : "Failed"), el("span", "preflight-name", c.name), el("span", "preflight-detail", c.detail));
+        backupPreflight.append(li);
+      });
+    }
+    backupPreflight.hidden = !show;
+  }
+
+  if (backupHistory) {
+    backupHistory.replaceChildren();
+    const runs = (health && health.history) || [];
+    runs.forEach((run) => {
+      const ok = run.outcome === "synced";
+      const li = el("li", `backup-run ${ok ? "run-ok row--plus" : "run-fail row--minus"}`);
+      const top = el("div", "backup-run-top");
+      const titleWrap = el("div", "backup-run-status");
+      titleWrap.append(
+        el("span", `audit-trail-dot ${ok ? "is-ok" : "is-bad"}`),
+        el("span", "backup-run-outcome", OUTCOME_TEXT[run.outcome] || run.outcome || "Unknown")
+      );
+      top.append(titleWrap, el("span", "backup-run-when font-mono", run.when || ""));
+      const facts = [];
+      if (run.dump_size) facts.push(`dump ${run.dump_size}`);
+      if (typeof run.files === "number") facts.push(`${run.files} files${run.moved ? ` (${run.moved})` : ""} uploaded`);
+      const dur = formatDuration(run.duration_s);
+      if (dur) facts.push(dur);
+      li.append(top);
+      if (facts.length) li.append(el("div", "backup-run-facts font-mono", facts.join(" · ")));
+      if (!ok && run.message) li.append(el("div", "backup-run-msg", run.message));
+      backupHistory.append(li);
+    });
+    if (!runs.length) backupHistory.append(el("li", "backup-run", "No runs recorded yet."));
+    if (backupHistoryCount) backupHistoryCount.textContent = runs.length ? `(${runs.length})` : "";
+  }
+
+  if (backupRetention) {
+    const ret = health && health.retention;
+    if (ret && typeof ret.kept === "number") {
+      const next = ret.next_delete || [];
+      backupRetention.replaceChildren();
+      backupRetention.append(
+        el("span", "retention-keep row--plus font-mono", `+${ret.kept} kept`),
+        document.createTextNode(" database dumps · "),
+        el("span", `font-mono ${ret.deleted_last_run ? "row--minus" : ""}`, `${ret.deleted_last_run} deleted last run`),
+        document.createTextNode(` · next run deletes ${next.length ? next.join(", ") : "none"}.`)
+      );
+    } else {
+      backupRetention.textContent = "Retention has not run yet.";
+    }
+  }
+}
+
+function renderRestoreTest(info, last) {
+  if (!restoreTest) return;
+  const installed = Boolean(info && info.installed);
+  restoreTest.hidden = !installed && !last;
+  if (restoreTest.hidden) return;
+  restoreTest.dataset.state = info && info.running ? "running" : (last ? (last.ok ? "ok" : "fail") : "none");
+  let text;
+  if (info && info.running) {
+    text = "running now (download, restore into a throwaway database, count)...";
+  } else if (last) {
+    text = last.ok
+      ? `passed ${last.when || ""}: ${Number(last.restored).toLocaleString()} photos and videos restored from ${last.dump_file}`
+      : `FAILED ${last.when || ""}: ${last.message}`;
+  } else {
+    text = "not run yet";
+  }
+  if (info && info.next && !(info && info.running)) text += ` · next ${info.next}`;
+  if (restoreTestText) restoreTestText.textContent = text;
+  if (btnRestoreTestRun) {
+    btnRestoreTestRun.hidden = !installed;
+    btnRestoreTestRun.disabled = Boolean(info && info.running);
+  }
+}
+
+async function runRestoreTest() {
+  if (btnRestoreTestRun) btnRestoreTestRun.disabled = true;
+  try {
+    const res = await fetch(ENDPOINTS.backupRestoreTest, { method: "POST" });
+    const data = await res.json();
+    showToast(data.success ? "Restore test started" : "Not started", data.message || "", data.success ? "success" : "warning");
+  } catch (_) {
+    showToast("Not started", "The Control Hub did not answer.", "danger");
+  } finally {
+    setTimeout(fetchBackupStatus, 2000);
+  }
+}
+
+function chosenRemote() {
+  const name = remoteSelect ? remoteSelect.value : "";
+  const folder = remoteFolder ? remoteFolder.value.trim().replace(/^\/+/, "") : "";
+  if (!name) return "";
+  return `${name}:${folder ? `${folder.replace(/\/+$/, "")}/` : ""}`;
+}
+
+function showRemoteResult(items, isError = false) {
+  if (!remoteResult) return;
+  remoteResult.replaceChildren();
+  remoteResult.className = `remote-result ${isError ? "is-error" : ""}`;
+  items.forEach((text) => remoteResult.append(el("p", "", text)));
+}
+
+function onRemoteInput() {
+  testedRemote = null;
+  if (remoteSave) remoteSave.disabled = true;
+  showRemoteResult([]);
+}
+
+async function openRemoteModal() {
+  if (!remoteModal) return;
+  onRemoteInput();
+  openModal(remoteModal, btnChangeRemote);
+  showRemoteResult(["Reading the remotes configured on the server..."]);
+  try {
+    const res = await fetch(ENDPOINTS.backupRemotes);
+    const data = await res.json();
+    if (!res.ok || data.ok === false) {
+      showRemoteResult([data.error || "Could not read the remotes."], true);
+      return;
+    }
+    const current = data.current || "";
+    if (remoteCurrent) remoteCurrent.textContent = current || "Not set";
+    const [curName, curPath] = [current.split(":")[0], current.split(":").slice(1).join(":")];
+    remoteSelect.replaceChildren();
+    (data.remotes || []).forEach((r) => {
+      const opt = el("option", "", `${r.name} (${r.type})`);
+      opt.value = r.name;
+      if (r.name === curName) opt.selected = true;
+      remoteSelect.append(opt);
+    });
+    if (remoteFolder) remoteFolder.value = curPath || "";
+    showRemoteResult((data.remotes || []).length ? [] : ["No rclone remotes are configured for root. Run sudo rclone config on the server."], !(data.remotes || []).length);
+  } catch (_) {
+    showRemoteResult(["The Control Hub did not answer."], true);
+  }
+}
+
+function gb(bytes) {
+  return typeof bytes === "number" ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : "unknown";
+}
+
+async function testRemote() {
+  const remote = chosenRemote();
+  if (!remote) return;
+  if (remoteTestBtn) remoteTestBtn.disabled = true;
+  showRemoteResult([`Testing ${remote}...`]);
+  try {
+    const res = await fetch(ENDPOINTS.backupRemoteTest, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remote }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showRemoteResult([`${remote} cannot be used: ${data.error}`], true);
+      return;
+    }
+    const f = data.folders || {};
+    const lines = [`${data.remote} answers. Free space: ${gb(data.free_bytes)} of ${gb(data.total_bytes)}.`];
+    lines.push(f.Memories
+      ? "It already has a Memories folder: the next photo backup only uploads what changed."
+      : "It has no Memories folder yet: the next photo backup uploads the whole photo library, which can take many hours.");
+    lines.push(f["Immich_Backup/database"] ? "Database dumps folder: present." : "Database dumps folder: created by the next backup.");
+    lines.push(f.Media_Backup ? "Media settings folder: present." : "Media settings folder: created by the next backup.");
+    showRemoteResult(lines);
+    testedRemote = data.remote;
+    if (remoteSave) remoteSave.disabled = false;
+  } catch (_) {
+    showRemoteResult(["The Control Hub did not answer."], true);
+  } finally {
+    if (remoteTestBtn) remoteTestBtn.disabled = false;
+  }
+}
+
+async function saveRemote() {
+  if (!testedRemote) return;
+  if (remoteSave) remoteSave.disabled = true;
+  try {
+    const res = await fetch(ENDPOINTS.backupRemote, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remote: testedRemote }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showRemoteResult([data.error || "Not changed."], true);
+      return;
+    }
+    if (remoteCurrent) remoteCurrent.textContent = data.remote;
+    showRemoteResult([`Both backups now use ${data.remote}, starting with the next run.`]);
+    showToast("Backup remote changed", `Now ${data.remote}.`, "success");
+    testedRemote = null;
+    fetchBackupStatus();
+  } catch (_) {
+    showRemoteResult(["The Control Hub did not answer."], true);
+    if (remoteSave) remoteSave.disabled = false;
+  }
+}
+
+function renderMediaBackup(media) {
+  if (!mediaBackup) return;
+  mediaBackup.hidden = !media;
+  if (!media) return;
+  const [cls, label] = BADGES[media.state] || BADGES.unknown;
+  if (mediaBackupBadge) {
+    mediaBackupBadge.className = cls;
+    mediaBackupBadge.textContent = label;
+  }
+  if (mediaBackupLine) {
+    const parts = [];
+    parts.push(media.last_good ? `Last good: ${media.last_good} (${media.age})` : "No good run yet");
+    if (media.archive_size) parts.push(media.archive_size);
+    if (media.next_run) parts.push(`next ${media.next_run}`);
+    mediaBackupLine.textContent = parts.join(" · ");
+  }
+  if (mediaBackupMsg) {
+    const show = media.is_red || media.state === "syncing";
+    mediaBackupMsg.hidden = !show;
+    mediaBackupMsg.textContent = show ? (media.state === "syncing" ? "Backing up media apps' settings..." : media.message) : "";
+  }
+  if (btnMediaBackupRun) {
+    btnMediaBackupRun.hidden = !media.can_run;
+    btnMediaBackupRun.disabled = media.state === "syncing";
+  }
+  if (backupSection && media.is_red) backupSection.classList.add("is-alert");
+}
+
+async function runMediaBackup() {
+  if (btnMediaBackupRun) btnMediaBackupRun.disabled = true;
+  try {
+    const res = await fetch(ENDPOINTS.backupMediaRun, { method: "POST" });
+    const data = await res.json();
+    showToast(data.success ? "Media backup started" : "Not started", data.message || "", data.success ? "success" : "warning");
+  } catch (_) {
+    showToast("Not started", "The Control Hub did not answer.", "danger");
+  } finally {
+    setTimeout(fetchBackupStatus, 2000);
+  }
+}
+
+let logPollTimer = null;
+
+function syncLogPolling(isSyncing) {
+  const modalOpen = Boolean(backupLogModal) && backupLogModal.style.display !== "none";
+  if (isSyncing && modalOpen && !logPollTimer) {
+    logPollTimer = setInterval(() => {
+      if (document.hidden) return;
+      if (!backupLogModal || backupLogModal.style.display === "none") {
+        clearInterval(logPollTimer);
+        logPollTimer = null;
+        return;
+      }
+      refreshBackupLog(true);
+      fetchBackupStatus();
+    }, 3000);
+  } else if ((!isSyncing || !modalOpen) && logPollTimer) {
+    clearInterval(logPollTimer);
+    logPollTimer = null;
+    if (modalOpen) refreshBackupLog(true);
+  }
 }
 
 export async function fetchBackupStatus() {
   try {
     const res = await fetch(ENDPOINTS.backupStatus);
+    if (!res.ok) return false;
     const data = await res.json();
 
-    const isSyncing = data.is_syncing || data.status === "syncing";
-    const isError = data.status === "error";
-    const stage = data.current_stage || 4;
+    state.backupSnapshot = data;
+    const isInstalled = data.installed !== false;
+    state.modules.backups = isInstalled;
+    const navBackups = $("nav-item-backups");
+    if (navBackups) navBackups.hidden = !isInstalled;
+    if (typeof onModuleVisibilityChange === "function") onModuleVisibilityChange("backups", isInstalled);
+
+    const health = data.health || null;
+    const status = health ? health.state : (data.status || "unknown");
+    const isSyncing = Boolean(data.is_syncing || status === "syncing");
+    const isError = ["error", "stale", "interrupted"].includes(status);
+    const isSynced = status === "synced";
+    const stage = Number(data.current_stage || 0);
 
     updateSyncUiState(isSyncing);
-    renderBackupStepper(stage, isSyncing, isError);
+    renderBackupStepper(stage, isSyncing ? "syncing" : (status === "error" || status === "interrupted" ? "error" : status));
+    renderHealth(health, data);
+    renderMediaBackup(data.media || null);
+    if (btnChangeRemote) btnChangeRemote.hidden = !data.remote_editable;
+    renderRestoreTest(data.restore || null, (health && health.restore_test) || null);
+    syncLogPolling(isSyncing);
 
     if (backupStatusBadge) {
-      if (isSyncing) {
-        backupStatusBadge.className = "badge-status-syncing";
-        backupStatusBadge.textContent = "🟡 Sync In Progress";
-      } else if (isError) {
-        backupStatusBadge.className = "badge-status-error";
-        backupStatusBadge.textContent = "🔴 Sync Attention Required";
+      const [cls, label] = BADGES[isSyncing ? "syncing" : status] || BADGES.unknown;
+      backupStatusBadge.className = cls;
+      backupStatusBadge.textContent = label;
+    }
+
+    if (backupLastTime) backupLastTime.textContent = (health && health.last_good) || "None yet";
+    if (backupDbSize) backupDbSize.textContent = data.db_size || "Unknown";
+    if (backupRemoteMirror) backupRemoteMirror.textContent = data.gdrive_remote || "Not configured";
+    if (backupStatusMsg) {
+      backupStatusMsg.textContent = isSyncing ? (data.message || "Backup running...") : "";
+      backupStatusMsg.hidden = !isSyncing;
+    }
+
+    if (backupModalSubPath) {
+      backupModalSubPath.textContent = `Log: ${data.log_file || "Unknown"} · Remote: ${data.gdrive_remote || "Not configured"}`;
+    }
+    if (libraryModalSubPath) {
+      libraryModalSubPath.textContent = `Local: ${data.memories_dir || "Unknown"} · Remote: ${data.gdrive_remote || "Not configured"}`;
+    }
+
+    if (libValDisk) {
+      if (data.disk_size) {
+        libValDisk.textContent = data.disk_size;
+        libValDisk.title = data.disk_partial ? (data.disk_reason || "") : "";
+        if (libSubDisk) {
+          libSubDisk.textContent = typeof data.photos_free_gb === "number"
+            ? `${formatTb(data.photos_free_gb)} free on disk`
+            : (data.disk_partial ? "Partial scan" : "Photos + uploads");
+        }
       } else {
-        backupStatusBadge.className = "badge-status-synced";
-        backupStatusBadge.textContent = "🟢 Synced & Protected";
+        libValDisk.textContent = "Unavailable";
+        libValDisk.title = data.disk_reason || "Photo directory size unavailable";
+        if (libSubDisk) libSubDisk.textContent = data.disk_reason || "Measuring size";
+      }
+    }
+    if (libPartialWarning) {
+      if (data.disk_partial) {
+        libPartialWarning.textContent = `Partial photo size scan: ${data.disk_reason || "some directories require homelab-storage-sizes.timer (root)"}.`;
+        libPartialWarning.hidden = false;
+      } else {
+        libPartialWarning.hidden = true;
+      }
+    }
+    if (libValGdrive) {
+      if (typeof data.gdrive_used_gb === "number" && typeof data.gdrive_total_gb === "number") {
+        libValGdrive.textContent = formatTb(data.gdrive_used_gb);
+        libValGdrive.title = "";
+        if (libSubGdrive) {
+          const pctTxt = typeof data.gdrive_used_percent === "number" ? ` (${data.gdrive_used_percent}%)` : "";
+          libSubGdrive.textContent = `of ${formatTb(data.gdrive_total_gb)}${pctTxt}`;
+        }
+      } else {
+        libValGdrive.textContent = "Unknown";
+        libValGdrive.title = data.gdrive_reason || "Remote quota unavailable";
+        if (libSubGdrive) libSubGdrive.textContent = data.gdrive_reason || "Waiting for run";
+      }
+    }
+    if (libValAssets) {
+      if (typeof data.total_assets === "number") {
+        libValAssets.textContent = Number(data.total_assets).toLocaleString();
+        libValAssets.title = "";
+        if (libSubAssets) {
+          const photos = typeof data.photos_count === "number" ? `${Number(data.photos_count).toLocaleString()} photos` : "";
+          const videos = typeof data.videos_count === "number" ? `${Number(data.videos_count).toLocaleString()} videos` : "";
+          libSubAssets.textContent = [photos, videos].filter(Boolean).join(" · ") || "Library total";
+        }
+      } else {
+        libValAssets.textContent = "Unknown";
+        libValAssets.title = data.assets_reason || "Database unavailable";
+        if (libSubAssets) libSubAssets.textContent = data.assets_reason || "DB unavailable";
+      }
+    }
+    if (libValFaces) {
+      if (typeof data.assets_with_named_faces === "number") {
+        libValFaces.textContent = Number(data.assets_with_named_faces).toLocaleString();
+        libValFaces.title = "";
+        if (libSubFaces) {
+          libSubFaces.textContent = typeof data.named_people === "number"
+            ? `${Number(data.named_people).toLocaleString()} named people`
+            : "Tagged assets";
+        }
+      } else {
+        libValFaces.textContent = "Unknown";
+        libValFaces.title = data.assets_reason || "Database unavailable";
+        if (libSubFaces) libSubFaces.textContent = data.assets_reason || "DB unavailable";
       }
     }
 
-    if (backupLastTime) backupLastTime.textContent = data.last_sync || "Unknown";
-    if (backupDbSize) backupDbSize.textContent = data.db_size || "Unknown";
-    if (backupStatusMsg) backupStatusMsg.textContent = data.message || "Ready";
+    setCardSummary(
+      "backup-section",
+      health && health.last_good
+        ? `${(BADGES[status] || BADGES.unknown)[1]} · last good ${health.age}${data.db_size ? `, ${data.db_size}` : ""}`
+        : `${(health && health.message) || data.reason || "No run yet"}`
+    );
 
-    // Summary Strip
-    if (libValDisk && data.disk_size) libValDisk.textContent = data.disk_size;
-    if (libValGdrive && data.gdrive_used_gb) {
-      libValGdrive.innerHTML = `${data.gdrive_used_gb} GB <small class="text-dim">/ 5.0 TB</small>`;
-    }
-    if (libValAssets && data.total_assets) {
-      const photosK = (data.photos_count / 1000).toFixed(1);
-      libValAssets.innerHTML = `${Number(data.total_assets).toLocaleString()} <small class="text-dim">(${photosK}k 📷)</small>`;
-    }
-    if (libValFaces && data.assets_with_named_faces) {
-      libValFaces.innerHTML = `${Number(data.assets_with_named_faces).toLocaleString()} <small class="text-dim">(${data.named_people || 120} 👤)</small>`;
-    }
-
-    // Modal sync indicator
     if (modalSyncDot) {
-      modalSyncDot.className = isSyncing ? "modal-dot dot-syncing" : (isError ? "modal-dot dot-error" : "modal-dot dot-live");
+      modalSyncDot.className = isSyncing ? "modal-dot dot-syncing" : (isError ? "modal-dot dot-error" : (isSynced ? "modal-dot dot-live" : "modal-dot"));
     }
     if (syncStatusIndicator) {
       syncStatusIndicator.className = isSyncing ? "sync-status-indicator sync-running" : "sync-status-indicator sync-idle";
     }
 
-    // Debounced Toast Notification (5-minute window for user-initiated sync)
     const nowTs = Date.now();
-    if (state.userInitiatedSync && !isSyncing && !isError) {
+    if (state.userInitiatedSync && !isSyncing && !isError && isSynced) {
       if (nowTs - state.lastSyncCompletionToastTime > 300000) {
         state.lastSyncCompletionToastTime = nowTs;
         state.userInitiatedSync = false;
-        showToast(
-          "Cloud Sync Complete",
-          `Noodle Gallery successfully mirrored to Google Drive (${data.last_sync || "Just now"}).`,
-          "☁️"
-        );
+        showToast("Backup finished", `Photo backup verified (${(health && health.last_good) || data.last_sync || "just now"}).`, "success");
       }
     }
+
+    renderOverview();
+    return true;
   } catch (err) {
     console.error("Error fetching backup status:", err);
+    return false;
   }
 }
 
@@ -240,49 +671,48 @@ export async function triggerBackupSync() {
   try {
     const res = await fetch(ENDPOINTS.backupSync, { method: "POST" });
     const data = await res.json();
-    if (data.success) {
-      showToast("Cloud Sync Started", "Mirroring Noodle Gallery photos and PostgreSQL dump to Google Drive...", "☁️");
+    if (res.ok && data.success) {
+      showToast("Backup started", "Pre-flight checks first, then face tags, database dump and photo mirror.", "info");
       await fetchBackupStatus();
-      openBackupLogModal();
+      openBackupLogModal(btnViewBackupLog);
     } else {
-      showToast("Sync Busy", data.message || "Backup is already executing...", "⚠️");
+      showToast("Backup Notice", data.message || "Backup is already executing or not installed.", "warning");
+      await fetchBackupStatus();
     }
-  } catch (err) {
-    showToast("Error", "Could not trigger Google Drive backup", "❌");
+  } catch (_) {
+    showToast("Error", "Could not trigger backup", "danger");
+    updateSyncUiState(false);
   }
 }
 
-export async function openBackupLogModal() {
+export async function openBackupLogModal(triggerEl = null) {
   if (!backupLogModal) return;
-  backupLogModal.style.display = "flex";
+  openModal(backupLogModal, triggerEl);
   await refreshBackupLog();
+  await fetchBackupStatus();
 }
 
-export function closeBackupLogModal() {
-  if (backupLogModal) backupLogModal.style.display = "none";
-}
-
-export async function refreshBackupLog() {
+export async function refreshBackupLog(quiet = false) {
   if (!backupLogContent) return;
-  backupLogContent.textContent = "Fetching real-time backup log lines...";
+  const atBottom = backupLogContent.scrollHeight - backupLogContent.scrollTop - backupLogContent.clientHeight < 40;
+  if (!quiet) backupLogContent.textContent = "Fetching backup log lines...";
   try {
     const res = await fetch(ENDPOINTS.backupLog);
     const data = await res.json();
+    if (backupModalSubPath && data.log_file) {
+      backupModalSubPath.textContent = `Log: ${data.log_file}`;
+    }
     backupLogContent.textContent = data.log || "No log content returned.";
-    backupLogContent.scrollTop = backupLogContent.scrollHeight;
-  } catch (err) {
+    if (!quiet || atBottom) backupLogContent.scrollTop = backupLogContent.scrollHeight;
+  } catch (_) {
     backupLogContent.textContent = "Error loading backup log file.";
   }
 }
 
-export async function openImmichLibraryModal() {
+export async function openImmichLibraryModal(triggerEl = null) {
   if (!immichLibraryModal) return;
-  immichLibraryModal.style.display = "flex";
+  openModal(immichLibraryModal, triggerEl);
   await fetchLibraryStats(false);
-}
-
-export function closeImmichLibraryModal() {
-  if (immichLibraryModal) immichLibraryModal.style.display = "none";
 }
 
 export async function fetchLibraryStats(force = false) {
@@ -291,39 +721,79 @@ export async function fetchLibraryStats(force = false) {
     const res = await fetch(url);
     const data = await res.json();
 
-    const gdrive = data.gdrive || {};
-    const assets = data.assets || {};
+    const gdrive = data.gdrive || null;
+    const assets = data.assets || null;
 
-    if (modalLibDisk) modalLibDisk.textContent = data.disk_size || "265 GB";
-    if (modalLibGdriveUsed) modalLibGdriveUsed.textContent = `${gdrive.used_gb || 272.4} GB`;
-    if (modalLibGdriveFree) modalLibGdriveFree.textContent = `${(gdrive.free_gb / 1024).toFixed(2) || 4.84} TB`;
-    if (modalLibGdrivePct) modalLibGdrivePct.textContent = `${gdrive.used_percent || 5.3}% of 5.0 TB`;
-    if (modalLibGdriveBar) modalLibGdriveBar.style.width = `${Math.min(100, gdrive.used_percent || 5.3)}%`;
-    if (modalLibDbDump) modalLibDbDump.textContent = `${data.db_dump_size || "341.4 MB"} (pg_dumpall)`;
+    if (modalLibDiskLabel && data.memories_dir) {
+      modalLibDiskLabel.textContent = `Local Folder (${data.memories_dir})`;
+    }
+    if (modalLibDisk) modalLibDisk.textContent = data.disk_size || (data.disk_reason || "Unknown");
 
-    if (modalLibTotalAssets) modalLibTotalAssets.textContent = Number(assets.total_assets || 35762).toLocaleString();
-    if (modalLibPhotos) modalLibPhotos.textContent = `${Number(assets.photos_count || 33497).toLocaleString()} (93.7%)`;
-    if (modalLibVideos) modalLibVideos.textContent = `${Number(assets.videos_count || 2265).toLocaleString()} (6.3%)`;
+    if (gdrive && typeof gdrive.used_gb === "number") {
+      if (modalLibGdriveUsed) modalLibGdriveUsed.textContent = `${gdrive.used_gb} GB`;
+      if (modalLibGdriveFree) modalLibGdriveFree.textContent = formatTb(gdrive.free_gb);
+      if (modalLibGdrivePct) modalLibGdrivePct.textContent = `${gdrive.used_percent}% of ${formatTb(gdrive.total_gb)}`;
+      if (modalLibGdriveBar) modalLibGdriveBar.style.width = `${Math.min(100, gdrive.used_percent || 0)}%`;
+    } else {
+      if (modalLibGdriveUsed) modalLibGdriveUsed.textContent = "Unknown";
+      if (modalLibGdriveFree) modalLibGdriveFree.textContent = "Unknown";
+      if (modalLibGdrivePct) modalLibGdrivePct.textContent = data.gdrive_reason || "Remote quota unavailable";
+      if (modalLibGdriveBar) modalLibGdriveBar.style.width = "0%";
+    }
 
-    if (modalLibNamedPeople) modalLibNamedPeople.textContent = `${assets.named_people || 120} people`;
-    if (modalLibUnhiddenPeople) modalLibUnhiddenPeople.textContent = `${Number(assets.unhidden_people || 1623).toLocaleString()} recognized`;
-    if (modalLibNamedAssets) modalLibNamedAssets.textContent = `${Number(assets.assets_with_named_faces || 18904).toLocaleString()} assets`;
-    if (modalLibFaceInstances) modalLibFaceInstances.textContent = `${Number(assets.total_face_instances || 98813).toLocaleString()} detections`;
+    if (modalLibDbDump) {
+      modalLibDbDump.textContent = data.db_dump_size
+        ? `${data.db_dump_size} (pg_dumpall)`
+        : (data.db_dump_reason || "No dump yet");
+    }
+
+    if (assets && typeof assets.total_assets === "number") {
+      const total = assets.total_assets;
+      const photos = assets.photos_count || 0;
+      const videos = assets.videos_count || 0;
+      const photoPct = total > 0 ? ((photos / total) * 100).toFixed(1) : "0.0";
+      const videoPct = total > 0 ? ((videos / total) * 100).toFixed(1) : "0.0";
+
+      if (modalLibTotalAssets) modalLibTotalAssets.textContent = Number(total).toLocaleString();
+      if (modalLibPhotos) modalLibPhotos.textContent = `${Number(photos).toLocaleString()} (${photoPct}%)`;
+      if (modalLibVideos) modalLibVideos.textContent = `${Number(videos).toLocaleString()} (${videoPct}%)`;
+
+      if (modalLibNamedPeople) modalLibNamedPeople.textContent = `${assets.named_people ?? 0} people`;
+      if (modalLibUnhiddenPeople) modalLibUnhiddenPeople.textContent = `${Number(assets.unhidden_people ?? 0).toLocaleString()} recognized`;
+      if (modalLibNamedAssets) modalLibNamedAssets.textContent = `${Number(assets.assets_with_named_faces ?? 0).toLocaleString()} assets`;
+      if (modalLibFaceInstances) modalLibFaceInstances.textContent = `${Number(assets.total_face_instances ?? 0).toLocaleString()} detections`;
+    } else {
+      const reason = data.assets_reason || "Database unavailable";
+      [modalLibTotalAssets, modalLibPhotos, modalLibVideos, modalLibNamedPeople, modalLibUnhiddenPeople, modalLibNamedAssets, modalLibFaceInstances]
+        .forEach((node) => {
+          if (node) {
+            node.textContent = "Unknown";
+            node.title = reason;
+          }
+        });
+    }
   } catch (err) {
     console.error("Error loading library stats:", err);
   }
 }
 
 export function setupBackupSync() {
-  if (btnSyncCard) btnSyncCard.addEventListener("click", triggerBackupSync);
-  if (btnModalTriggerSync) btnModalTriggerSync.addEventListener("click", triggerBackupSync);
-  if (btnViewBackupLog) btnViewBackupLog.addEventListener("click", openBackupLogModal);
-  if (backupModalClose) backupModalClose.addEventListener("click", closeBackupLogModal);
-  if (backupModalDismiss) backupModalDismiss.addEventListener("click", closeBackupLogModal);
-  if (backupModalRefresh) backupModalRefresh.addEventListener("click", refreshBackupLog);
+  registerModal(backupLogModal, { closeButtons: [backupModalClose, backupModalDismiss] });
+  registerModal(immichLibraryModal, { closeButtons: [immichModalClose, immichModalDismiss] });
+  registerModal(remoteModal, { closeButtons: [$("remote-modal-close"), $("remote-cancel")] });
 
-  if (btnOpenLibraryDetails) btnOpenLibraryDetails.addEventListener("click", openImmichLibraryModal);
-  if (immichModalClose) immichModalClose.addEventListener("click", closeImmichLibraryModal);
-  if (immichModalDismiss) immichModalDismiss.addEventListener("click", closeImmichLibraryModal);
+  if (btnSyncCard) btnSyncCard.addEventListener("click", triggerBackupSync);
+  if (btnMediaBackupRun) btnMediaBackupRun.addEventListener("click", runMediaBackup);
+  if (btnRestoreTestRun) btnRestoreTestRun.addEventListener("click", runRestoreTest);
+  if (btnChangeRemote) btnChangeRemote.addEventListener("click", openRemoteModal);
+  if (remoteTestBtn) remoteTestBtn.addEventListener("click", testRemote);
+  if (remoteSave) remoteSave.addEventListener("click", saveRemote);
+  if (remoteSelect) remoteSelect.addEventListener("change", onRemoteInput);
+  if (remoteFolder) remoteFolder.addEventListener("input", onRemoteInput);
+  if (btnModalTriggerSync) btnModalTriggerSync.addEventListener("click", triggerBackupSync);
+  if (btnViewBackupLog) btnViewBackupLog.addEventListener("click", () => openBackupLogModal(btnViewBackupLog));
+  if (backupModalRefresh) backupModalRefresh.addEventListener("click", () => refreshBackupLog(false));
+
+  if (btnOpenLibraryDetails) btnOpenLibraryDetails.addEventListener("click", () => openImmichLibraryModal(btnOpenLibraryDetails));
   if (immichModalRefresh) immichModalRefresh.addEventListener("click", () => fetchLibraryStats(true));
 }

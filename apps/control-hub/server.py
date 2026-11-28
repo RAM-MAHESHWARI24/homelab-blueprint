@@ -4,13 +4,14 @@ Homelab Control Hub - modular backend API daemon.
 Lightweight Flask dashboard engine for low-power home servers.
 """
 
+import os
 import time
 from pathlib import Path
 from flask import Flask, jsonify, send_file, send_from_directory
 
-from config import HOST, PORT
+from config import HOST, HUB_CACHE_DIR, PORT
 from core.auth import install_auth
-from core.telemetry_sampler import start_telemetry_sampler
+from core.telemetry_sampler import sampler_health, start_telemetry_sampler
 
 # Import all visual widget blueprints
 from widgets.sleep_guard import sleep_guard_bp
@@ -23,7 +24,15 @@ from widgets.cron_tasks import cron_tasks_bp
 from widgets.service_matrix import service_matrix_bp
 from widgets.tv_updater import tv_updater_bp
 from widgets.config_center import config_center_bp
+from widgets.history import history_bp
 from widgets.indexers import indexers_bp
+from widgets.integrations import integrations_bp
+from widgets.media_hub import media_hub_bp
+from widgets.alerts import alerts_bp, start_alerts
+from widgets.updates import updates_bp
+from widgets.photos_hub import photos_hub_bp
+from widgets.storage_hub import storage_hub_bp
+from widgets.troubleshoot import troubleshoot_bp
 
 APP_START_TIME = time.time()
 
@@ -41,7 +50,7 @@ def create_app():
         return jsonify({
             "status": "ok",
             "service": "control-hub",
-            "version": "2.1.1",
+            "version": "2.2.0",
             "uptime_seconds": round(time.time() - APP_START_TIME, 1)
         })
 
@@ -54,14 +63,34 @@ def create_app():
 
     @app.route("/api/readyz")
     def readyz():
-        # Subsystem checks: ensure basic paths and memory telemetry accessible
-        return jsonify({
-            "status": "ready",
+        """Verifies telemetry sampler health and local storage/cache accessibility."""
+        sh = sampler_health()
+        telemetry_degraded = False
+        telemetry_detail = "standby"
+        if sh.get("started"):
+            age = sh.get("age_seconds")
+            if not sh.get("alive"):
+                telemetry_degraded = True
+                telemetry_detail = "dead"
+            elif age is not None and age > 30:
+                telemetry_degraded = True
+                telemetry_detail = f"stale ({age}s)"
+            else:
+                telemetry_detail = "alive"
+
+        cache_parent = Path(HUB_CACHE_DIR) if Path(HUB_CACHE_DIR).exists() else Path(HUB_CACHE_DIR).parent
+        storage_ok = os.path.isdir("/") and cache_parent.exists()
+
+        ready = (not telemetry_degraded) and storage_ok
+        payload = {
+            "status": "ready" if ready else "degraded",
             "checks": {
-                "telemetry": "ok",
-                "storage": "ok"
-            }
-        })
+                "telemetry": "degraded" if telemetry_degraded else "ok",
+                "telemetry_detail": telemetry_detail,
+                "storage": "ok" if storage_ok else "degraded",
+            },
+        }
+        return jsonify(payload), (200 if ready else 503)
 
     # 2. OpenAPI Specification & Swagger UI
     @app.route("/api/openapi.yaml")
@@ -125,6 +154,21 @@ def create_app():
     app.register_blueprint(tv_updater_bp)
     app.register_blueprint(config_center_bp)
     app.register_blueprint(indexers_bp)
+    app.register_blueprint(media_hub_bp)
+    app.register_blueprint(alerts_bp)
+    app.register_blueprint(updates_bp)
+    app.register_blueprint(photos_hub_bp)
+    app.register_blueprint(storage_hub_bp)
+    app.register_blueprint(troubleshoot_bp)
+    app.register_blueprint(history_bp)
+    app.register_blueprint(integrations_bp)
+
+    @app.route("/sw.js")
+    def service_worker():
+        resp = send_from_directory("static", "sw.js", mimetype="application/javascript")
+        resp.headers["Service-Worker-Allowed"] = "/"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     # 5. Catch-all static proxy
     @app.route("/<path:path>")
@@ -146,6 +190,8 @@ if __name__ == "__main__":
 
     # Launch real-time background telemetry sampler
     start_telemetry_sampler()
+    # Alert rules are checked once a minute in a background thread.
+    start_alerts()
 
     print(f"[+] Control Hub listening on http://{HOST}:{PORT}")
     if app.config.get("CONTROL_HUB_TOKEN_GENERATED"):

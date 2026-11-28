@@ -9,6 +9,7 @@ import re
 import unittest
 import subprocess
 from pathlib import Path
+from urllib.parse import unquote
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -139,8 +140,8 @@ class TestDocumentationIntegrity(unittest.TestCase):
                 if not file_part:
                     target_file = md_path
                 else:
-                    # Remove query params if any
-                    clean_file = file_part.split("?")[0]
+                    # Remove query params if any and decode percent-encoded spaces
+                    clean_file = unquote(file_part.split("?")[0]).strip("<>")
                     target_file = (md_path.parent / clean_file).resolve()
 
                 # Verify file existence

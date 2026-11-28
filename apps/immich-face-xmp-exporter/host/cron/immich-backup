@@ -1,7 +1,12 @@
 # Nightly photo library backup: PostgreSQL dump + face-tag XMP export + rclone mirror.
-# Rendered by the installer: {{STATE_DIR}}, {{MEMORIES_DIR}}, {{GDRIVE_REMOTE}}, {{INSTALL_DIR}}
+# Rendered by the installer: {{STATE_DIR}}, {{MEMORIES_DIR}}, {{GDRIVE_REMOTE}}, {{INSTALL_DIR}}, {{KEEP_*}}
+# "Run backup now" in the Control Hub reads these same lines, so edit them here (or
+# re-run setup) rather than in the script.
 BACKUP_LOCAL={{STATE_DIR}}/photo-backups
 MEDIA_PATH={{MEMORIES_DIR}}
 GDRIVE_REMOTE={{GDRIVE_REMOTE}}
 FACE_EXPORTER={{INSTALL_DIR}}/apps/immich-face-xmp-exporter/export_faces_to_xmp.py
+KEEP_LOCAL_DUMPS={{KEEP_LOCAL_DUMPS}}
+KEEP_DRIVE_DUMPS={{KEEP_DRIVE_DUMPS}}
+KEEP_DRIVE_MONTHLY={{KEEP_DRIVE_MONTHLY}}
 0 22 * * * root /usr/local/sbin/immich_backup_gdrive.sh >> {{STATE_DIR}}/photo-backups/cron.log 2>&1

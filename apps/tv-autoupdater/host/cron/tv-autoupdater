@@ -1,6 +1,8 @@
 # TV auto-updater - background Android TV app updater (SmartTube, CloudStream, sideloads)
 # Runs every 15 minutes between 06:00 and 23:59 as the unprivileged service user.
 # Rendered by the installer: {{INSTALL_DIR}}, {{SERVICE_USER}}, {{STATE_DIR}}
+HOME={{STATE_DIR}}/home
+ANDROID_SDK_HOME={{STATE_DIR}}/home
 TV_AUTOUPDATER_STATE_DIR={{STATE_DIR}}/tv-autoupdater
 TV_AUTOUPDATER_CONFIG={{ETC_DIR}}/tv-autoupdater.json
 TV_AUTOUPDATER_LOG={{STATE_DIR}}/tv-autoupdater/tv-autoupdater.log

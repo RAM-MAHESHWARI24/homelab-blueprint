@@ -1,22 +1,34 @@
 /**
- * Widget: Service Matrix & 1-Click Container Logs
- * Renders 3x3 container tiles grid with live ping badges, category filter tabs,
- * 3D coin-flip interactive brand icon on card hover, 1-click Docker restarts,
- * and dual-mode log viewer (Native Docker socket tail vs Dozzle v11).
+ * Widget: Service Matrix & Container Controls / Logs
+ * Keyed zero-flicker rows, real Docker health & published ports, search + category
+ * + custom-container toggle, confirmation guard for streaming/ingest restarts/stops,
+ * and searchable/copyable inline logs modal.
  */
 
-import { $ } from "../shared/dom.js";
+import { $, confirmAction, copyTextToClipboard, setCardSummary, uiIcon } from "../shared/dom.js";
 import { state } from "../state.js";
-import { HOSTNAME, DOZZLE_BASE_URL, ENDPOINTS } from "../config.js";
+import { COCKPIT_BASE_URL, ENDPOINTS, HOSTNAME } from "../config.js";
+import { escapeHtml } from "../shared/formatters.js";
+import { openModal, registerModal } from "../shared/modal.js";
 import { showToast } from "../shared/toast.js";
+import { renderOverview } from "./overview.js";
 
 const servicesGrid = $("services-grid");
 const serviceFilters = $("service-filter-group");
+const btnFilterOther = $("btn-filter-other");
+const serviceSearchInput = $("service-search-input");
+const includeOtherWrap = $("include-other-wrap");
+const chkIncludeOther = $("chk-include-other");
+const includeOtherLabel = $("include-other-label");
+
 const openDozzleFullBtn = $("open-dozzle-full-btn");
+const footerDozzleLink = $("footer-dozzle-link");
+const footerCockpitLink = $("footer-cockpit-link");
 
 const dozzleModal = $("dozzle-modal");
 const dozzleModalTitle = $("dozzle-modal-title");
 const containerModalSubPath = $("container-modal-sub-path");
+const logViewToggle = $("log-view-toggle");
 const btnLogTabNative = $("btn-log-tab-native");
 const btnLogTabDozzle = $("btn-log-tab-dozzle");
 const dozzleModalExtLink = $("dozzle-modal-ext-link");
@@ -27,41 +39,18 @@ const containerModalLogContent = $("container-modal-log-content");
 const containerModalRefresh = $("container-modal-refresh");
 const containerModalDismiss = $("container-modal-dismiss");
 const containerNativeFooter = $("container-native-footer");
+const containerLogFilter = $("container-log-filter");
+const containerLogFilterBar = $("container-log-filter-bar");
+const containerLogCopy = $("container-log-copy");
 const dozzleIframe = $("dozzle-iframe");
 
 let activeLogServiceId = null;
 let activeLogServiceName = null;
 let activeLogDockerId = null;
+let rawContainerLogText = "";
+let lastServicesSignature = "";
 
-/**
- * Returns generic outline icon SVG (Front face of the 3D flip card)
- */
-function getGenericIconSvg(iconName) {
-  switch (iconName) {
-    case "film":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>`;
-    case "search":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
-    case "image":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
-    case "tv":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>`;
-    case "video":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`;
-    case "rss":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>`;
-    case "file-text":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`;
-    case "download":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
-    case "terminal":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`;
-    case "shield":
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
-    default:
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>`;
-  }
-}
+const GUARDED_SERVICES = new Set(["jellyfin", "immich_server", "qbittorrent", "immich_postgres"]);
 
 const BRAND_ICON_MAP = {
   jellyfin: "/img/icons/jellyfin.svg",
@@ -74,149 +63,325 @@ const BRAND_ICON_MAP = {
   qbittorrent: "/img/icons/qbittorrent.svg",
   dozzle: "/img/icons/dozzle.svg",
   byparr: "/img/icons/byparr.svg",
-  cockpit: "/img/icons/cockpit.svg"
+  cockpit: "/img/icons/cockpit.svg",
 };
 
-/**
- * Returns authentic, full-color brand logo image from official vector SVG assets
- */
-function getBrandLogoImg(serviceId) {
-  const iconPath = BRAND_ICON_MAP[serviceId] || "/img/icons/jellyfin.svg";
-  return `<img src="${iconPath}" alt="${serviceId}" class="brand-logo-img" loading="lazy" />`;
+function getBrandLogoHtml(serviceId) {
+  const iconPath = BRAND_ICON_MAP[serviceId];
+  if (iconPath) {
+    return `<img src="${iconPath}" alt="" class="brand-logo-img" loading="lazy" />`;
+  }
+  return uiIcon("box");
 }
 
-export async function fetchServices() {
-  if (!servicesGrid) return;
-  try {
-    const res = await fetch(ENDPOINTS.servicesStatus);
-    if (!res.ok) return;
-    const data = await res.json();
-    const services = data.services || [];
+function dozzleUrlBase() {
+  return `http://${HOSTNAME}:${state.dozzlePort || 8888}`;
+}
 
-    const currentFilter = state.activeServiceFilter || "all";
+function updateFilterCounts(services) {
+  if (!serviceFilters) return;
+  const counts = { all: services.length, media: 0, ingest: 0, system: 0, other: 0 };
+  services.forEach((svc) => {
+    const cat = svc.category || "system";
+    if (cat in counts) counts[cat] += 1;
+  });
+  if (btnFilterOther) btnFilterOther.hidden = counts.other === 0;
+  const labels = {
+    all: `All (${counts.all})`,
+    media: `Media (${counts.media})`,
+    ingest: `Ingest (${counts.ingest})`,
+    system: `System (${counts.system})`,
+    other: `Other (${counts.other})`,
+  };
+  serviceFilters.querySelectorAll("[data-filter]").forEach((btn) => {
+    const key = btn.getAttribute("data-filter");
+    if (key in labels) btn.textContent = labels[key];
+  });
+}
 
-    servicesGrid.innerHTML = services.map(svc => {
-      const isUp = svc.is_up;
-      const badgeClass = isUp ? "online" : "stopped";
-      const badgeText = isUp ? "Online" : "Stopped";
-      const category = svc.category || "system";
-      const isVisible = (currentFilter === "all" || currentFilter === category);
+function updateOptionalToolLinks(dozzleInstalled, cockpitInstalled, dozzlePort) {
+  state.dozzleInstalled = Boolean(dozzleInstalled);
+  state.cockpitInstalled = Boolean(cockpitInstalled);
+  if (dozzlePort) state.dozzlePort = dozzlePort;
+  const dUrl = dozzleUrlBase();
 
-      const protocol = svc.port === 9090 ? "https:" : "http:";
-      const targetUrl = `${protocol}//${HOSTNAME}:${svc.port}`;
-
-      return `
-        <div class="service-tile tile-${svc.id}" id="tile-${svc.id}" data-category="${category}" style="display: ${isVisible ? 'flex' : 'none'};">
-          <div class="tile-top">
-            <div class="tile-brand">
-              <div class="tile-icon-box" title="${svc.name}">
-                <div class="tile-icon-inner">
-                  <div class="tile-icon-face tile-icon-front">
-                    ${getGenericIconSvg(svc.icon)}
-                  </div>
-                  <div class="tile-icon-face tile-icon-back">
-                    ${getBrandLogoImg(svc.id)}
-                  </div>
-                </div>
-              </div>
-              <div class="tile-title-group">
-                <h4>${svc.name}</h4>
-                <div class="tile-meta-row" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                  <span class="tile-port">:${svc.port}</span>
-                  <span class="tile-ping-badge">${isUp ? '<span style="color:#00f5a0;">●</span> 4ms' : '<span style="color:#ef4444;">●</span> Off'}</span>
-                </div>
-              </div>
-            </div>
-            <span class="tile-badge ${badgeClass}">
-              <span class="status-dot-sm"></span>
-              ${badgeText}
-            </span>
-          </div>
-
-          <p class="tile-desc">${svc.description}</p>
-
-          <div class="tile-bottom">
-            <a href="${targetUrl}" target="_blank" class="btn-tile-launch" id="btn-launch-${svc.id}">
-              Launch &nearr;
-            </a>
-            ${svc.id !== "cockpit" ? `
-              <button class="btn-tile-logs" data-log-id="${svc.id}" data-log-name="${svc.name}" data-docker-id="${svc.docker_id || ''}" title="Stream live logs">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="micro-icon">
-                  <polyline points="4 17 10 11 4 5"></polyline>
-                  <line x1="12" y1="19" x2="20" y2="19"></line>
-                </svg>
-                Logs
-              </button>
-              <button class="btn-tile-restart" id="btn-restart-${svc.id}" data-restart-id="${svc.id}" data-restart-name="${svc.name}" title="Restart Docker Container">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="micro-icon">
-                  <polyline points="23 4 23 10 17 10"></polyline>
-                  <polyline points="1 20 1 14 7 14"></polyline>
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                </svg>
-              </button>
-            ` : ""}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    // Bind log buttons
-    servicesGrid.querySelectorAll(".btn-tile-logs").forEach(btn => {
-      btn.onclick = () => openContainerLogs(btn.dataset.logId, btn.dataset.logName, btn.dataset.dockerId);
-    });
-
-    // Bind restart buttons
-    servicesGrid.querySelectorAll(".btn-tile-restart").forEach(btn => {
-      btn.onclick = () => restartContainer(btn.dataset.restartId, btn.dataset.restartName);
-    });
-
-    state.servicesLoadedOnce = true;
-  } catch (err) {
-    console.error("Error fetching services:", err);
+  if (openDozzleFullBtn) {
+    openDozzleFullBtn.style.display = state.dozzleInstalled ? "inline-flex" : "none";
+    openDozzleFullBtn.href = dUrl;
+  }
+  if (logViewToggle) {
+    logViewToggle.style.display = state.dozzleInstalled ? "inline-flex" : "none";
+  }
+  if (dozzleModalExtLink) {
+    dozzleModalExtLink.style.display = state.dozzleInstalled ? "inline-flex" : "none";
+  }
+  if (footerDozzleLink) {
+    footerDozzleLink.style.display = state.dozzleInstalled ? "inline-flex" : "none";
+    footerDozzleLink.href = dUrl;
+  }
+  if (footerCockpitLink) {
+    footerCockpitLink.style.display = state.cockpitInstalled ? "inline-flex" : "none";
+    footerCockpitLink.href = COCKPIT_BASE_URL;
   }
 }
 
-export async function openContainerLogs(containerId, containerName, dockerId) {
+function serviceVisualBadge(svc) {
+  if (svc.health === "unhealthy") return { cls: "unhealthy", label: "Unhealthy" };
+  if (svc.health === "starting") return { cls: "starting", label: "Starting" };
+  if (svc.is_up) return { cls: "online", label: svc.health === "healthy" ? "Healthy" : "Online" };
+  if (svc.scheduled) return { cls: "scheduled", label: "Scheduled Off" };
+  return { cls: "stopped", label: svc.state || "Stopped" };
+}
+
+function applyClientFilters() {
+  if (!servicesGrid) return;
+  const filterCat = state.activeServiceFilter || "all";
+  const q = (state.serviceSearchQuery || "").trim().toLowerCase();
+  servicesGrid.querySelectorAll(".service-row").forEach((row) => {
+    const cat = row.dataset.category || "system";
+    const hay = row.dataset.search || "";
+    const matchCat = filterCat === "all" || cat === filterCat;
+    const matchSearch = !q || hay.includes(q);
+    row.hidden = !(matchCat && matchSearch);
+  });
+}
+
+function renderServiceRows(services, dockerAvailable, dockerError) {
+  if (!servicesGrid) return;
+  if (services.length === 0) {
+    lastServicesSignature = "";
+    const msg = dockerAvailable === false
+      ? `Docker daemon unavailable${dockerError ? `: ${escapeHtml(dockerError)}` : "."}`
+      : "No homelab containers detected on this host.";
+    servicesGrid.innerHTML = `<div class="empty-state">${msg}</div>`;
+    return;
+  }
+
+  const sig = JSON.stringify(services.map((s) => [s.id, s.state, s.health, s.status, s.port, s.is_up, s.has_web_ui, s.image, s.restart_count, s.version]));
+  if (sig === lastServicesSignature && servicesGrid.querySelector(".service-row")) {
+    applyClientFilters();
+    return;
+  }
+  lastServicesSignature = sig;
+
+  let tbody = servicesGrid.querySelector("tbody.service-ledger-body");
+  if (!tbody) {
+    servicesGrid.innerHTML = `
+      <table class="service-ledger">
+        <thead>
+          <tr>
+            <th scope="col">Service</th>
+            <th scope="col">Group</th>
+            <th scope="col" class="num-col">Port</th>
+            <th scope="col">Health</th>
+            <th scope="col" class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="service-ledger-body"></tbody>
+      </table>
+    `;
+    tbody = servicesGrid.querySelector("tbody.service-ledger-body");
+  }
+
+  // Keyed patching to avoid disrupting hover/focus during 15s polling
+  const existing = new Map();
+  tbody.querySelectorAll(".service-row[data-service-id]").forEach((el) => {
+    existing.set(el.dataset.serviceId, el);
+  });
+
+  const seenIds = new Set();
+  services.forEach((svc) => {
+    seenIds.add(svc.id);
+    const { cls: badgeClass, label: badgeText } = serviceVisualBadge(svc);
+    const category = svc.category || "system";
+    const catLabel = category.charAt(0).toUpperCase() + category.slice(1);
+    const hasUi = svc.has_web_ui !== false && Boolean(svc.port);
+    const protocol = svc.port === 9090 ? "https:" : "http:";
+    const targetUrl = hasUi ? `${protocol}//${HOSTNAME}:${svc.port}` : null;
+    const safeName = escapeHtml(svc.name);
+    const statusParts = [svc.status || badgeText];
+    if (Number(svc.restart_count) > 0) {
+      statusParts.push(`${svc.restart_count} restart${svc.restart_count === 1 ? "" : "s"}`);
+    }
+    if (svc.version) {
+      statusParts.push(`v${svc.version}`);
+    } else if (svc.image && svc.image !== "systemd") {
+      const shortImg = svc.image.includes("/") ? svc.image.split("/").pop() : svc.image;
+      statusParts.push(shortImg);
+    }
+    const safeStatus = escapeHtml(statusParts.join(" · "));
+
+    let row = existing.get(svc.id);
+    if (!row) {
+      row = document.createElement("tr");
+      row.className = `service-row tile-${svc.id}`;
+      row.id = `tile-${svc.id}`;
+      row.dataset.serviceId = svc.id;
+      tbody.appendChild(row);
+    }
+
+    row.dataset.category = category;
+    row.dataset.search = `${svc.name} ${svc.id} ${svc.description || ""} ${svc.image || ""}`.toLowerCase();
+
+    const isRunning = svc.state === "running";
+    const actionBtnsHtml = svc.id !== "cockpit" ? `
+      <button type="button" class="btn-secondary btn-tile-logs" data-log-id="${escapeHtml(svc.id)}" data-log-name="${safeName}" data-docker-id="${escapeHtml(svc.docker_id || "")}" aria-label="View logs for ${safeName}">
+        Logs
+      </button>
+      ${isRunning ? `
+        <button type="button" class="btn-ghost btn-tile-restart" id="btn-restart-${escapeHtml(svc.id)}" data-action="restart" data-svc-id="${escapeHtml(svc.id)}" data-svc-name="${safeName}" aria-label="Restart ${safeName}">
+          ${uiIcon("refresh")}
+          <span>Restart</span>
+        </button>
+        <button type="button" class="btn-ghost btn-tile-stop" id="btn-stop-${escapeHtml(svc.id)}" data-action="stop" data-svc-id="${escapeHtml(svc.id)}" data-svc-name="${safeName}" aria-label="Stop ${safeName}">
+          <span>Stop</span>
+        </button>
+      ` : `
+        <button type="button" class="btn-secondary btn-tile-restart" id="btn-start-${escapeHtml(svc.id)}" data-action="start" data-svc-id="${escapeHtml(svc.id)}" data-svc-name="${safeName}" aria-label="Start ${safeName}">
+          ${uiIcon("play")}
+          <span>Start</span>
+        </button>
+      `}
+    ` : "";
+
+    row.innerHTML = `
+      <td class="ledger-cell-service">
+        <div class="service-row-main">
+          <span class="status-dot-sm ${badgeClass}" aria-hidden="true"></span>
+          <div class="service-row-icon" aria-hidden="true">${getBrandLogoHtml(svc.id)}</div>
+          <div class="service-row-info">
+            <span class="service-row-name">${safeName}</span>
+            <span class="service-row-desc">${safeStatus}</span>
+          </div>
+        </div>
+      </td>
+      <td class="ledger-cell-group">${escapeHtml(catLabel)}</td>
+      <td class="ledger-cell-port num-col">
+        ${svc.port ? `<span class="tile-port font-mono">:${svc.port}</span>` : `<span class="tile-port font-mono">Internal</span>`}
+      </td>
+      <td class="ledger-cell-health">
+        <span class="tile-badge ${badgeClass}">${escapeHtml(badgeText)}</span>
+      </td>
+      <td class="ledger-cell-actions actions-col">
+        <div class="service-row-actions">
+          ${hasUi ? `
+            <a href="${targetUrl}" target="_blank" rel="noopener" class="btn-tile-launch" id="btn-launch-${escapeHtml(svc.id)}" aria-label="Open ${safeName} on port ${svc.port}">
+              Open ${uiIcon("external")}
+            </a>
+          ` : ""}
+          ${actionBtnsHtml}
+        </div>
+      </td>
+    `;
+  });
+
+  existing.forEach((node, id) => {
+    if (!seenIds.has(id)) node.remove();
+  });
+
+  tbody.querySelectorAll(".btn-tile-logs").forEach((btn) => {
+    btn.onclick = () => openContainerLogs(btn.dataset.logId, btn.dataset.logName, btn.dataset.dockerId, btn);
+  });
+  tbody.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.onclick = () => performContainerAction(btn.dataset.svcId, btn.dataset.svcName, btn.dataset.action, btn);
+  });
+
+  applyClientFilters();
+}
+
+export async function fetchServices() {
+  try {
+    const res = await fetch(ENDPOINTS.servicesStatus(state.includeOtherContainers));
+    if (!res.ok) return false;
+    const data = await res.json();
+    const services = data.services || [];
+
+    state.servicesList = services;
+    state.servicesLoadedOnce = true;
+
+    if (includeOtherWrap) {
+      const otherCount = Number(data.other_count || 0);
+      includeOtherWrap.hidden = otherCount === 0 && !state.includeOtherContainers;
+      if (includeOtherLabel && otherCount > 0) {
+        includeOtherLabel.textContent = `Show ${otherCount} other container${otherCount === 1 ? "" : "s"}`;
+      }
+    }
+
+    updateOptionalToolLinks(data.dozzle_installed, data.cockpit_installed, data.dozzle_port);
+    updateFilterCounts(services);
+
+    const onlineCount = services.filter((s) => s.is_up).length;
+    setCardSummary(
+      "services-matrix",
+      services.length
+        ? `${onlineCount}/${services.length} online`
+        : (data.docker_available === false ? "Docker unavailable" : "No containers installed")
+    );
+
+    renderServiceRows(services, data.docker_available, data.docker_error);
+    renderOverview();
+    return true;
+  } catch (err) {
+    console.error("Error fetching services:", err);
+    return false;
+  }
+}
+
+function renderFilteredLog() {
+  if (!containerModalLogContent) return;
+  const q = (containerLogFilter ? containerLogFilter.value : "").trim().toLowerCase();
+  if (!q) {
+    containerModalLogContent.textContent = rawContainerLogText || "No log output recorded yet.";
+  } else {
+    const matched = (rawContainerLogText || "").split("\n").filter((ln) => ln.toLowerCase().includes(q));
+    containerModalLogContent.textContent = matched.length
+      ? matched.join("\n")
+      : `No log lines matching "${q}".`;
+  }
+  containerModalLogContent.scrollTop = containerModalLogContent.scrollHeight;
+}
+
+export async function openContainerLogs(containerId, containerName, dockerId, triggerEl = null) {
   activeLogServiceId = containerId;
   activeLogServiceName = containerName;
   activeLogDockerId = dockerId || containerId;
+  if (containerLogFilter) containerLogFilter.value = "";
 
   if (dozzleModalTitle) dozzleModalTitle.textContent = `${containerName} Logs`;
   if (containerModalSubPath) {
     const shortId = dockerId ? ` (${dockerId.slice(0, 12)})` : "";
-    containerModalSubPath.textContent = `Container: ${containerId}${shortId} • Live Stream`;
+    containerModalSubPath.textContent = `Container: ${containerId}${shortId} · Live Tail`;
   }
 
   const effectiveDozzleId = dockerId || containerId;
-  const dozzleUrl = `${DOZZLE_BASE_URL}/container/${effectiveDozzleId}`;
-  if (dozzleModalExtLink) dozzleModalExtLink.href = dozzleUrl;
+  if (dozzleModalExtLink) dozzleModalExtLink.href = `${dozzleUrlBase()}/container/${effectiveDozzleId}`;
 
   switchLogTab("native");
-  if (dozzleModal) dozzleModal.style.display = "flex";
-
+  if (dozzleModal) openModal(dozzleModal, triggerEl);
   await refreshContainerLog();
 }
 
 export function switchLogTab(tab) {
-  if (tab === "native") {
+  const useDozzle = tab === "dozzle" && state.dozzleInstalled;
+  if (!useDozzle) {
     if (btnLogTabNative) btnLogTabNative.classList.add("active");
     if (btnLogTabDozzle) btnLogTabDozzle.classList.remove("active");
     if (containerNativeLogView) containerNativeLogView.style.display = "block";
     if (containerDozzleIframeView) containerDozzleIframeView.style.display = "none";
     if (containerNativeFooter) containerNativeFooter.style.display = "flex";
+    if (containerLogFilterBar) containerLogFilterBar.style.display = "flex";
   } else {
     if (btnLogTabNative) btnLogTabNative.classList.remove("active");
     if (btnLogTabDozzle) btnLogTabDozzle.classList.add("active");
     if (containerNativeLogView) containerNativeLogView.style.display = "none";
     if (containerDozzleIframeView) containerDozzleIframeView.style.display = "block";
     if (containerNativeFooter) containerNativeFooter.style.display = "none";
+    if (containerLogFilterBar) containerLogFilterBar.style.display = "none";
 
     const effectiveDozzleId = activeLogDockerId || activeLogServiceId;
-    const dozzleUrl = `${DOZZLE_BASE_URL}/container/${effectiveDozzleId}`;
-    if (dozzleIframe) {
-      if (!dozzleIframe.src || dozzleIframe.src === "about:blank" || !dozzleIframe.src.includes(effectiveDozzleId)) {
-        dozzleIframe.src = dozzleUrl;
-      }
+    const dozzleUrl = `${dozzleUrlBase()}/container/${effectiveDozzleId}`;
+    if (dozzleIframe && (!dozzleIframe.src || dozzleIframe.src === "about:blank" || !dozzleIframe.src.includes(effectiveDozzleId))) {
+      dozzleIframe.src = dozzleUrl;
     }
   }
 }
@@ -227,74 +392,115 @@ export async function refreshContainerLog() {
     containerModalLogContent.textContent = `Streaming tail logs for ${activeLogServiceName}...`;
   }
   try {
-    const res = await fetch(ENDPOINTS.serviceLogs(activeLogServiceId, 120));
+    const res = await fetch(ENDPOINTS.serviceLogs(activeLogServiceId, 200));
     const data = await res.json();
-    if (containerModalLogContent) {
-      containerModalLogContent.textContent = data.logs || "No log output recorded yet.";
-      containerModalLogContent.scrollTop = containerModalLogContent.scrollHeight;
-    }
+    rawContainerLogText = data.logs || "";
+    renderFilteredLog();
   } catch (err) {
+    rawContainerLogText = "";
     if (containerModalLogContent) {
       containerModalLogContent.textContent = `Error fetching logs: ${err.message}`;
     }
   }
 }
 
-export async function restartContainer(containerId, containerName) {
-  const btn = $(`btn-restart-${containerId}`);
-  if (btn) btn.disabled = true;
-  showToast("Restarting Container", `Sending restart signal to ${containerName}...`, "⟳", 4000);
+export async function performContainerAction(containerId, containerName, action = "restart", triggerEl = null) {
+  if (action === "stop" || (GUARDED_SERVICES.has(containerId) && action === "restart")) {
+    let activeWarning = "";
+    if (containerId === "jellyfin" && state.activeJellyfinStreams > 0) {
+      activeWarning = `${state.activeJellyfinStreams} active Jellyfin stream(s) will be interrupted immediately.`;
+    } else if (containerId === "immich_server" && state.activeJellyfinStreams > 0) {
+      activeWarning = "Stopping the photo server interrupts any open gallery uploads or mobile backups.";
+    } else if (containerId === "qbittorrent" && state.torrentsActiveCount > 0) {
+      activeWarning = `${state.torrentsActiveCount} active torrent(s) are currently transferring.`;
+    } else if (containerId === "immich_postgres") {
+      activeWarning = "Stopping or restarting PostgreSQL temporarily disconnects photo library queries and backups.";
+    }
+    const ok = await confirmAction({
+      title: `${action === "stop" ? "Stop" : "Restart"} ${containerName}?`,
+      message: `This will ${action} the '${containerId}' container immediately.`,
+      warning: activeWarning,
+      confirmLabel: action === "stop" ? `Stop ${containerName}` : `Restart ${containerName}`,
+      danger: action === "stop" || Boolean(activeWarning),
+      triggerEl,
+    });
+    if (!ok) return;
+  }
+
+  if (triggerEl) triggerEl.disabled = true;
+  const verb = action === "start" ? "Starting" : (action === "stop" ? "Stopping" : "Restarting");
+  showToast(`${verb} Container`, `Sending ${action} command to ${containerName}...`, "info", 3500);
 
   try {
-    const res = await fetch(ENDPOINTS.serviceRestart(containerId), { method: "POST" });
+    const res = await fetch(ENDPOINTS.serviceAction(containerId), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
     const data = await res.json();
-    if (data.success) {
-      showToast("Container Restarted", `${containerName} restarted successfully.`, "✅", 4000);
+    if (res.ok && data.success) {
+      showToast("Container Updated", data.message || `${containerName} ${action}ed.`, "success", 3800);
+      lastServicesSignature = "";
       await fetchServices();
     } else {
-      showToast("Restart Failed", data.error || "Failed to restart container", "⚠️", 5000);
+      showToast("Action Failed", data.error || `Failed to ${action} container`, "danger", 5000);
     }
   } catch (err) {
-    showToast("Restart Error", err.message, "⚠️", 5000);
+    showToast("Action Error", err.message, "danger", 5000);
   } finally {
-    if (btn) btn.disabled = false;
+    if (triggerEl) triggerEl.disabled = false;
   }
 }
 
-export function closeDozzleModal() {
-  if (dozzleModal) dozzleModal.style.display = "none";
-  if (dozzleIframe) dozzleIframe.src = "about:blank";
-}
-
 export function setupServiceMatrix() {
-  if (openDozzleFullBtn) openDozzleFullBtn.href = DOZZLE_BASE_URL;
+  registerModal(dozzleModal, {
+    closeButtons: [dozzleModalClose, containerModalDismiss],
+    onClose: () => {
+      if (dozzleIframe) dozzleIframe.src = "about:blank";
+    },
+  });
 
-  // Category filter buttons
   if (serviceFilters) {
-    const filterBtns = serviceFilters.querySelectorAll(".svc-filter-btn");
-    filterBtns.forEach(btn => {
+    const filterBtns = serviceFilters.querySelectorAll("[data-filter]");
+    filterBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
-        filterBtns.forEach(b => b.classList.remove("active"));
+        filterBtns.forEach((b) => {
+          b.classList.remove("active");
+          b.setAttribute("aria-pressed", "false");
+        });
         btn.classList.add("active");
+        btn.setAttribute("aria-pressed", "true");
         state.activeServiceFilter = btn.getAttribute("data-filter") || "all";
-        if (servicesGrid) {
-          const tiles = servicesGrid.querySelectorAll(".service-tile");
-          tiles.forEach(tile => {
-            if (state.activeServiceFilter === "all" || tile.getAttribute("data-category") === state.activeServiceFilter) {
-              tile.style.display = "flex";
-            } else {
-              tile.style.display = "none";
-            }
-          });
-        }
+        applyClientFilters();
       });
     });
   }
 
-  // Modal event listeners
+  if (serviceSearchInput) {
+    serviceSearchInput.addEventListener("input", () => {
+      state.serviceSearchQuery = serviceSearchInput.value || "";
+      applyClientFilters();
+    });
+  }
+
+  if (chkIncludeOther) {
+    chkIncludeOther.addEventListener("change", () => {
+      state.includeOtherContainers = chkIncludeOther.checked;
+      lastServicesSignature = "";
+      fetchServices();
+    });
+  }
+
+  if (containerLogFilter) containerLogFilter.addEventListener("input", renderFilteredLog);
+  if (containerLogCopy) {
+    containerLogCopy.addEventListener("click", async () => {
+      const text = containerModalLogContent ? containerModalLogContent.textContent : "";
+      const ok = await copyTextToClipboard(text);
+      showToast(ok ? "Logs Copied" : "Copy Failed", ok ? "Container log tail copied to clipboard." : "Could not copy logs.", ok ? "success" : "warning");
+    });
+  }
+
   if (btnLogTabNative) btnLogTabNative.addEventListener("click", () => switchLogTab("native"));
   if (btnLogTabDozzle) btnLogTabDozzle.addEventListener("click", () => switchLogTab("dozzle"));
   if (containerModalRefresh) containerModalRefresh.addEventListener("click", refreshContainerLog);
-  if (containerModalDismiss) containerModalDismiss.addEventListener("click", closeDozzleModal);
-  if (dozzleModalClose) dozzleModalClose.addEventListener("click", closeDozzleModal);
 }

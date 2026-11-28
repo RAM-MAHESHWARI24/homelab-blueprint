@@ -1,294 +1,352 @@
 /**
- * ServerFF Control Hub - Modular Master Orchestrator
- * Connects all independent GUI widget controllers via native browser ES modules.
+ * Control Hub - Main Entrypoint
+ * 5-view hash router (Overview, Apps, Backups, TVs, System), automatic hiding
+ * of uninstalled modules, truthful connection tracking, visibility-aware polling,
+ * theme redraw hooks, and pull-to-refresh.
  */
 
 import { $ } from "./shared/dom.js";
 import { state } from "./state.js";
 import { showToast } from "./shared/toast.js";
-
-// Import all 8 visual widget controllers + Header
-import { setupHeader } from "./widgets/header.js";
+import {
+  recordPollResult,
+  setMenuOpen,
+  setRetryConnectionHandler,
+  setThemeChangeHandler,
+  setupHeader,
+} from "./widgets/header.js";
 import { fetchSleepStatus, setupSleepGuard } from "./widgets/sleepGuard.js";
-import { fetchSpeedometers, setupNetworkSpeed } from "./widgets/networkSpeed.js";
+import { drawLanSparkline, fetchSpeedometers, setupNetworkSpeed } from "./widgets/networkSpeed.js";
+import { fetchNetworkOverview, setupNetworkOverview } from "./widgets/networkOverview.js";
 import { setupCurrentDownloads } from "./widgets/currentDownloads.js";
-import { fetchBackupStatus, setupBackupSync } from "./widgets/backupSync.js";
+import { fetchBackupStatus, setBackupVisibilityCallback, setupBackupSync } from "./widgets/backupSync.js";
+import { fetchPhotosOverview, setupPhotosHub } from "./widgets/photosHub.js";
+import { fetchTvUpdaterStatus, setTvVisibilityCallback, setupTvUpdater } from "./widgets/tvUpdater.js";
 import { fetchVitals } from "./widgets/systemVitals.js";
+import { fetchStorageOverview, setupStorageHub } from "./widgets/storageHub.js";
 import { fetchCronTasks, setupCronTasks } from "./widgets/cronTasks.js";
 import { fetchServices, setupServiceMatrix } from "./widgets/serviceMatrix.js";
-import { fetchTvUpdaterStatus, setupTvUpdater } from "./widgets/tvUpdater.js";
-import { setupConfigCenter } from "./widgets/configCenter.js";
+import { fetchNetplanStatus, setupConfigCenter } from "./widgets/configCenter.js";
 import { fetchIndexerStatus, setupIndexers } from "./widgets/indexers.js";
+import { fetchMediaHub, setupMediaHub } from "./widgets/mediaHub.js";
+import { fetchAlerts, setupAlerts } from "./widgets/alerts.js";
+import { fetchUpdates, setupUpdates } from "./widgets/updates.js";
+import { setupHelpDrawer } from "./widgets/helpDrawer.js";
+import { fetchHistoryAndInsights, redrawHistoryCharts, setupHistoryInsights } from "./widgets/historyInsights.js";
+import { setupPwa } from "./widgets/pwa.js";
+import { setupI18n } from "./shared/i18n.js";
+import { applyCardLayout, setupCustomizeAndKiosk } from "./widgets/customize.js";
+import { fetchIntegrations, setupIntegrations } from "./widgets/integrations.js";
 
-const btnModeHover = $("btn-mode-hover");
-const btnModeRealtime = $("btn-mode-realtime");
-const hudModeChip = $("hud-mode-chip");
-const speedoBadgeText = $("speedo-badge-text");
-const speedoPulseDot = $("speedo-pulse-dot");
-const speedoTelemetryBadge = $("speedo-telemetry-badge");
-const footerRefreshBtn = $("footer-refresh-btn");
+const FAST_POLL_MS = 2500;
+const MEDIUM_POLL_MS = 15000;
+const VALID_VIEWS = ["overview", "apps", "backups", "tvs", "system"];
 
-// ==========================================================================
-// 1. Centralized Telemetry Stream Manager (Eco Hover vs Real-Time All)
-// ==========================================================================
+let isRefreshing = false;
 
-export function startRealtimeAll() {
-  stopRealtimeAll();
+// ============================================================================
+// 5-View Hash Router
+// ============================================================================
 
-  // 1. Speedometers, Ingest Downloads & Disk Throughput (1s)
-  state.realtimeTimers.speedo = setInterval(fetchSpeedometers, 1000);
-
-  // 2. Hardware Vitals: CPU, RAM, SSD/HDD Headroom (2s)
-  state.realtimeTimers.vitals = setInterval(fetchVitals, 2000);
-
-  // 3. Sleep Guard Status & 24h Timeline (3s)
-  state.realtimeTimers.sleep = setInterval(fetchSleepStatus, 3000);
-
-  // 4. Google Drive Cloud Sync & Multi-Stage Stepper (3s)
-  state.realtimeTimers.backup = setInterval(fetchBackupStatus, 3000);
-
-  // 5. Android TV App Updater (3s)
-  state.realtimeTimers.tvUpdater = setInterval(fetchTvUpdaterStatus, 3000);
-
-  // 6. Automated System Tasks / Cron Jobs (4s)
-  state.realtimeTimers.cron = setInterval(fetchCronTasks, 4000);
-
-  // 7. Docker Container Health & Latency Pings (4s)
-  state.realtimeTimers.services = setInterval(fetchServices, 4000);
+function parseHashView() {
+  const raw = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0].trim().toLowerCase();
+  return VALID_VIEWS.includes(raw) ? raw : "overview";
 }
 
-export function stopRealtimeAll() {
-  Object.keys(state.realtimeTimers).forEach(key => {
-    if (state.realtimeTimers[key]) {
-      clearInterval(state.realtimeTimers[key]);
-      state.realtimeTimers[key] = null;
-    }
+export function activateView(viewName, updateHash = false) {
+  let target = VALID_VIEWS.includes(viewName) ? viewName : "overview";
+  // Guard against navigating into an uninstalled module view or restricted family view
+  if (state.authRole === "family" && target !== "overview" && target !== "apps") target = "overview";
+  if (target === "backups" && state.modules.backups === false) target = "overview";
+  if (target === "tvs" && state.modules.tvs === false) target = "overview";
+
+  state.activeView = target;
+
+  document.querySelectorAll(".hub-view[data-view]").forEach((el) => {
+    const active = el.getAttribute("data-view") === target;
+    el.hidden = !active;
+    el.classList.toggle("is-active", active);
   });
-}
 
-export function setStreamMode(newMode, notifyUser = false) {
-  state.streamMode = (newMode === "realtime") ? "realtime" : "hover";
-  try {
-    localStorage.setItem("serverff_stream_mode", state.streamMode);
-  } catch (e) {}
+  document.querySelectorAll("#hub-nav [data-view-link]").forEach((link) => {
+    const active = link.getAttribute("data-view-link") === target;
+    link.classList.toggle("is-active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
 
-  if (state.streamMode === "realtime") {
-    document.body.classList.add("realtime-all-active");
-
-    if (btnModeRealtime) btnModeRealtime.classList.add("active");
-    if (btnModeHover) btnModeHover.classList.remove("active");
-
-    if (hudModeChip) {
-      hudModeChip.className = "hud-chip chip-stream-mode mode-realtime";
-      hudModeChip.innerHTML = '<span class="chip-dot"></span> Real-Time All';
+  if (updateHash) {
+    const desired = `#/${target}`;
+    if (window.location.hash !== desired) {
+      window.history.replaceState(null, "", desired);
     }
+  }
 
-    if (speedoBadgeText) speedoBadgeText.textContent = "● REAL-TIME ALL ACTIVE (1s)";
-    if (speedoPulseDot) speedoPulseDot.classList.add("active-pulse");
-    if (speedoTelemetryBadge) speedoTelemetryBadge.classList.add("is-live");
-
-    startRealtimeAll();
-
-    if (notifyUser) {
-      showToast("Real-Time All Active", "Continuous live telemetry enabled across all cards and metrics.", "⚡");
-    }
-  } else {
-    document.body.classList.remove("realtime-all-active");
-
-    if (btnModeHover) btnModeHover.classList.add("active");
-    if (btnModeRealtime) btnModeRealtime.classList.remove("active");
-
-    if (hudModeChip) {
-      hudModeChip.className = "hud-chip chip-zero-ram chip-stream-mode mode-hover";
-      hudModeChip.innerHTML = '<span class="chip-dot"></span> Eco Hover Mode';
-    }
-
-    if (speedoBadgeText) speedoBadgeText.textContent = "Hover Card to Stream Live";
-    if (speedoPulseDot) speedoPulseDot.classList.remove("active-pulse");
-    if (speedoTelemetryBadge) speedoTelemetryBadge.classList.remove("is-live");
-
-    stopRealtimeAll();
-
-    if (notifyUser) {
-      showToast("Hover-Only Mode Active", "Metrics refresh on card hover to conserve Haswell CPU & RAM.", "🍃");
-    }
+  setMenuOpen(false);
+  if (target === "system") {
+    window.requestAnimationFrame(() => {
+      drawLanSparkline();
+      redrawHistoryCharts();
+    });
   }
 }
 
-function bindHoverPolling(targetElement, pollFunction, intervalMs = 1500, onEnterCallback = null, onLeaveCallback = null) {
-  if (!targetElement) return;
-  let intervalTimer = null;
-
-  targetElement.addEventListener("mouseenter", () => {
-    targetElement.classList.add("card-hover-live");
-    if (onEnterCallback) onEnterCallback();
-
-    if (state.streamMode === "realtime") return;
-
-    pollFunction();
-    if (!intervalTimer) {
-      intervalTimer = setInterval(pollFunction, intervalMs);
-    }
-  });
-
-  targetElement.addEventListener("mouseleave", () => {
-    targetElement.classList.remove("card-hover-live");
-    if (onLeaveCallback) onLeaveCallback();
-
-    if (intervalTimer) {
-      clearInterval(intervalTimer);
-      intervalTimer = null;
-    }
-  });
+function handleModuleVisibility(moduleKey, installed) {
+  if (!installed && state.activeView === moduleKey) {
+    activateView("overview", true);
+  }
 }
 
-function setupHoverLiveStreaming() {
-  // 1. Dual Speedometers Section
-  const speedoSection = $("speedometers");
-  bindHoverPolling(
-    speedoSection,
-    fetchSpeedometers,
-    1000,
-    () => {
-      if (speedoBadgeText) {
-        speedoBadgeText.textContent = (state.streamMode === "realtime")
-          ? "● REAL-TIME ALL ACTIVE (1s)"
-          : "● LIVE STREAMING (1s)";
-      }
-      if (speedoPulseDot) speedoPulseDot.classList.add("active-pulse");
-      if (speedoTelemetryBadge) speedoTelemetryBadge.classList.add("is-live");
-    },
-    () => {
-      if (state.streamMode === "realtime") {
-        if (speedoBadgeText) speedoBadgeText.textContent = "● REAL-TIME ALL ACTIVE (1s)";
-        if (speedoPulseDot) speedoPulseDot.classList.add("active-pulse");
-        if (speedoTelemetryBadge) speedoTelemetryBadge.classList.add("is-live");
+function setupRouter() {
+  window.addEventListener("hashchange", () => {
+    activateView(parseHashView(), false);
+  });
+
+  document.querySelectorAll("#hub-nav [data-view-link]").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      const target = link.getAttribute("data-view-link") || "overview";
+      if (window.location.hash !== `#/${target}`) {
+        window.location.hash = `#/${target}`;
       } else {
-        if (speedoBadgeText) speedoBadgeText.textContent = "Hover Card to Stream Live";
-        if (speedoPulseDot) speedoPulseDot.classList.remove("active-pulse");
-        if (speedoTelemetryBadge) speedoTelemetryBadge.classList.remove("is-live");
+        activateView(target, false);
+      }
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+  });
+
+  activateView(parseHashView(), false);
+}
+
+// ============================================================================
+// Visibility-Aware Polling & Truthful Connection Tracking
+// ============================================================================
+
+async function pollFastTelemetry() {
+  const results = await Promise.allSettled([
+    fetchSpeedometers(),
+    fetchVitals(),
+  ]);
+  const anyOk = results.some((r) => r.status === "fulfilled" && r.value === true);
+  recordPollResult(anyOk);
+}
+
+async function pollMediumTelemetry() {
+  if (state.authRole === "family") {
+    await Promise.allSettled([
+      fetchSleepStatus(),
+      fetchServices(),
+      fetchMediaHub(),
+    ]);
+    return;
+  }
+  await Promise.allSettled([
+    fetchSleepStatus(),
+    fetchBackupStatus(),
+    fetchPhotosOverview(),
+    fetchStorageOverview(),
+    fetchTvUpdaterStatus(),
+    fetchCronTasks(),
+    fetchServices(),
+    fetchIndexerStatus(),
+    fetchMediaHub(),
+    fetchAlerts(),
+    fetchNetplanStatus(),
+    fetchNetworkOverview(),
+    fetchUpdates(),
+    fetchHistoryAndInsights(),
+    fetchIntegrations(),
+  ]);
+}
+
+export async function refreshAll(announce = false) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  const refreshBtn = $("btn-refresh-now");
+  const footerRefreshBtn = $("footer-refresh-btn");
+  if (refreshBtn) refreshBtn.disabled = true;
+  if (footerRefreshBtn) footerRefreshBtn.disabled = true;
+
+  try {
+    await Promise.allSettled([
+      pollFastTelemetry(),
+      pollMediumTelemetry(),
+    ]);
+    if (announce) {
+      showToast("Telemetry Refreshed", "Live host metrics synchronized.", "success", 2400);
+    }
+  } finally {
+    isRefreshing = false;
+    if (refreshBtn) refreshBtn.disabled = false;
+    if (footerRefreshBtn) footerRefreshBtn.disabled = false;
+  }
+}
+
+function stopPolling() {
+  if (state.realtimeTimers.fast) {
+    clearInterval(state.realtimeTimers.fast);
+    state.realtimeTimers.fast = null;
+  }
+  if (state.realtimeTimers.medium) {
+    clearInterval(state.realtimeTimers.medium);
+    state.realtimeTimers.medium = null;
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  if (document.visibilityState === "hidden") return;
+
+  state.realtimeTimers.fast = setInterval(() => {
+    if (document.visibilityState === "visible") pollFastTelemetry();
+  }, FAST_POLL_MS);
+
+  state.realtimeTimers.medium = setInterval(() => {
+    if (document.visibilityState === "visible") pollMediumTelemetry();
+  }, MEDIUM_POLL_MS);
+}
+
+function setupVisibilityPolling() {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      stopPolling();
+    } else {
+      refreshAll(false);
+      startPolling();
+    }
+  });
+}
+
+function setupRefreshControls() {
+  const refreshBtn = $("btn-refresh-now");
+  const footerRefreshBtn = $("footer-refresh-btn");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => refreshAll(true));
+  if (footerRefreshBtn) footerRefreshBtn.addEventListener("click", () => refreshAll(true));
+}
+
+function setupPullToRefresh() {
+  const indicator = $("pull-refresh-indicator");
+  const indicatorText = $("pull-refresh-text");
+  if (!indicator) return;
+
+  let startY = null;
+  let pulling = false;
+  const THRESHOLD_PX = 72;
+
+  const hasOpenModal = () =>
+    Boolean(document.querySelector('.modal-overlay[style*="flex"]')) ||
+    Boolean(document.getElementById("hub-auth-overlay"));
+
+  document.addEventListener("touchstart", (e) => {
+    if (window.scrollY > 0 || hasOpenModal() || e.touches.length !== 1) {
+      startY = null;
+      return;
+    }
+    startY = e.touches[0].clientY;
+    pulling = false;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", (e) => {
+    if (startY === null || window.scrollY > 0) return;
+    const deltaY = e.touches[0].clientY - startY;
+    if (deltaY > 24) {
+      pulling = deltaY >= THRESHOLD_PX;
+      indicator.hidden = false;
+      indicator.classList.toggle("is-ready", pulling);
+      if (indicatorText) {
+        indicatorText.textContent = pulling ? "Release to refresh" : "Pull down to refresh";
       }
     }
-  );
+  }, { passive: true });
 
-  // 2. Current Downloads Panel
-  bindHoverPolling($("torrent-downloads-panel"), fetchSpeedometers, 1000);
-
-  // 3. Storage Operations Panel
-  bindHoverPolling($("storage-ops-panel"), fetchSpeedometers, 1000);
-
-  // 4. Hardware Vitals Section
-  bindHoverPolling($("vitals-section"), fetchVitals, 1500);
-
-  // 5. Cloud Backup & Google Drive Section
-  bindHoverPolling($("backup-section"), fetchBackupStatus, 2500);
-
-  // 6. Android TV App Updater Section
-  bindHoverPolling($("tv-updater-section"), fetchTvUpdaterStatus, 2500);
-
-  // 7. Docker Container Matrix
-  bindHoverPolling($("services-matrix"), fetchServices, 4000);
-
-  // 8. Sleep Guard Hero Card
-  bindHoverPolling($("sleep-guard-card"), fetchSleepStatus, 3000);
-
-  // 9. Automated System Tasks & Cron Engine
-  bindHoverPolling($("automation-section"), fetchCronTasks, 4000);
+  document.addEventListener("touchend", () => {
+    if (startY === null) return;
+    startY = null;
+    if (pulling) {
+      pulling = false;
+      if (indicatorText) indicatorText.textContent = "Refreshing...";
+      refreshAll(true).finally(() => {
+        indicator.classList.remove("is-ready");
+        indicator.hidden = true;
+      });
+    } else {
+      indicator.classList.remove("is-ready");
+      indicator.hidden = true;
+    }
+  }, { passive: true });
 }
 
-function setupStreamModeSwitcher() {
-  if (btnModeHover) {
-    btnModeHover.addEventListener("click", () => {
-      if (state.streamMode !== "hover") setStreamMode("hover", true);
-    });
-  }
+function applyRoleState(role) {
+  const isFamily = role === "family";
+  state.authRole = isFamily ? "family" : "owner";
+  document.documentElement.dataset.authRole = state.authRole;
 
-  if (btnModeRealtime) {
-    btnModeRealtime.addEventListener("click", () => {
-      if (state.streamMode !== "realtime") setStreamMode("realtime", true);
-    });
-  }
+  const famBanner = $("family-mode-banner");
+  const famPanel = $("family-whats-new-panel");
+  if (famBanner) famBanner.hidden = !isFamily;
+  if (famPanel) famPanel.hidden = !isFamily;
 
-  if (speedoTelemetryBadge) {
-    speedoTelemetryBadge.addEventListener("click", () => {
-      const nextMode = (state.streamMode === "hover") ? "realtime" : "hover";
-      setStreamMode(nextMode, true);
-    });
+  ["nav-item-backups", "nav-item-tvs", "nav-item-system"].forEach((id) => {
+    const navEl = $(id);
+    if (navEl) navEl.hidden = isFamily;
+  });
+
+  if (isFamily && state.activeView !== "overview" && state.activeView !== "apps") {
+    activateView("overview", true);
   }
 }
 
-// Global modal overlay backdrop click dismissal
-window.addEventListener("click", (e) => {
-  const backupLogModal = $("backup-log-modal");
-  const dozzleModal = $("dozzle-modal");
-  const dozzleIframe = $("dozzle-iframe");
-  const cronLogModal = $("cron-log-modal");
-  const immichLibraryModal = $("immich-library-modal");
-  const sleepScheduleModal = $("sleep-schedule-modal");
-  const tvDetailModal = $("tv-updater-detail-modal");
-  const tvLogModal = $("tv-updater-log-modal");
-  const configModal = $("config-center-modal");
-  const aiModal = $("ai-copilot-modal");
-
-  if (e.target === backupLogModal && backupLogModal) backupLogModal.style.display = "none";
-  if (e.target === dozzleModal && dozzleModal) {
-    dozzleModal.style.display = "none";
-    if (dozzleIframe) dozzleIframe.src = "about:blank";
-  }
-  if (e.target === cronLogModal && cronLogModal) cronLogModal.style.display = "none";
-  if (e.target === immichLibraryModal && immichLibraryModal) immichLibraryModal.style.display = "none";
-  if (e.target === sleepScheduleModal && sleepScheduleModal) sleepScheduleModal.style.display = "none";
-  if (e.target === tvDetailModal && tvDetailModal) tvDetailModal.style.display = "none";
-  if (e.target === tvLogModal && tvLogModal) tvLogModal.style.display = "none";
-  if (e.target === configModal && configModal) configModal.style.display = "none";
-  if (e.target === aiModal && aiModal) aiModal.style.display = "none";
-});
-
-// ==========================================================================
-// 2. Master Dashboard Initialization
-// ==========================================================================
-
-async function init() {
-  // Initialize widget event handlers
+document.addEventListener("DOMContentLoaded", async () => {
   setupHeader();
+  setThemeChangeHandler(() => {
+    drawLanSparkline();
+    redrawHistoryCharts();
+  });
+  setRetryConnectionHandler(() => refreshAll(true));
+  setBackupVisibilityCallback(handleModuleVisibility);
+  setTvVisibilityCallback(handleModuleVisibility);
+
+  const btnFamOwner = $("btn-family-owner-signin");
+  if (btnFamOwner) {
+    btnFamOwner.addEventListener("click", () => {
+      window.HomelabAuth?.prompt?.("", { mode: "owner" });
+    });
+  }
+
+  setupRouter();
+  setupRefreshControls();
+  setupPullToRefresh();
+
   setupSleepGuard();
   setupNetworkSpeed();
+  setupNetworkOverview();
   setupCurrentDownloads();
   setupBackupSync();
+  setupPhotosHub();
+  setupStorageHub();
   setupTvUpdater();
   setupCronTasks();
   setupServiceMatrix();
   setupConfigCenter();
   setupIndexers();
+  setupMediaHub();
+  setupAlerts();
+  setupUpdates();
+  setupHelpDrawer();
+  setupHistoryInsights();
+  setupIntegrations();
+  setupCustomizeAndKiosk();
+  setupI18n();
+  setupPwa();
+  applyCardLayout();
 
-  // Load initial static snapshot for all cards
-  await Promise.all([
-    fetchIndexerStatus(),
-    fetchSleepStatus(),
-    fetchSpeedometers(),
-    fetchVitals(),
-    fetchBackupStatus(),
-    fetchTvUpdaterStatus(),
-    fetchCronTasks(),
-    fetchServices()
-  ]);
+  try {
+    const authInfo = await window.HomelabAuth?.ready?.();
+    if (authInfo && authInfo.role) applyRoleState(authInfo.role);
+  } catch (_) { /* default owner until 401 */ }
 
-  // Activate hover streaming and stream mode switcher
-  setupHoverLiveStreaming();
-  setupStreamModeSwitcher();
-  setStreamMode(state.streamMode, false);
-}
-
-if (footerRefreshBtn) {
-  footerRefreshBtn.addEventListener("click", () => {
-    fetchSpeedometers();
-    fetchVitals();
-    fetchSleepStatus();
-    fetchBackupStatus();
-    fetchTvUpdaterStatus();
-    fetchCronTasks();
-    fetchServices();
-  });
-}
-
-document.addEventListener("DOMContentLoaded", init);
+  setupVisibilityPolling();
+  refreshAll(false);
+  startPolling();
+});

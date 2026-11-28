@@ -72,14 +72,14 @@ The **TV auto-updater** moves all downloading, version diffing, and scheduling t
 1. On your Android TV, navigate to: **Settings -> Device Preferences -> About**.
 2. Click **Build** 7 times to enable Developer Options.
 3. In **Developer Options**, turn ON **USB Debugging** and **Network ADB Debugging** (port 5555).
-4. Connect from your server once:
+4. Connect from your server once (or use the guided **Add a TV** wizard in the Control Hub):
    ```bash
    adb connect 192.168.1.150:5555
    ```
 5. Check "Always allow from this computer" on the TV screen.
 
 ### 3. Configuration
-Copy `config.example.json` to `config.json` and specify your TV device profiles:
+Copy `config.example.json` to `config.json` and specify your initial TV device profiles (additional TVs edited via the Control Hub are stored in `STATE_DIR/tv_profiles.json`):
 ```bash
 cp config.example.json config.json
 nano config.json
@@ -131,6 +131,8 @@ nano config.json
 ## 🖥️ Live Monitoring on Control Hub
 Android TV fleet status is integrated directly into [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub) (set `TV_UPDATER_DIR` and `TV_UPDATER_PY` in its `.env`):
 * **Living Room & Bedroom TV Card:** Visual status indicators (`UP TO DATE`, `PENDING`, `OFFLINE`).
+* **Names:** each TV is shown by its nickname, or by the model it reports (`ro.product.manufacturer` + `ro.product.model`, for example "Xiaomi MIBOX4"). Hover over the name for a summary; click it for the full details (codename, Android version, the TV's own device name, address, last seen) and to rename it. The updater stores what each TV reports in `device_info.json` (refreshed every 6 hours while online) and the Control Hub stores nicknames in `nicknames.json`, both in `TV_AUTOUPDATER_STATE_DIR`.
+* **Offline TVs** show the versions from when they were last seen, marked as such.
 * **Active Version Tracking:** Displays target vs installed versionCodes for SmartTube, CloudStream, and custom sideloads.
 * **1-Click Sync:** Trigger updates or inspect ADB logs directly from the browser without opening SSH.
 

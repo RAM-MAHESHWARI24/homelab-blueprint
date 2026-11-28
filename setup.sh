@@ -19,7 +19,8 @@ Usage:
   sudo ./setup.sh --headless --config <f> --dry-run Simulate an install without touching the host
   ./setup.sh --doctor                               Pre-flight host diagnostics (no root needed)
   sudo ./setup.sh --migrate [--check] [--dry-run]   Upgrade rendered .env files to the current schema
-  sudo ./setup.sh token [--rotate]                  Show or rotate the Control Hub access token
+  sudo ./setup.sh password                          Change the Control Hub dashboard password
+  sudo ./setup.sh token [--rotate]                  Show or rotate the API token (scripts, CI)
   ./setup.sh --help                                 This message
 EOF
 }
@@ -47,7 +48,11 @@ case "${1:-}" in
         ;;
     token)
         shift
-        exec python3 "$SCRIPT_DIR/setup/token.py" "$@"
+        exec python3 "$SCRIPT_DIR/setup/token_cli.py" "$@"
+        ;;
+    password)
+        shift
+        exec python3 "$SCRIPT_DIR/setup/password_cli.py" "$@"
         ;;
 esac
 

@@ -50,11 +50,25 @@ Because torrents and media share the exact same root mount, moves and hardlinks 
 Indian and regional ISPs (Jio, Airtel, ACT) enforce Deep Packet Inspection TLS handshakes resets (`ECONNRESET`) on `api.themoviedb.org`, breaking Seerr movie posters and search.
 
 This blueprint injects `config/seerr/tmdb-interceptor.js` via:
+* Set `SEERR_NODE_OPTIONS=--dns-result-order=ipv4first` (the default) so Seerr never fails with IPv6 `ENETUNREACH` on IPv4-only Docker bridges. When an ISP resets TLS to `api.themoviedb.org`, enable `ENABLE_TMDB_BYPASS=true` and append `--require /app/config/tmdb-interceptor.js`:
 ```yaml
 environment:
   - NODE_OPTIONS=--dns-result-order=ipv4first --require /app/config/tmdb-interceptor.js
 ```
 It transparently patches Node.js `https.request`, `http.request`, and `globalThis.fetch` to rewrite requests to `api.tmdb.org`, resolving the issue with zero code changes to Seerr itself.
+
+---
+
+## 🤖 Smart Title-Verified Auto-Import (`scripts/auto_import.py`)
+
+When an open indexer attaches the right IMDb/TMDB ID but a release uploader mangles the title (for example prepending a franchise prefix like `007 James Bond Quantum of Solace 2008 1080p -Ozlem`), Radarr/Sonarr holds the finished torrent at `Manual Import required` (`matched to movie by ID`).
+
+This module hardens against that in two layers:
+* **Grab prevention ([`scripts/wire_arr.py`](scripts/wire_arr.py)):** configures qBittorrent excluded payload extensions (`*.exe`, `*.bat`, `*.scr`, etc.), lowers default Prowlarr priority of unmoderated public trackers (`The Pirate Bay` → `45`) when cleaner indexers exist, and blocks known filename-mangling groups (`Ozlem`).
+* **Safe auto-resolver ([`scripts/auto_import.py`](scripts/auto_import.py)):** polls Radarr/Sonarr queues every 3 minutes via [`host/cron/mediaserver-autoimport`](host/cron/mediaserver-autoimport), verifies single-file non-sample integrity, rejects non-safe blocks, and only triggers `ManualImport` when the target movie/series normalized title matches inside the downloaded file or folder name:
+```bash
+python3 scripts/auto_import.py --config-dir ./config --once --dry-run
+```
 
 ---
 
@@ -90,11 +104,45 @@ recyclarr sync
 
 ---
 
+## 💾 Settings Backup (`scripts/media_config_backup.py`)
+
+Rebuilding Sonarr, Radarr, Prowlarr, Bazarr, Seerr and Jellyfin by hand after a disk failure
+takes a day. The settings backup saves what cannot be downloaded again:
+
+* every app's configuration and database (series and movie lists, quality profiles, indexers,
+  Jellyfin users, libraries and watch history), qBittorrent's settings and torrent list;
+* **not** logs, caches, transcodes, cover art (`MediaCover`) or Jellyfin's downloaded metadata
+  images, which come back by themselves (set `INCLUDE_JELLYFIN_METADATA=1` to keep those too).
+
+Databases are copied with SQLite's online backup API, so the apps keep running. A typical
+install compresses to about 20 MB (`media_config_YYYYMMDD_HHMMSS.tar.zst`).
+
+Each run: pre-flight (folder, rclone, the remote answers, `Media_Backup/` still exists after a
+first good run, free space) → snapshot → archive → `rclone copy` to `<remote>Media_Backup/` and a
+check that it arrived → retention: 3 archives locally; on the remote the newest 14 plus the first
+of each of the last 12 months. Only `media_config_*` archives are ever deleted.
+
+Progress and the last 30 runs are written to `status.json` next to the archives
+(default `/var/lib/homelab/media-backups`). The Control Hub's backup card shows them, offers
+**Back up now**, and alerts when a run fails or no good run happened for 26 hours.
+
+Inside homelab-blueprint it is installed with the photo backup (same rclone remote) and runs
+daily at 21:30 from `/etc/cron.d/media-backup`. On its own:
+
+```bash
+sudo GDRIVE_REMOTE=gdrive: MEDIA_APPDATA=/srv/homelab/appdata/mediaserver \
+     python3 scripts/media_config_backup.py
+```
+
+**Restore:** stop the stack (`docker compose down`), unpack the archive over the settings folder
+as root (`tar -I zstd -xpf media_config_....tar.zst -C /srv/homelab/appdata/mediaserver`, which
+keeps the owner), start the stack again.
+
 ## 🖥️ Live Monitoring & Management
 Once launched, the entire media pipeline is monitored in real-time by [Control Hub](https://github.com/RAM-MAHESHWARI24/control-hub):
 * **Live Downloads:** qBittorrent ingest speeds, queue progress, and 1-click pause.
 * **Port Matrix:** Real-time port connectivity prober for Jellyfin (8096), Seerr (5055), Sonarr (8989), Radarr (7878), Prowlarr (9696), and Bazarr (6767).
-* **Container Logs:** 1-Click Dozzle log streaming with 12-char hex Docker ID deep linking.
+* **Container Logs:** recent logs for each container, read inline from the Service Matrix.
 
 ---
 

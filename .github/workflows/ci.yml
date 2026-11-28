@@ -86,6 +86,30 @@ jobs:
           cd "$dest"
           bash ci.sh
 
+  control-hub-ui:
+    name: Control Hub UI & WCAG 2.2 AA
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Control Hub UI & Accessibility Dependencies
+        run: |
+          pip install -r apps/control-hub/requirements.txt playwright axe-playwright-python
+          python -m playwright install chromium
+
+      - name: Execute Control Hub Honest-Data & Playwright/Axe Suite
+        env:
+          CI_REQUIRE_PLAYWRIGHT: "1"
+        run: |
+          cd apps/control-hub
+          python -m unittest discover -s tests -v
+
   setup-wizard-test-matrix:
     name: Setup Wizard Matrix Test
     runs-on: ${{ matrix.os }}
@@ -93,7 +117,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.14"]
 
     steps:
       - name: Checkout Repository
@@ -127,6 +151,10 @@ jobs:
       - name: Execute Full Lifecycle Handoff Regression Suite
         run: |
           python testing/test_lifecycle_handoff.py
+
+      - name: Backup remote helper (runs as root behind sudo)
+        run: |
+          python testing/test_backup_remote_helper.py
 
   docker-compose-validation:
     name: Docker Compose & Multi-Arch Verification
@@ -259,6 +287,12 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7575/api/system/vitals)" = "401"
           TOKEN="$(sudo cat /etc/homelab/control-hub.token)"
           curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7575/api/system/vitals >/dev/null
+          # Browsers sign in with the master password (here the generated qBittorrent password) and get a cookie
+          sudo stat -c '%U %a' /var/lib/homelab/control-hub/password | grep -q '^homelab 600$'
+          PW="$(sudo grep -m1 '^QBITTORRENT_PASS=' /etc/homelab/mediaserver.env | cut -d= -f2-)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"password":"wrong-password"}' http://127.0.0.1:7575/api/auth/login)" = "401"
+          curl -fsS -c /tmp/hub.jar -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$PW\"}" http://127.0.0.1:7575/api/auth/login >/dev/null
+          curl -fsS -b /tmp/hub.jar http://127.0.0.1:7575/api/system/vitals >/dev/null
           # Media stack
           docker ps --format '{{.Names}}\t{{.Status}}'
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8096/health && break; sleep 3; done

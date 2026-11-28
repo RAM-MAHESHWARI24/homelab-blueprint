@@ -8,6 +8,7 @@ echo "== requirements, compile and CLI parsing"
 python3 -m pip install -q -r requirements.txt
 python3 -m py_compile tv_updater.py
 python3 tv_updater.py --help >/dev/null
+python3 -m unittest discover -s tests -v
 
 echo "== example config has pinned signing keys"
 python3 - <<'PY'

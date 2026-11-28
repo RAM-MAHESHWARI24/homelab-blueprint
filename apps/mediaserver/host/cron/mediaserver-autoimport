@@ -1,0 +1,4 @@
+# Auto-import safe, title-verified Radarr/Sonarr downloads stuck in Manual Import Required.
+# Rendered by the installer: {{MEDIA_APPDATA_DIR}}, {{STATE_DIR}}, {{INSTALL_DIR}}
+MEDIA_APPDATA={{MEDIA_APPDATA_DIR}}
+*/3 * * * * root /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/auto_import.py --config-dir "${MEDIA_APPDATA}" --once --log-file {{STATE_DIR}}/mediaserver-autoimport.log >/dev/null 2>&1

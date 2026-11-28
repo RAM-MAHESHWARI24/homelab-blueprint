@@ -43,12 +43,19 @@ if $WITH_CRON; then
     mkdir -p "$BACKUP_DIR"
     install -m 0755 scripts/immich-ml-control.sh /usr/local/sbin/immich-ml-control.sh
     install -m 0755 scripts/immich_backup_gdrive.sh.example /usr/local/sbin/immich_backup_gdrive.sh
+    install -m 0755 scripts/photo_restore_test.sh /usr/local/sbin/photo_restore_test.sh
+    install -m 0644 host/systemd/photo-restore-test.service host/systemd/photo-restore-test.timer /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now photo-restore-test.timer
     # The cron templates use the blueprint's placeholders; fill them for a standalone host.
     sed -e "s|{{INSTALL_DIR}}/apps/immich-face-xmp-exporter|$SCRIPT_DIR|g" \
         -e "s|{{STATE_DIR}}/photo-backups|$BACKUP_DIR|g" \
         -e "s|{{STATE_DIR}}|$STATE_DIR|g" \
         -e "s|{{MEMORIES_DIR}}|${MEDIA_PATH:-/mnt/hdd/Memories}|g" \
         -e "s|{{GDRIVE_REMOTE}}|${GDRIVE_REMOTE:-gdrive:}|g" \
+        -e "s|{{KEEP_LOCAL_DUMPS}}|${KEEP_LOCAL_DUMPS:-3}|g" \
+        -e "s|{{KEEP_DRIVE_DUMPS}}|${KEEP_DRIVE_DUMPS:-14}|g" \
+        -e "s|{{KEEP_DRIVE_MONTHLY}}|${KEEP_DRIVE_MONTHLY:-12}|g" \
         host/cron/immich-backup > /etc/cron.d/immich-backup
     cp host/cron/immich-ml /etc/cron.d/immich-ml
     chmod 0644 /etc/cron.d/immich-backup /etc/cron.d/immich-ml

@@ -1,4 +1,4 @@
-# Photo ML schedule: start the machine-learning container at 06:00 (after wake), stop at 10:00.
+# Photo ML schedule: start the machine-learning container at 06:05 (after 06:00 wake), stop at 10:00.
 # Rendered by the installer; the script is installed to /usr/local/sbin by the ml_schedule module.
-0 6 * * * root /usr/local/sbin/immich-ml-control.sh start >> /var/log/immich-ml.log 2>&1
+5 6 * * * root /usr/local/sbin/immich-ml-control.sh start >> /var/log/immich-ml.log 2>&1
 0 10 * * * root /usr/local/sbin/immich-ml-control.sh stop >> /var/log/immich-ml.log 2>&1
