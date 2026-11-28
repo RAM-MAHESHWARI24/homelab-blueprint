@@ -59,7 +59,7 @@ Update this table when a phase lands.
 | Phase | Scope | Status | Branch / PR |
 | :--- | :--- | :--- | :--- |
 | 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Not started. The owner does it in the app UIs, or an agent does it only with explicit approval | — |
-| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review. Live server not migrated yet: the owner runs `profiles migrate` after merge ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack` |
+| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review. Live server not migrated yet: the owner runs `profiles migrate` after merge ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
 | 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
 | 3 | Control Hub (six PRs) | Not started | — |
 | 4 | Housekeeping | Not started | — |
