@@ -139,6 +139,17 @@
           <input type="text" id="exp-admin-pass" placeholder="Leave blank to generate a random password (shown once after install)" autocomplete="off">
         </div>
 
+        <!-- Release preferences (the full set is in Power User Mode) -->
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="exp-rel-language">Second audio language (for dual-audio downloads)</label>
+            <span class="default-hint">[Default: None]</span>
+          </div>
+          <select id="exp-rel-language" class="release-language">
+            <option value="" selected>None</option>
+          </select>
+        </div>
+
         <!-- Safe Dry-Run Simulation Toggle -->
         <div class="toggle-card" style="border-color: rgba(0, 242, 254, 0.35); background: rgba(0, 242, 254, 0.06);">
           <input type="checkbox" id="exp-dry-run-toggle" checked>
@@ -346,6 +357,55 @@
             </div>
           </label>
         </div>
+
+        <!-- Release preferences: applied by wire_arr.py profiles apply (apps/mediaserver/profiles) -->
+        <h3 style="font-size: 1rem; margin: 1.5rem 0 0.75rem;" id="release-prefs-heading">Release preferences</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+          How Radarr and Sonarr pick downloads. Every answer can be changed later in <code>/etc/homelab/mediaserver.env</code>
+          (then run <code>wire_arr.py profiles apply</code>).
+        </p>
+        <div class="sys-snapshot-grid" role="group" aria-labelledby="release-prefs-heading">
+          <div class="form-group">
+            <label class="form-label" for="pow-rel-language">Second audio language</label>
+            <select id="pow-rel-language" class="release-language">
+              <option value="" selected>None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-rel-default">Default profile for new titles</label>
+            <select id="pow-rel-default">
+              <option value="compact" selected>1080p Compact: best quality per GB</option>
+              <option value="dual-audio-first" disabled>Dual Audio First: the second language matters most</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-rel-seeding">Seeding</label>
+            <select id="pow-rel-seeding">
+              <option value="while-it-helps" selected>Seed while it helps (ratio 1, 24 h or 60 idle minutes)</option>
+              <option value="off">Don't seed after downloading</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pow-rel-stuck">Stuck downloads</label>
+            <select id="pow-rel-stuck">
+              <option value="replace" selected>Replace automatically (watch-only for the first 7 days)</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+        <fieldset class="form-group" style="border: 0; padding: 0; margin: 0 0 1rem;">
+          <legend class="form-label">What can your TVs and players decode?</legend>
+          <label style="margin-right: 1.2rem;"><input type="checkbox" id="pow-rel-hevc" checked> HEVC (x265)</label>
+          <label style="margin-right: 1.2rem;"><input type="checkbox" id="pow-rel-av1"> AV1</label>
+          <label><input type="checkbox" id="pow-rel-dv"> Dolby Vision without HDR10</label>
+        </fieldset>
+        <label class="service-item-card">
+          <input type="checkbox" id="pow-rel-pack" checked>
+          <div class="service-meta">
+            <h4>🎚️ Manage release profiles</h4>
+            <p>Creates the "1080p Compact" and "Dual Audio First" profiles, sets size limits and the seeding policy. Untick it if you use Recyclarr or set profiles by hand.</p>
+          </div>
+        </label>
       </div>
 
       <!-- Stage 4: Secrets & Credentials -->

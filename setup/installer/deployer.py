@@ -54,6 +54,7 @@ from .host import (
     write_private_file,
 )
 from .manifest import InstallManifest
+from .release_prefs import normalize_release_prefs
 
 BLUEPRINT_VERSION = "2.2.0"
 
@@ -191,6 +192,27 @@ class Deployment:
                 except OSError as e:
                     self.fail("storage", f"could not create {self.config[key]}: {e}")
 
+    # ------------------------------------------------------------- step 1b
+    def step_release_preferences(self) -> None:
+        """Validates the wizard's release preferences (media_* keys) into self.config.
+        An upgrade without them keeps the existing mediaserver.env choices (see release_prefs)."""
+        existing_env = self.etc_dir / "mediaserver.env"
+        current = None
+        if existing_env.is_file():
+            from core.config_core.env_manager import load_env_file
+            current = load_env_file(str(existing_env))
+        prefs, errors = normalize_release_prefs(self.config, self.root, current)
+        for err in errors:
+            self.fail("media", f"release preferences: {err}")
+        self.config.update(prefs)
+        if "media" in self.modules:
+            if prefs["media_profiles"]:
+                lang = prefs["media_second_language"] or "no second language"
+                self.log(f"Release preferences: {lang}, default profile {prefs['media_default_profile']}, "
+                         f"players decode {', '.join(prefs['media_codecs']) or 'H.264 only'}, seeding {prefs['media_seeding']}.")
+            else:
+                self.log("Release preferences: profile pack switched off (profiles are left to you or another tool).")
+
     # ---------------------------------------------------------------- step 2
     def step_environment(self) -> Dict[str, Any]:
         if self.dry_run:
@@ -321,19 +343,17 @@ class Deployment:
             time.sleep(5)
         return False, f"timeout after {HEALTH_WAIT_TIMEOUT}s; last state: {last}"
 
-    def _wire_script(self, subcommand: str, extra: List[str]) -> bool:
+    def _wire_script(self, subcommand: str, extra: List[str], qbit_login: bool = True) -> bool:
         """Runs apps/mediaserver/scripts/wire_arr.py (stdlib) as a subprocess; keeps the module standalone."""
         script = self.root / "apps" / "mediaserver" / "scripts" / "wire_arr.py"
         if not script.exists():
             self.fail("media", "scripts/wire_arr.py missing")
             return False
-        cmd = [
-            "python3", str(script), subcommand,
-            "--config-dir", str(self.config["config_dir"]),
-            "--qbit-user", str(self.config.get("qbittorrent_user") or "admin"),
-            "--qbit-pass", str(self.config.get("qbittorrent_pass") or ""),
-            *extra,
-        ]
+        cmd = ["python3", str(script), subcommand, "--config-dir", str(self.config["config_dir"])]
+        if qbit_login:
+            cmd += ["--qbit-user", str(self.config.get("qbittorrent_user") or "admin"),
+                    "--qbit-pass", str(self.config.get("qbittorrent_pass") or "")]
+        cmd += extra
         res = run_command(cmd, cwd=str(script.parent), timeout=900)
         for line in (res["stdout"] or "").splitlines()[-40:]:
             self.log(f"  wire: {line}")
@@ -351,9 +371,13 @@ class Deployment:
         extra_files = ["docker-compose.dns.yml"] if self.config.get("dns_override") else []
         extra_files.extend(self._pins_override_for(module_dir.name))
 
+        profiles_on = bool(self.config.get("media_profiles", True))
         if self.dry_run:
             self.log("Would seed qBittorrent.conf with the chosen password, start the media stack and wire "
                      "Radarr/Sonarr/Prowlarr/qBittorrent/Jellyfin/Seerr together.")
+            if profiles_on:
+                self.log("Would apply the release profile pack (wire_arr.py profiles apply) and register "
+                         f"Radarr/Sonarr in Seerr with '{self._default_profile_name()}' as the default profile.")
             self._compose("media", module_dir, self.etc_dir / "mediaserver.env", extra_files)
             return
 
@@ -380,9 +404,14 @@ class Deployment:
                      "--key-file", str(prowlarr_key_file), "--key-group", SERVICE_USER]
         if self.config.get("enable_byparr"):
             wire_args.append("--byparr")
+        if profiles_on:
+            # Seerr is registered after the profiles exist, so its default points at the pack's profile.
+            wire_args.append("--skip-seerr")
         if self._wire_script("wire", wire_args):
             self.log("Media pipeline wired: Radarr/Sonarr → qBittorrent, Prowlarr → Radarr/Sonarr, Jellyfin libraries ready.")
             self.log("No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).")
+            if profiles_on:
+                self._apply_release_profiles()
         if self.linux:
             autoimport_cron = module_dir / "host" / "cron" / "mediaserver-autoimport"
             if autoimport_cron.exists():
@@ -390,6 +419,25 @@ class Deployment:
                 self.log("Installed Radarr/Sonarr title-verified auto-import cron job.")
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
+
+    def _default_profile_name(self) -> str:
+        slug = str(self.config.get("media_default_profile") or "compact")
+        return "Dual Audio First" if slug == "dual-audio-first" else "1080p Compact"
+
+    def _apply_release_profiles(self) -> None:
+        """Release profiles from apps/mediaserver/profiles (choices from mediaserver.env), then Seerr."""
+        self.log("Applying release profiles (custom formats, both profiles, size limits, seeding policy)...")
+        applied = self._wire_script("profiles", [
+            "apply", "--host", "127.0.0.1", "--env-file", str(self.etc_dir / "mediaserver.env"),
+            "--data-dir", str(self.config.get("hdd_data", "/mnt/hdd/data")),
+            "--puid", str(self.config.get("puid", 1000)), "--pgid", str(self.config.get("pgid", 1000)),
+        ])
+        if applied:
+            self.log("Release profiles applied; check drift any time with `wire_arr.py profiles check`.")
+        if self.config.get("media_admin_pass"):
+            self._wire_script("seerr", ["--host", "127.0.0.1", "--admin-user", str(self.config.get("media_admin_user") or "admin"),
+                                        "--admin-pass", str(self.config.get("media_admin_pass") or ""),
+                                        "--profile", self._default_profile_name()], qbit_login=False)
 
     def photos_image_override(self) -> "tuple[bool, Optional[str]]":
         """
@@ -884,6 +932,7 @@ class Deployment:
         self.log(f"Homelab Blueprint {BLUEPRINT_VERSION} provisioning: modules={', '.join(self.modules)}")
 
         self.step_storage()
+        self.step_release_preferences()
         self.step_environment()
         self.step_service_user()
 

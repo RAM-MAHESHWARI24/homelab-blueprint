@@ -49,7 +49,65 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   fetchSystemSnapshot();
   bindActionEvents();
+  loadReleaseLanguages();
 });
+
+// ---------------------------------------------------------------------------
+// Release preferences: the language lists come from the profile pack
+// (apps/mediaserver/profiles/languages.json) through /api/release/languages.
+// ---------------------------------------------------------------------------
+async function loadReleaseLanguages() {
+  try {
+    const data = await (await api("/api/release/languages")).json();
+    document.querySelectorAll("select.release-language").forEach(sel => {
+      (data.languages || []).forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    });
+  } catch (err) {
+    console.error("Release languages error:", err);
+  }
+  syncReleaseDefaults();
+}
+
+// "Dual Audio First" only makes sense with a second language.
+function syncReleaseDefaults() {
+  const lang = document.getElementById("pow-rel-language");
+  const def = document.getElementById("pow-rel-default");
+  if (!lang || !def) return;
+  const dual = def.querySelector('option[value="dual-audio-first"]');
+  dual.disabled = !lang.value;
+  if (!lang.value && def.value === "dual-audio-first") def.value = "compact";
+}
+
+function releasePreferences(mode) {
+  if (mode === "express") {
+    const lang = document.getElementById("exp-rel-language");
+    return {
+      media_profiles: true,
+      media_second_language: lang ? lang.value : "",
+      media_default_profile: "compact",
+      media_codecs: ["hevc"],
+      media_seeding: "while-it-helps",
+      media_stuck_downloads: "replace",
+    };
+  }
+  const codecs = [];
+  if (document.getElementById("pow-rel-hevc").checked) codecs.push("hevc");
+  if (document.getElementById("pow-rel-av1").checked) codecs.push("av1");
+  if (document.getElementById("pow-rel-dv").checked) codecs.push("dv");
+  return {
+    media_profiles: document.getElementById("pow-rel-pack").checked,
+    media_second_language: document.getElementById("pow-rel-language").value,
+    media_default_profile: document.getElementById("pow-rel-default").value,
+    media_codecs: codecs,
+    media_seeding: document.getElementById("pow-rel-seeding").value,
+    media_stuck_downloads: document.getElementById("pow-rel-stuck").value,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Static-IP confirmation, served from the NEW address after a deploy changed it.
@@ -363,6 +421,9 @@ function bindActionEvents() {
     sync();
   }
 
+  const relLang = document.getElementById("pow-rel-language");
+  if (relLang) relLang.addEventListener("change", syncReleaseDefaults);
+
   // Deploy buttons
   const btnDeployExp = document.getElementById("btn-deploy-express");
   if (btnDeployExp) btnDeployExp.onclick = () => executeDeployment("express");
@@ -407,6 +468,7 @@ async function executeDeployment(mode) {
       timezone: systemSnapshot ? systemSnapshot.timezone : "UTC",
       active_nic: systemSnapshot ? systemSnapshot.network.active_nic : "",
       enabled_services: ["media", "photos", "control_hub"],
+      ...releasePreferences("express"),
     };
   } else {
     // Power mode
@@ -448,6 +510,7 @@ async function executeDeployment(mode) {
       enable_tmdb_bypass: document.getElementById("pow-opt-tmdb").checked,
       dns_override: document.getElementById("pow-opt-dns").checked,
       enabled_services: services,
+      ...releasePreferences("power"),
     };
   }
 
