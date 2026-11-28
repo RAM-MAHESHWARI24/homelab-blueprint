@@ -1,0 +1,131 @@
+{
+  "description": "App settings the pack owns besides profiles. apply sets them; check reports differences. Lists are merged, never shrunk.",
+  "radarr": {
+    "config/indexer": {
+      "whitelistedHardcodedSubs": {
+        "merge_csv": [
+          "ESub",
+          "ESubs",
+          "MSub",
+          "MSubs",
+          "EngSub",
+          "EngSubs"
+        ]
+      }
+    },
+    "config/mediamanagement": {
+      "recycleBin": {
+        "if_empty": "/data/media/.recycle"
+      },
+      "recycleBinCleanupDays": {
+        "set": 7,
+        "when_recycle_bin_set_by_pack": true
+      }
+    },
+    "delayprofile": {
+      "bypassIfAboveCustomFormatScore": {
+        "set": true
+      },
+      "minimumCustomFormatScore": {
+        "set": 4000
+      }
+    }
+  },
+  "sonarr": {
+    "config/mediamanagement": {
+      "recycleBin": {
+        "if_empty": "/data/media/.recycle"
+      },
+      "recycleBinCleanupDays": {
+        "set": 7,
+        "when_recycle_bin_set_by_pack": true
+      }
+    },
+    "delayprofile": {
+      "bypassIfAboveCustomFormatScore": {
+        "set": true
+      },
+      "minimumCustomFormatScore": {
+        "set": 4000
+      }
+    }
+  },
+  "prowlarr": {
+    "applications": {
+      "syncLevel": "fullSync"
+    },
+    "default_app_profile_min_seeders": 4,
+    "live_app_profile": {
+      "name": "Live seeders",
+      "minimumSeeders": 2
+    }
+  },
+  "qbittorrent": {
+    "seeding": {
+      "while-it-helps": {
+        "max_ratio_enabled": true,
+        "max_ratio": 1.0,
+        "max_seeding_time_enabled": true,
+        "max_seeding_time": 1440,
+        "max_inactive_seeding_time_enabled": true,
+        "max_inactive_seeding_time": 60,
+        "max_ratio_act": 0
+      },
+      "off": {
+        "max_ratio_enabled": true,
+        "max_ratio": 0,
+        "max_seeding_time_enabled": true,
+        "max_seeding_time": 0,
+        "max_inactive_seeding_time_enabled": false,
+        "max_ratio_act": 0
+      }
+    },
+    "queue": {
+      "queueing_enabled": true,
+      "max_active_downloads": 8,
+      "max_active_torrents": 20,
+      "max_active_uploads": 5,
+      "dont_count_slow_torrents": true,
+      "slow_torrent_dl_rate_threshold": 4,
+      "slow_torrent_ul_rate_threshold": 4,
+      "slow_torrent_inactive_timer": 300
+    },
+    "evening_upload_limit": {
+      "scheduler_enabled": true,
+      "schedule_from_hour": 18,
+      "schedule_from_min": 0,
+      "schedule_to_hour": 0,
+      "schedule_to_min": 0,
+      "scheduler_days": 0,
+      "alt_up_limit": 1048576,
+      "alt_dl_limit": 0
+    },
+    "trackers_from_url": {
+      "add_trackers_from_url_enabled": true,
+      "add_trackers_url": "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+    },
+    "other": {
+      "reannounce_when_address_changed": true
+    },
+    "excluded_file_names": [
+      "*.exe",
+      "*.bat",
+      "*.cmd",
+      "*.scr",
+      "*.lnk",
+      "*.pif",
+      "*.com",
+      "*.vbs",
+      "*.msi",
+      "*.ps1",
+      "*.js",
+      "*.jar",
+      "*.apk",
+      "*.zipx"
+    ],
+    "categories": {
+      "radarr": "/data/torrents/movies",
+      "tv-sonarr": "/data/torrents/tv"
+    }
+  }
+}

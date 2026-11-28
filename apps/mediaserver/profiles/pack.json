@@ -1,0 +1,40 @@
+{
+  "pack_version": 1,
+  "description": "Release profiles for Radarr and Sonarr, applied by scripts/wire_arr.py profiles apply. JSON only so the standard library can read it.",
+  "owned_prefixes": ["Lang · ", "Res · ", "Src · ", "Eff · ", "Size · ", "Compat · ", "Junk · ", "Fix · ", "TV · "],
+  "owned_profiles": ["1080p Compact", "1080p Family"],
+  "profile_slugs": {"compact": "1080p Compact", "family": "1080p Family"},
+  "legacy": {
+    "custom_formats": ["Hindi Audio", "Season Complete", "Multi Episode", "x265 (HD)"],
+    "profiles": ["1080p Balanced", "1080p Balanced (Hindi)"],
+    "release_profiles": ["Phase 0 bans (until profile pack)"],
+    "move_titles_to": "1080p Compact"
+  },
+  "trash": {
+    "repository": "https://github.com/TRaSH-Guides/Guides",
+    "commit": "1b0f1de51f85f7fcd6abdbf60f788d3f3cf9edfd",
+    "license": "MIT (see trash/LICENSE)",
+    "vendored": {
+      "radarr/x265-hd.json": {"name": "Eff · HEVC", "source": "docs/json/radarr/cf/x265-hd.json", "trash_id": "dc98083864ea246d05a42df0d05f81cc", "codec": "hevc"},
+      "radarr/av1.json": {"name": "Compat · AV1", "source": "docs/json/radarr/cf/av1.json", "trash_id": "cae4ca30163749b891686f95532519bd", "codec": "av1"},
+      "radarr/dv-wo-hdr-fallback.json": {"name": "Compat · DV w/o HDR fallback", "source": "docs/json/radarr/cf/dv-wo-hdr-fallback.json", "trash_id": "923b6abef9b17f937fab56cfcf89e1f1", "codec": "dv"},
+      "radarr/br-disk.json": {"name": "Junk · BR-DISK", "source": "docs/json/radarr/cf/br-disk.json", "trash_id": "ed38b889b31be83fda192888e2286d83"},
+      "radarr/3d.json": {"name": "Junk · 3D", "source": "docs/json/radarr/cf/3d.json", "trash_id": "b8cd450cbfa689c0259a01d9e29ba3d6"},
+      "radarr/extras.json": {"name": "Junk · Extras", "source": "docs/json/radarr/cf/extras.json", "trash_id": "0a3f082873eb454bde444150b70253cc"},
+      "radarr/upscaled.json": {"name": "Junk · Upscaled", "source": "docs/json/radarr/cf/upscaled.json", "trash_id": "bfd8eb01832d646a0a89c4deb46f8564"},
+      "radarr/repack-proper.json": {"name": "Fix · Repack/Proper", "source": "docs/json/radarr/cf/repack-proper.json", "trash_id": "e7718d7a3ce595f289bfee26adc178f5"},
+      "radarr/repack2.json": {"name": "Fix · Repack2", "source": "docs/json/radarr/cf/repack2.json", "trash_id": "ae43b294509409a6a13919dedd4764c4"},
+      "radarr/repack3.json": {"name": "Fix · Repack3", "source": "docs/json/radarr/cf/repack3.json", "trash_id": "5caaaa1c08c1742aa4342d8c4cc463f2"},
+      "sonarr/x265-hd.json": {"name": "Eff · HEVC", "source": "docs/json/sonarr/cf/x265-hd.json", "trash_id": "47435ece6b99a0b477caf360e79ba0bb", "codec": "hevc"},
+      "sonarr/av1.json": {"name": "Compat · AV1", "source": "docs/json/sonarr/cf/av1.json", "trash_id": "15a05bc7c1a36e2b57fd628f8977e2fc", "codec": "av1"},
+      "sonarr/dv-wo-hdr-fallback.json": {"name": "Compat · DV w/o HDR fallback", "source": "docs/json/sonarr/cf/dv-wo-hdr-fallback.json", "trash_id": "9b27ab6498ec0f31a3353992e19434ca", "codec": "dv"},
+      "sonarr/br-disk.json": {"name": "Junk · BR-DISK", "source": "docs/json/sonarr/cf/br-disk.json", "trash_id": "85c61753df5da1fb2aab6f2a47426b09"},
+      "sonarr/extras.json": {"name": "Junk · Extras", "source": "docs/json/sonarr/cf/extras.json", "trash_id": "fbcb31d8dabd2a319072b84fc0b7249c"},
+      "sonarr/upscaled.json": {"name": "Junk · Upscaled", "source": "docs/json/sonarr/cf/upscaled.json", "trash_id": "23297a736ca77c0fc8e70f8edd7ee56c"},
+      "sonarr/repack-proper.json": {"name": "Fix · Repack/Proper", "source": "docs/json/sonarr/cf/repack-proper.json", "trash_id": "ec8fa7296b64e8cd390a1600981f3923"},
+      "sonarr/repack2.json": {"name": "Fix · Repack2", "source": "docs/json/sonarr/cf/repack2.json", "trash_id": "eb3d5cc0a2be0db205fb823640db6a3c"},
+      "sonarr/repack3.json": {"name": "Fix · Repack3", "source": "docs/json/sonarr/cf/repack3.json", "trash_id": "44e7c4de10ae50265753082e5dc76047"},
+      "sonarr/season-pack.json": {"name": "TV · Season Pack", "source": "docs/json/sonarr/cf/season-pack.json", "trash_id": "3bc5f395426614e155e585a2f056cdf1"}
+    }
+  }
+}

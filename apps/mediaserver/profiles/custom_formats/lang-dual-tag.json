@@ -1,0 +1,39 @@
+{
+  "name": "Lang · {LANG} + Dual/Multi tag",
+  "comment": "A {LANG} token plus Dual Audio, Dual or Multi when the original is not named (the apps do not map Dual Audio to a language).",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "language",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "{LANG} token",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "{LANG_RX}"
+      }
+    },
+    {
+      "name": "Dual or multi tag",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "\\b(?:dual[ ._-]?audio|multi[ ._-]?audio|dual|multi)\\b"
+      }
+    },
+    {
+      "name": "Original not parsed",
+      "implementation": "LanguageSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "Original"
+      }
+    }
+  ]
+}

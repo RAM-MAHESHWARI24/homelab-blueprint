@@ -13,7 +13,7 @@
 ---
 
 ## 🛡️ Host Isolation Guarantee
-All test commands, Docker containers, loopback ext4 volume mounts, and test assertions run exclusively inside a guest micro-VM on the Windows host machine (via Canonical Multipass or WSL2 Ubuntu 24.04). **Zero modifications, Docker containers, or commands are ever executed against the live physical homelab server (`192.168.1.31`).**
+All test commands, Docker containers, loopback ext4 volume mounts, and test assertions run exclusively inside a guest micro-VM on the Windows host machine (via Canonical Multipass or WSL2 Ubuntu 24.04). **Zero modifications, Docker containers, or commands are ever executed against the live physical homelab server (`<server-lan-ip>`).**
 
 ---
 

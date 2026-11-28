@@ -1,0 +1,21 @@
+{
+  "name": "Junk · Line/cam audio",
+  "comment": "Theatre-recorded or cleaned audio and AI or fan dubs. 'line' only counts next to a language token or 'audio', so The Thin Red Line is safe.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Line, cleaned, AI or fan dub",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "(?:{LANG_RX})[ ._-]*\\(?[ ._-]*(?:line|cleaned|clean)\\b|\\b(?:line|cleaned|clean)[ ._-]*(?:audio|aud)\\b|\\bhq[ ._-]?line\\b|\\b(?:ai|fan)[ ._-]?dub(?:bed)?\\b"
+      }
+    }
+  ]
+}

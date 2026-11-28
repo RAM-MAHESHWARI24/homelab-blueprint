@@ -1,0 +1,30 @@
+{
+  "name": "Lang · {LANG} + Original (named)",
+  "comment": "A {LANG} token in the title and the parsed languages include the original. Hindi English, Hindi + Eng, or a Hindi-original film tagged Hindi.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "language",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "{LANG} token",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "{LANG_RX}"
+      }
+    },
+    {
+      "name": "Original language",
+      "implementation": "LanguageSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "Original"
+      }
+    }
+  ]
+}

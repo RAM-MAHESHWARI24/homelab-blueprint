@@ -1,6 +1,6 @@
 # Mediaserver Blueprint 🎬
 
-> Production-tested media ingest & streaming pipeline tailored for low-power hardware, instant atomic hardlinks, ISP DPI SNI bypass, and Recyclarr custom formats.
+> Production-tested media ingest & streaming pipeline tailored for low-power hardware, instant atomic hardlinks, ISP DPI SNI bypass, and release profiles it applies itself.
 
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose%20v2-blue.svg)](https://docs.docker.com/compose/)
 [![Atomic Hardlinks](https://img.shields.io/badge/Hardlinks-Instant%200%20I%2FO-success.svg)](#atomic-hardlinks)
@@ -18,7 +18,7 @@
 * **Ingest Automation:** Sonarr (TV), Radarr (Movies), Bazarr (Subtitles), Prowlarr (Indexers)
 * **Downloader:** qBittorrent
 * **Cloudflare Solver:** Byparr (FlareSolverr fork)
-* **Quality & Scoring Engine:** Recyclarr (Compact 720p/1080p/4K with +50k Hindi dual-audio score priority)
+* **Release profiles:** a profile pack in [`profiles/`](profiles/README.md), applied by `wire_arr.py profiles apply`: `1080p Compact` (the best 1080p) and `1080p Family` (requires a second audio language such as Hindi)
 
 ---
 
@@ -64,7 +64,7 @@ It transparently patches Node.js `https.request`, `http.request`, and `globalThi
 When an open indexer attaches the right IMDb/TMDB ID but a release uploader mangles the title (for example prepending a franchise prefix like `007 James Bond Quantum of Solace 2008 1080p -Ozlem`), Radarr/Sonarr holds the finished torrent at `Manual Import required` (`matched to movie by ID`).
 
 This module hardens against that in two layers:
-* **Grab prevention ([`scripts/wire_arr.py`](scripts/wire_arr.py)):** configures qBittorrent excluded payload extensions (`*.exe`, `*.bat`, `*.scr`, etc.), lowers default Prowlarr priority of unmoderated public trackers (`The Pirate Bay` → `45`) when cleaner indexers exist, and blocks known filename-mangling groups (`Ozlem`).
+* **Grab prevention ([`scripts/wire_arr.py`](scripts/wire_arr.py)):** configures qBittorrent excluded payload extensions (`*.exe`, `*.bat`, `*.scr`, etc.), and lowers default Prowlarr priority of unmoderated public trackers (`The Pirate Bay` → `45`) when cleaner indexers exist. Known filename-mangling uploaders (`Ozlem`) are rejected by the profile pack's `Junk · Banned uploaders` format (see [Release profiles](#-release-profiles)).
 * **Safe auto-resolver ([`scripts/auto_import.py`](scripts/auto_import.py)):** polls Radarr/Sonarr queues every 3 minutes via [`host/cron/mediaserver-autoimport`](host/cron/mediaserver-autoimport), verifies single-file non-sample integrity, rejects non-safe blocks, and only triggers `ManualImport` when the target movie/series normalized title matches inside the downloaded file or folder name:
 ```bash
 python3 scripts/auto_import.py --config-dir ./config --once --dry-run
@@ -93,14 +93,30 @@ It adds no indexers. Pick them in Prowlarr; which indexers you use, and whether 
 ### 3. Inside homelab-blueprint
 The [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint) installer does the same from its browser wizard, and its Control Hub adds an indexer picker over Prowlarr's own list.
 
-### 4. Recyclarr Setup
-Sync the curated compact profiles with +50k Hindi audio scoring:
+---
+
+## 🎚️ Release profiles
+
+Radarr and Sonarr compare quality position first and custom-format score second, long before seeders. The profile pack in [`profiles/`](profiles/README.md) puts every acceptable quality in one group (1080p; the Family profile adds 720p) and lets scores decide: 1080p, your second audio language, HEVC, a compact size band and the source; junk, theatre recordings, banned uploaders and codecs your TVs can't play are rejected. It also sets size limits, a soft-subtitle whitelist (`ESub`), the recycle bin, Prowlarr Full Sync and minimum seeders, and qBittorrent's "seed while it helps" limits.
+
+`install.sh` applies it. Your choices are `MEDIA_*` keys in `.env`:
+
 ```bash
-cp recyclarr/mediaserver-profiles.example.yml ~/.config/recyclarr/recyclarr.yml
-# Edit with your Radarr and Sonarr API keys:
-nano ~/.config/recyclarr/recyclarr.yml
-recyclarr sync
+MEDIA_SECOND_LANGUAGE=Hindi           # empty = none; names in profiles/languages.json
+MEDIA_DEFAULT_PROFILE=compact         # or family (1080p Family, needs a language)
+MEDIA_CODECS=hevc                     # add av1, dv if your players decode them
+MEDIA_SEEDING=while-it-helps          # or off
 ```
+
+```bash
+python3 scripts/wire_arr.py profiles apply   --config-dir ./config --env-file .env   # idempotent
+python3 scripts/wire_arr.py profiles check   --config-dir ./config --env-file .env   # drift; exit 1 when out of sync
+python3 scripts/wire_arr.py profiles migrate --config-dir ./config --env-file .env --dry-run   # older setups
+```
+
+Only formats with the pack's prefixes (`Lang ·`, `Res ·`, `Junk ·`, ...) and the profiles `1080p Compact` and `1080p Family` are changed; your own formats and profiles are left alone. The full guide (ranking, every format and score, moving from Recyclarr, a "why isn't it downloading?" checklist): [release profiles and dual audio](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/MEDIA_RELEASE_PROFILES.md). Watching on Android TVs from the Samba share: [playing over SMB with Nova](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/SMB_PLAYBACK_WITH_NOVA.md).
+
+**Using Recyclarr instead:** set `MEDIA_PROFILES=off` so the pack leaves profiles alone, and never run both against the same profiles. Recyclarr cannot define custom formats, so the language formats are not available that way.
 
 ---
 

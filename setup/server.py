@@ -61,6 +61,7 @@ from core.config_core import (
     netplan_change_status,
 )
 from setup.installer import deploy_homelab_stack
+from setup.installer.release_prefs import normalize_release_prefs, supported_languages
 
 PORT = int(os.getenv("SETUP_PORT", 8000))
 HOST = os.getenv("SETUP_HOST", "0.0.0.0")
@@ -141,6 +142,8 @@ class SetupApiHandler(BaseHTTPRequestHandler):
                 self.send_json({"ports": get_default_ports()})
             elif path == "/api/netplan/status":
                 self.send_json(netplan_change_status())
+            elif path == "/api/release/languages":
+                self.send_json({"languages": supported_languages(REPO_ROOT)})
             else:
                 self.send_json({"error": f"Unknown endpoint: {path}"}, 404)
             return
@@ -201,6 +204,12 @@ class SetupApiHandler(BaseHTTPRequestHandler):
             self.send_json(result)
 
         elif path == "/api/deploy":
+            # Release preferences ("Release preferences" step): refuse bad answers before anything runs.
+            _, pref_errors = normalize_release_prefs(body, REPO_ROOT)
+            if pref_errors:
+                self.send_json({"success": False, "error": "invalid release preferences", "errors": [
+                    {"service": "media", "msg": e} for e in pref_errors]}, 400)
+                return
             result = deploy_homelab_stack(str(REPO_ROOT), body)
             if result.get("success") and not result.get("dry_run"):
                 SetupApiHandler.deployed = True

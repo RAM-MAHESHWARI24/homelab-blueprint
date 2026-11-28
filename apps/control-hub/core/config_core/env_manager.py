@@ -117,6 +117,26 @@ def _external_mount_path(config: Dict[str, Any]) -> str:
     return path
 
 
+def _release_preference_env(config: Dict[str, Any]) -> Dict[str, str]:
+    """MEDIA_* keys for mediaserver.env from the wizard's media_* answers (validated by
+    setup/installer/release_prefs.py before rendering; the defaults match it)."""
+    profiles = config.get("media_profiles", True)
+    if not isinstance(profiles, bool):
+        profiles = str(profiles).strip().lower() in ("1", "on", "true", "yes")
+    codecs = config.get("media_codecs", ["hevc"])
+    if isinstance(codecs, str):
+        codecs = [c for c in codecs.split(",") if c.strip()]
+    return {
+        "MEDIA_PROFILES": "on" if profiles else "off",
+        "MEDIA_SECOND_LANGUAGE": str(config.get("media_second_language") or ""),
+        "MEDIA_DEFAULT_PROFILE": str(config.get("media_default_profile") or "compact"),
+        "MEDIA_CODECS": ",".join(str(c).strip().lower() for c in codecs),
+        "MEDIA_SEEDING": str(config.get("media_seeding") or "while-it-helps"),
+        "MEDIA_STUCK_DOWNLOADS": str(config.get("media_stuck_downloads") or "replace"),
+        "MEDIA_PUBLIC_TRACKERS": "off" if config.get("media_public_trackers") is False else "on",
+    }
+
+
 def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Renders every module's environment file from its .env.example template.
@@ -228,6 +248,8 @@ def sync_all_blueprint_envs(base_dir: str, config: Dict[str, Any], env_dir: Opti
                 "DNS_SECONDARY": (config.get("dns_servers") or ["1.1.1.1", "8.8.8.8"])[-1],
                 "MEDIA_ADMIN_USER": config.get("media_admin_user", "admin"),
                 "MEDIA_ADMIN_PASS": media_admin_pass,
+                # Release preferences (Setup Wizard step; applied by wire_arr.py profiles apply)
+                **_release_preference_env(config),
             },
         )
     )

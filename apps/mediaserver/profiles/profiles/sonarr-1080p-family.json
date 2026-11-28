@@ -1,0 +1,51 @@
+{
+  "name": "1080p Family",
+  "description": "The second language is required, the original language is a bonus: 1080p dual audio, then 720p dual audio, then 1080p and 720p releases with only the second language. Releases without it are rejected.",
+  "requires_language": true,
+  "upgrade": {
+    "allowed": true,
+    "until_quality": "HD",
+    "until_score": 4000
+  },
+  "min_format_score": 1400,
+  "min_upgrade_format_score": 400,
+  "qualities": [
+    {
+      "group": "HD",
+      "qualities": [
+        "Bluray-1080p",
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "HDTV-1080p",
+        "Bluray-720p",
+        "WEBDL-720p",
+        "WEBRip-720p"
+      ]
+    }
+  ],
+  "scores": {
+    "Res · 1080p": 1000,
+    "Lang · {LANG} + Original (named)": 3000,
+    "Lang · {LANG} + Dual/Multi tag": 3000,
+    "Lang · {LANG} original (untagged)": 3000,
+    "Lang · {LANG} only (original missing)": 1500,
+    "Lang · Not Original or {LANG}": -10000,
+    "Eff · HEVC": 150,
+    "Src · Bluray": 40,
+    "Src · WEB-DL": 30,
+    "Src · WEBRip": 20,
+    "Fix · Repack/Proper": 5,
+    "Fix · Repack2": 6,
+    "Fix · Repack3": 7,
+    "TV · Season Pack": 150,
+    "Junk · Line/cam audio": -10000,
+    "Junk · Cam / PreDVD / S-Print": -10000,
+    "Junk · Banned uploaders": -10000,
+    "Junk · Commentary editions": -10000,
+    "Junk · BR-DISK": -10000,
+    "Junk · Extras": -10000,
+    "Junk · Upscaled": -10000,
+    "Compat · AV1": -10000,
+    "Compat · DV w/o HDR fallback": -10000
+  }
+}

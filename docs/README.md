@@ -103,6 +103,10 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* Complete setup for Intel `/dev/dri` render nodes, group permissions (`render`/`video`), low-power tone mapping, and driver selection across Gen 7 to Gen 14 CPUs.
 * **[Low-Power Direct Play Guide](HASWELL_DIRECT_PLAY_GUIDE.md)**
   * *Why it matters:* Optimization handbook for budget mini-PCs (Haswell Gen 4, Skylake, N100) to achieve 100% Direct Play and avoid transcoding bottlenecks.
+* **[Release Profiles and Dual Audio](MEDIA_RELEASE_PROFILES.md)**
+  * *Why it matters:* How Radarr and Sonarr rank releases, the `1080p Compact` and `1080p Family` profiles, changing the second language, moving from Recyclarr, a "why isn't it downloading?" checklist, and the seeding policy.
+* **[Playing over SMB with Nova Video Player](SMB_PLAYBACK_WITH_NOVA.md)**
+  * *Why it matters:* Watching the library on Android TVs from the Samba share: NFO metadata owned by Radarr/Sonarr, preferred audio and subtitle language, which codecs to allow, resume files and naming.
 * **[Power Management & RTC Wake](POWER_MANAGEMENT_RTCWAKE.md)**
   * *Why it matters:* Deep-dive into automated ACPI S3 Suspend-to-RAM (~1.2W) at midnight, CMOS hardware RTC wakeup alarms at 06:00 AM, and active download/SMB safety checks.
 
@@ -162,6 +166,7 @@ Key architectural choices are recorded with their problem context and trade-offs
 * **[ADR-0001: Single ext4 Mount for Atomic 0-I/O Hardlinks](adr/0001-single-mount-atomic-hardlinks.md)**
 * **[ADR-0002: Zero-Dependency Standard-Library-Only Setup Wizard](adr/0002-zero-dependency-setup-wizard.md)**
 * **[ADR-0003: ACPI S3 Suspend-to-RAM with RTC Wake vs Continuous Idle](adr/0003-acpi-s3-sleep-guard-power-automation.md)**
+* **[ADR-0004: Repo-Owned Release Profiles Replace Recyclarr](adr/0004-repo-owned-release-profiles.md)**
 
 ---
 

@@ -3,13 +3,14 @@
 Homelab Blueprint - End-to-End Automated Pipeline Regression Suite
 Validates:
   1. Media Ingestion & Atomic Hardlinks (qBittorrent -> Radarr/Sonarr -> Bazarr)
-  2. Recyclarr Profile & Custom Format synchronization
+  2. Release profile pack (apps/mediaserver/profiles) ranking invariants
   3. StorageManager hardlink probe & error handling
   4. Immich / Noodle Gallery Face-to-XMP Exporter & Binary Invariance
   5. Simulated Google Drive Cloud Backup via Rclone with Trash Buffer
   6. Server Suspend & Dynamic Power Management Flags
 """
 
+import json
 import os
 import sys
 import shutil
@@ -29,7 +30,7 @@ from export_faces_to_xmp import build_exiftool_args_for_asset
 
 
 class TestMediaIngestionAndHardlinks(unittest.TestCase):
-    """Module 2 & Module 7: Ingestion, StorageManager Probes, Hardlinks, Renaming, Subtitles & Recyclarr Profiles"""
+    """Module 2 & Module 7: Ingestion, StorageManager Probes, Hardlinks, Renaming, Subtitles & Release Profiles"""
 
     def setUp(self):
         self.test_dir = Path(tempfile.mkdtemp(prefix="homelab_media_test_"))
@@ -98,17 +99,20 @@ class TestMediaIngestionAndHardlinks(unittest.TestCase):
         raw_bytes = sub_file.read_bytes()
         self.assertFalse(raw_bytes.startswith(b"\xef\xbb\xbf"), "Subtitle must NOT contain UTF-8 BOM")
 
-    def test_recyclarr_profile_configuration_validity(self):
-        """TC-MEDIA-E2E-02: Verify Recyclarr Hindi priority score and 1080p Compact limits"""
-        profile_file = REPO_ROOT / "apps" / "mediaserver" / "recyclarr" / "mediaserver-profiles.example.yml"
-        self.assertTrue(profile_file.exists(), "Recyclarr profile template must exist")
-        content = profile_file.read_text(encoding="utf-8")
-
-        self.assertIn("radarr:", content)
-        self.assertIn("sonarr:", content)
-        self.assertIn("WEBDL-1080p", content)
-        # Verify Hindi priority score
-        self.assertIn("+50000", content)
+    def test_release_profile_pack_validity(self):
+        """TC-MEDIA-E2E-02: The repo-owned profile pack ranks one merged HD group, not HDTV-1080p first"""
+        pack_dir = REPO_ROOT / "apps" / "mediaserver" / "profiles"
+        self.assertFalse((REPO_ROOT / "apps" / "mediaserver" / "recyclarr").exists(), "the Recyclarr example was replaced by the pack")
+        for app in ("radarr", "sonarr"):
+            compact = json.loads((pack_dir / "profiles" / f"{app}-1080p-compact.json").read_text(encoding="utf-8"))
+            self.assertEqual(compact["name"], "1080p Compact")
+            top = compact["qualities"][0]
+            self.assertEqual(top.get("group"), "HD", "every acceptable HD quality ties in one group")
+            self.assertEqual(top["qualities"][0], "Bluray-1080p")
+            self.assertIn("HDTV-1080p", top["qualities"], "untagged 1080p sits inside the group, never above it")
+            self.assertEqual(compact["scores"]["Res · 1080p"], 3000)
+            self.assertEqual(compact["min_format_score"], 0)
+            self.assertNotIn("Hindi Audio", json.dumps(compact), "the old +50000 format is gone")
 
 
 class TestPhotoCloudAndFaceXmp(unittest.TestCase):

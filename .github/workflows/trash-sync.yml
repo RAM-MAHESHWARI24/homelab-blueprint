@@ -1,0 +1,57 @@
+# Weekly check of the TRaSH Guides custom formats vendored in apps/mediaserver/profiles/trash/.
+# When upstream changed, the files and the recorded commit are updated on a branch and a
+# pull request into develop is opened, to be reviewed like a dependency update. A trash_id
+# change or a file removed upstream fails the job instead (needs a person).
+# See docs/MEDIA_RELEASE_PROFILES.md and docs/adr/0004-repo-owned-release-profiles.md.
+name: TRaSH upstream check
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"   # Mondays 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: trash-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: develop
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Compare vendored formats with upstream
+        run: python3 apps/mediaserver/scripts/trash_sync.py --write
+      - name: Re-run the profile pack tests
+        run: python3 -m unittest discover -s apps/mediaserver/tests -p "test_profile_pack.py"
+      - name: Open a pull request when something changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/mediaserver/profiles; then
+            echo "Vendored TRaSH formats are up to date."
+            exit 0
+          fi
+          branch="chore/trash-sync-$(date -u +%Y%m%d)"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "Branch $branch already exists; leaving it for review."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add apps/mediaserver/profiles
+          git commit -m "chore(mediaserver): sync vendored TRaSH custom formats"
+          git push origin "$branch"
+          gh pr create --base develop --head "$branch" \
+            --title "chore(mediaserver): sync vendored TRaSH custom formats" \
+            --body "Weekly upstream check found changes in the TRaSH Guides custom formats vendored under \`apps/mediaserver/profiles/trash/\`. Review the diff, check the corpus test still passes, then merge. Live servers pick the change up on the next \`wire_arr.py profiles apply\`."

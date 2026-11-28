@@ -128,6 +128,57 @@ def test_photo_external_mount():
     print("  [OK] defaults /mnt/media:ro, overrides kept, bad values fall back")
 
 
+def test_release_preferences():
+    """Release preferences: defaults, validation, and upgrades that keep (or default off) the pack."""
+    from setup.installer.release_prefs import normalize_release_prefs, supported_languages
+
+    print("Testing release preference validation and upgrade defaults...")
+    langs = supported_languages(REPO_ROOT)
+    pack_langs = json.loads((REPO_ROOT / "apps" / "mediaserver" / "profiles" / "languages.json").read_text(encoding="utf-8"))
+    assert langs == [entry["name"] for entry in pack_langs["languages"]] and "Hindi" in langs, langs
+
+    prefs, errors = normalize_release_prefs({}, REPO_ROOT)
+    assert not errors and prefs["media_profiles"] is True and prefs["media_second_language"] == ""
+    assert prefs["media_default_profile"] == "compact" and prefs["media_codecs"] == ["hevc"], prefs
+
+    prefs, errors = normalize_release_prefs({"media_second_language": "hindi", "media_default_profile": "family",
+                                             "media_codecs": "av1,hevc", "media_seeding": "off"}, REPO_ROOT)
+    assert not errors, errors
+    assert prefs["media_second_language"] == "Hindi" and prefs["media_codecs"] == ["hevc", "av1"]
+
+    for bad in ({"media_default_profile": "family"}, {"media_second_language": "Klingon"},
+                {"media_codecs": ["vp9"]}, {"media_seeding": "forever"}, {"media_stuck_downloads": "maybe"}):
+        _, errors = normalize_release_prefs(bad, REPO_ROOT)
+        assert errors, f"expected an error for {bad}"
+
+    # Upgrade from a pre-pack install: no media_* keys, env without MEDIA_PROFILES -> off.
+    prefs, _ = normalize_release_prefs({}, REPO_ROOT, existing_env={"PUID": "1000"})
+    assert prefs["media_profiles"] is False, prefs
+    prefs, _ = normalize_release_prefs({}, REPO_ROOT, existing_env={"MEDIA_PROFILES": "on", "MEDIA_SECOND_LANGUAGE": "Tamil",
+                                                                    "MEDIA_CODECS": "hevc,dv"})
+    assert prefs["media_profiles"] is True and prefs["media_second_language"] == "Tamil" and prefs["media_codecs"] == ["hevc", "dv"]
+    prefs, _ = normalize_release_prefs({"media_profiles": True}, REPO_ROOT, existing_env={"PUID": "1000"})
+    assert prefs["media_profiles"] is True, "an explicit wizard answer wins over the upgrade default"
+    print("  [OK] defaults, validation and upgrade behaviour")
+
+
+def test_schema_migrator_upgrade_default():
+    """The schema migrator adds MEDIA_PROFILES=off to an existing mediaserver.env."""
+    import tempfile
+    from setup.installer.schema_migrator import migrate_single_env
+
+    print("Testing the schema migrator's upgrade default for MEDIA_PROFILES...")
+    with tempfile.TemporaryDirectory() as tmp:
+        env = Path(tmp) / "mediaserver.env"
+        env.write_text("PUID=1000\nPGID=1000\n", encoding="utf-8")
+        result = migrate_single_env(env, REPO_ROOT / "apps" / "mediaserver" / ".env.example", backup_dir=Path(tmp) / "bak")
+        assert result["success"] and "MEDIA_PROFILES" in result["injected_keys"], result
+        text = env.read_text(encoding="utf-8")
+        assert "\nMEDIA_PROFILES=off\n" in text and "MEDIA_PROFILES=on" not in text, text
+        assert "MEDIA_SECOND_LANGUAGE=" in text
+    print("  [OK] existing installs opt in to the profile pack")
+
+
 def test_no_stdlib_shadowing():
     """Scripts run directly put their folder first on sys.path, so a file named after a
     standard module (token.py, secrets.py, ...) breaks any stdlib import of it."""
@@ -254,7 +305,34 @@ def run_tests():
         assert "QBITTORRENT_PASS=testpass123" in rendered
         assert "adminadmin" not in rendered
 
+        print("Testing the Release preferences step (languages endpoint, page, validation, rendering)...")
+        status, data = request("/api/release/languages")
+        assert status == 200 and "Hindi" in data["languages"], data
+        for element_id in ("pow-rel-language", "pow-rel-default", "pow-rel-hevc", "pow-rel-av1", "pow-rel-dv",
+                           "pow-rel-seeding", "pow-rel-stuck", "pow-rel-pack", "exp-rel-language"):
+            assert f'id="{element_id}"' in html, f"wizard page is missing #{element_id}"
+        assert "media_second_language" in js and "/api/release/languages" in js
+        try:
+            request("/api/deploy", dict(deploy_payload, media_default_profile="family", media_second_language=""))
+            raise AssertionError("expected HTTP 400 for 1080p Family without a language")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400, e.code
+            body = json.loads(e.read().decode())
+            assert body["errors"] and body["errors"][0]["service"] == "media", body
+        status, deploy_res = request("/api/deploy", dict(deploy_payload, media_profiles=True, media_second_language="Hindi",
+                                                          media_default_profile="family", media_codecs=["hevc", "av1"],
+                                                          media_seeding="off", media_stuck_downloads="replace"))
+        assert status == 200 and deploy_res["success"] is True, deploy_res.get("errors")
+        rendered = preview_env.read_text(encoding="utf-8")
+        for line in ("MEDIA_PROFILES=on", "MEDIA_SECOND_LANGUAGE=Hindi", "MEDIA_DEFAULT_PROFILE=family",
+                     "MEDIA_CODECS=hevc,av1", "MEDIA_SEEDING=off", "MEDIA_STUCK_DOWNLOADS=replace"):
+            assert line in rendered.splitlines(), f"{line} missing from the rendered mediaserver.env"
+        assert any("release profile pack" in line for line in deploy_res["logs"]), "dry run should say it would apply the pack"
+        assert any("'1080p Family' as the default profile" in line for line in deploy_res["logs"])
+
         test_exit_waits_for_netplan_confirm()
+        test_release_preferences()
+        test_schema_migrator_upgrade_default()
         test_photos_image_override()
         test_photo_external_mount()
         test_no_stdlib_shadowing()

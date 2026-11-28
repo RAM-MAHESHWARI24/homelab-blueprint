@@ -1,0 +1,21 @@
+{
+  "name": "Junk · Banned uploaders",
+  "comment": "Uploaders whose releases have mangled names or the wrong audio. Add names to the alternation.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Banned uploader",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "\\b(?:ozlem)\\b"
+      }
+    }
+  ]
+}

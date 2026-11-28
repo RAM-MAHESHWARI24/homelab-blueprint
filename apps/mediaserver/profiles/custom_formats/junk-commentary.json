@@ -1,0 +1,21 @@
+{
+  "name": "Junk · Commentary editions",
+  "comment": "Joke-commentary releases that replace the film's audio.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Commentary edition",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "\\b(?:rifftrax)\\b"
+      }
+    }
+  ]
+}

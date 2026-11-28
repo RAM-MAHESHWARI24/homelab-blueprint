@@ -1,7 +1,7 @@
 # Homelab Blueprint - End-to-End Pipeline Verification & Multipass VM Testing Report
 
 > [!NOTE]
-> **Host Isolation Guarantee**: All provisioning, Docker containers, loopback ext4 volume mounts, and test assertions were executed strictly inside the ephemeral Hyper-V Virtual Machine (`homelab-test`) on the Windows host. Zero commands, containers, or test modifications were touched on the physical server (`192.168.1.31`).
+> **Host Isolation Guarantee**: All provisioning, Docker containers, loopback ext4 volume mounts, and test assertions were executed strictly inside the ephemeral Hyper-V Virtual Machine (`homelab-test`) on the Windows host. Zero commands, containers, or test modifications were touched on the physical server (`<server-lan-ip>`).
 
 ---
 

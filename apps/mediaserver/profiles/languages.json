@@ -1,0 +1,21 @@
+{
+  "description": "Second audio languages the pack supports. app_language is the name in Radarr/Sonarr's language list (ids are resolved at runtime; a language an app does not know, such as Telugu in Sonarr, is matched by title tokens only). tokens match on their own; adjacent_tokens collide with ordinary words, so they only count next to another language marker.",
+  "markers": ["eng", "english", "hindi", "hin", "tamil", "tam", "telugu", "malayalam", "kannada", "bengali", "marathi", "dual", "multi", "audio"],
+  "languages": [
+    {"name": "Hindi", "app_language": "Hindi", "tokens": ["hindi", "hin"], "adjacent_tokens": []},
+    {"name": "Tamil", "app_language": "Tamil", "tokens": ["tamil", "tam"], "adjacent_tokens": []},
+    {"name": "Telugu", "app_language": "Telugu", "tokens": ["telugu"], "adjacent_tokens": ["tel"]},
+    {"name": "Malayalam", "app_language": "Malayalam", "tokens": ["malayalam"], "adjacent_tokens": ["mal"]},
+    {"name": "Kannada", "app_language": "Kannada", "tokens": ["kannada"], "adjacent_tokens": ["kan"]},
+    {"name": "Bengali", "app_language": "Bengali", "tokens": ["bengali"], "adjacent_tokens": []},
+    {"name": "Marathi", "app_language": "Marathi", "tokens": ["marathi"], "adjacent_tokens": []},
+    {"name": "Spanish", "app_language": "Spanish", "tokens": ["spanish", "spa", "esp", "castellano", "latino"], "adjacent_tokens": []},
+    {"name": "French", "app_language": "French", "tokens": ["french", "fre", "fra", "vff", "truefrench"], "adjacent_tokens": []},
+    {"name": "German", "app_language": "German", "tokens": ["german", "ger"], "adjacent_tokens": []},
+    {"name": "Italian", "app_language": "Italian", "tokens": ["italian", "ita"], "adjacent_tokens": []},
+    {"name": "Portuguese", "app_language": "Portuguese", "tokens": ["portuguese", "por", "dublado"], "adjacent_tokens": []},
+    {"name": "Japanese", "app_language": "Japanese", "tokens": ["japanese", "jpn"], "adjacent_tokens": []},
+    {"name": "Korean", "app_language": "Korean", "tokens": ["korean", "kor"], "adjacent_tokens": []},
+    {"name": "Arabic", "app_language": "Arabic", "tokens": ["arabic", "ara"], "adjacent_tokens": []}
+  ]
+}

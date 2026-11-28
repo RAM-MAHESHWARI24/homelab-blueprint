@@ -1,0 +1,52 @@
+{
+  "name": "1080p Compact",
+  "description": "The best 1080p: 1080p only. Dual audio is preferred among 1080p releases and English-only is fine; HEVC and source are small tie-breakers that never trigger an upgrade on their own.",
+  "requires_language": false,
+  "language": "Any",
+  "upgrade": {
+    "allowed": true,
+    "until_quality": "HD",
+    "until_score": 4700,
+    "until_score_without_language": 3200
+  },
+  "min_format_score": 0,
+  "min_upgrade_format_score": 400,
+  "qualities": [
+    {
+      "group": "HD",
+      "qualities": [
+        "Bluray-1080p",
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "HDTV-1080p"
+      ]
+    }
+  ],
+  "scores": {
+    "Res · 1080p": 3000,
+    "Lang · {LANG} + Original (named)": 1500,
+    "Lang · {LANG} + Dual/Multi tag": 1500,
+    "Lang · {LANG} original (untagged)": 1500,
+    "Lang · {LANG} only (original missing)": -500,
+    "Lang · Not Original or {LANG}": -10000,
+    "Eff · HEVC": 250,
+    "Size · Compact band": 200,
+    "Size · Oversized": -2000,
+    "Src · Bluray": 60,
+    "Src · WEB-DL": 50,
+    "Src · WEBRip": 40,
+    "Fix · Repack/Proper": 5,
+    "Fix · Repack2": 6,
+    "Fix · Repack3": 7,
+    "Junk · Line/cam audio": -10000,
+    "Junk · Cam / PreDVD / S-Print": -10000,
+    "Junk · Banned uploaders": -10000,
+    "Junk · Commentary editions": -10000,
+    "Junk · BR-DISK": -10000,
+    "Junk · Extras": -10000,
+    "Junk · Upscaled": -10000,
+    "Compat · AV1": -10000,
+    "Compat · DV w/o HDR fallback": -10000,
+    "Junk · 3D": -10000
+  }
+}

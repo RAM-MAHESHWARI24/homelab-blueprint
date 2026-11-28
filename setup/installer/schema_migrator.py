@@ -32,6 +32,24 @@ BOLD = "\033[1m" if USE_COLOR else ""
 RESET = "\033[0m" if USE_COLOR else ""
 
 
+# Keys whose value for an EXISTING install differs from the template default for a new
+# one. Fresh installs get the template value; an upgrade gets this one, with a comment.
+UPGRADE_DEFAULTS: Dict[str, Tuple[str, str]] = {
+    # The release profile pack replaces Recyclarr. An existing server may run Recyclarr or
+    # hand-made profiles, so the pack stays off until its owner runs `profiles migrate`.
+    "MEDIA_PROFILES": ("off", "# Off on upgrades: switch on after `wire_arr.py profiles migrate --dry-run` (docs/MEDIA_RELEASE_PROFILES.md)."),
+}
+
+
+def upgrade_block(key: str, block_text: str) -> str:
+    """Template block for `key`, with the upgrade default substituted when there is one."""
+    if key not in UPGRADE_DEFAULTS:
+        return block_text
+    value, note = UPGRADE_DEFAULTS[key]
+    lines = [ln for ln in block_text.splitlines() if not ln.startswith(f"{key}=")]
+    return "\n".join(lines + [note, f"{key}={value}"])
+
+
 def parse_env_pairs(filepath: Path) -> Dict[str, str]:
     """Parses a .env file into a dictionary of key-value pairs (excluding comments)."""
     if not filepath.exists() or not filepath.is_file():
@@ -119,7 +137,7 @@ def detect_schema_diff(env_path: Path, example_path: Path) -> Dict[str, Any]:
     env_pairs = parse_env_pairs(env_path)
     env_keys = set(env_pairs.keys())
 
-    missing = {k: example_blocks[k][0] for k in (example_keys - env_keys)}
+    missing = {k: UPGRADE_DEFAULTS.get(k, (example_blocks[k][0],))[0] for k in (example_keys - env_keys)}
     deprecated = sorted(list(env_keys - example_keys))
     synced = sorted(list(env_keys & example_keys))
 
@@ -203,8 +221,7 @@ def migrate_single_env(
     ]
 
     for key in sorted(missing_keys.keys()):
-        block_text = template_blocks[key][1]
-        injection_lines.append(block_text)
+        injection_lines.append(upgrade_block(key, template_blocks[key][1]))
 
     new_content = original_content.rstrip() + "\n" + "\n".join(injection_lines) + "\n"
 

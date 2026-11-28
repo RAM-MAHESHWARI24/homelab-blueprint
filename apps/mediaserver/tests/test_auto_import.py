@@ -263,27 +263,38 @@ class TestWireArrHardening(unittest.TestCase):
         wa.report["errors"].clear()
         wa.report["warnings"].clear()
 
-    def test_ensure_restriction_term_is_idempotent(self) -> None:
-        class _FakeArr:
-            name = "radarr"
+    def test_banned_uploaders_use_the_profile_pack_not_restrictions(self) -> None:
+        # Radarr 7 and Sonarr 4 removed /api/v3/restriction; the pack's custom format replaces it.
+        self.assertFalse(hasattr(wa, "ensure_restriction_term"))
+        source = Path(wa.__file__).read_text(encoding="utf-8")
+        self.assertNotIn('"restriction"', source)
+        pack = wa.pp.load_pack()
+        fmt = next(f for f in wa.pp.render_formats(pack, "radarr", None) if f["name"] == "Junk · Banned uploaders")
+        self.assertRegex("007 James Bond Goldfinger 1964 1080p BluRay x264 AC3 -Ozlem".lower(), fmt["specifications"][0]["fields"]["value"])
+
+    def test_prowlarr_full_sync_is_enforced_once(self) -> None:
+        class _FakeProwlarr:
+            name = "prowlarr"
 
             def __init__(self) -> None:
-                self.posted: list[tuple[str, Any]] = []
-                self.items: list[Dict[str, Any]] = []
+                self.apps = [{"id": 1, "name": "Radarr", "syncLevel": "addOnly"}, {"id": 2, "name": "Sonarr", "syncLevel": "fullSync"}]
+                self.puts: list[tuple[str, Any]] = []
 
             def get(self, path: str) -> Tuple[int, Any]:
-                return (200, self.items) if path == "restriction" else (404, None)
+                return (200, [dict(a) for a in self.apps]) if path == "applications" else (404, None)
 
-            def post(self, path: str, data: Any) -> Tuple[int, Any]:
-                self.posted.append((path, data))
-                self.items.append(data)
-                return 201, data
+            def put(self, path: str, data: Any) -> Tuple[int, Any]:
+                self.puts.append((path, data))
+                self.apps = [data if a["id"] == data["id"] else a for a in self.apps]
+                return 202, data
 
-        arr = _FakeArr()
-        wa.ensure_restriction_term(arr, "Ozlem")  # type: ignore[arg-type]
-        wa.ensure_restriction_term(arr, "Ozlem")  # type: ignore[arg-type]
-        self.assertEqual(len(arr.posted), 1)
-        self.assertEqual(arr.posted[0][1]["ignored"], ["Ozlem"])
+        p = _FakeProwlarr()
+        self.assertEqual(wa.ensure_prowlarr_full_sync(p, dry_run=True), ["Radarr: sync level addOnly -> fullSync"])  # type: ignore[arg-type]
+        self.assertEqual(p.puts, [], "dry run changes nothing")
+        wa.ensure_prowlarr_full_sync(p)  # type: ignore[arg-type]
+        wa.ensure_prowlarr_full_sync(p)  # type: ignore[arg-type]
+        self.assertEqual([path for path, _ in p.puts], ["applications/1"])
+        self.assertEqual(p.puts[0][1]["syncLevel"], "fullSync")
 
     def test_deprioritize_tpb_only_when_multiple_enabled_and_default_priority(self) -> None:
         class _FakeProwlarr:

@@ -1,0 +1,21 @@
+{
+  "name": "Size · Compact band",
+  "comment": "Movies up to 6 GB. Radarr only: Sonarr may pass a whole season pack's size.",
+  "apps": [
+    "radarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Up to 6 GB",
+      "implementation": "SizeSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "min": 0,
+        "max": 6
+      }
+    }
+  ]
+}
