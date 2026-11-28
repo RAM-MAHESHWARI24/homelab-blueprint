@@ -1,7 +1,10 @@
 # Download Doctor: replaces stuck downloads through Radarr/Sonarr every 10 minutes, searches
-# cutoff-unmet titles daily (10 a day, oversized first) and prunes old blocklist entries monthly.
+# cutoff-unmet titles daily (10 a day, oversized first), prunes old blocklist entries monthly,
+# compacts oversized TV seasons (hourly check, a new pick every 6 hours) and reports space weekly.
 # Watch-only for its first 7 days. MEDIA_STUCK_DOWNLOADS=off in mediaserver.env switches it off.
-# Guide: docs/DOWNLOAD_DOCTOR.md. Rendered by the installer: {{MEDIA_APPDATA_DIR}}, {{STATE_DIR}}, {{ETC_DIR}}, {{INSTALL_DIR}}
+# Guide: docs/DOWNLOAD_DOCTOR.md. Rendered by the installer: {{MEDIA_APPDATA_DIR}}, {{STATE_DIR}}, {{ETC_DIR}}, {{INSTALL_DIR}}, {{DATA_DIR}}
 */10 * * * * root /usr/bin/flock -w 120 {{STATE_DIR}}/download-doctor/.lock /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/download_doctor.py --job stuck --config-dir {{MEDIA_APPDATA_DIR}} --env-file {{ETC_DIR}}/mediaserver.env --state-dir {{STATE_DIR}}/download-doctor >> {{STATE_DIR}}/download-doctor/cron.log 2>&1
 15 7 * * * root /usr/bin/flock -w 600 {{STATE_DIR}}/download-doctor/.lock /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/download_doctor.py --job sweep --config-dir {{MEDIA_APPDATA_DIR}} --env-file {{ETC_DIR}}/mediaserver.env --state-dir {{STATE_DIR}}/download-doctor >> {{STATE_DIR}}/download-doctor/cron.log 2>&1
 45 7 1 * * root /usr/bin/flock -w 600 {{STATE_DIR}}/download-doctor/.lock /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/download_doctor.py --job prune --config-dir {{MEDIA_APPDATA_DIR}} --env-file {{ETC_DIR}}/mediaserver.env --state-dir {{STATE_DIR}}/download-doctor >> {{STATE_DIR}}/download-doctor/cron.log 2>&1
+5 * * * * root /usr/bin/flock -w 300 {{STATE_DIR}}/download-doctor/.lock /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/download_doctor.py --job compact --config-dir {{MEDIA_APPDATA_DIR}} --env-file {{ETC_DIR}}/mediaserver.env --data-dir {{DATA_DIR}} --state-dir {{STATE_DIR}}/download-doctor >> {{STATE_DIR}}/download-doctor/cron.log 2>&1
+0 8 * * 0 root /usr/bin/flock -w 600 {{STATE_DIR}}/download-doctor/.lock /usr/bin/python3 {{INSTALL_DIR}}/apps/mediaserver/scripts/download_doctor.py --job space --config-dir {{MEDIA_APPDATA_DIR}} --env-file {{ETC_DIR}}/mediaserver.env --data-dir {{DATA_DIR}} --state-dir {{STATE_DIR}}/download-doctor >> {{STATE_DIR}}/download-doctor/cron.log 2>&1
