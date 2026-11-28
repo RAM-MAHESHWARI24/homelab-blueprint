@@ -294,11 +294,13 @@ class TestRulesAndSpace(unittest.TestCase):
             except OSError:
                 self.skipTest("hardlinks not supported here")
             (root / "media" / ".recycle" / "gone.mkv").write_bytes(b"x" * 40)
-            (root / "media" / "tv" / "missing.mkv.archos.resume.xml").write_text("<x/>", encoding="utf-8")
+            (root / "media" / "tv" / ".missing.mkv.0.archos.resume.xml").write_text("<x/>", encoding="utf-8")
+            (root / "media" / "tv" / ".linked.mkv.0.archos.resume.xml").write_text("<x/>", encoding="utf-8")
             report = cr.space_report(str(root), [{"content_path": "/data/torrents/tv/Kept"}])
             self.assertEqual(report["torrent_orphans"]["files"], 1)
             self.assertEqual(report["torrent_orphans"]["examples"], [str(Path("torrents/tv/old.mkv"))])
-            self.assertEqual(report["nova_resume_files"], {"files": 1, "orphans": 1})
+            self.assertEqual(report["nova_resume_files"], {"files": 2, "orphans": 1})
+            self.assertEqual(cr.resume_video(Path("/m/.Show.S01E01.mkv.0.archos.resume.xml")), Path("/m/Show.S01E01.mkv"))
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ playing from the Samba share. Standard library only.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -435,6 +436,12 @@ def space_report(data_dir: str, torrents: Optional[List[Dict[str, Any]]]) -> Dic
     size = sum(f.stat().st_size for f in recycle.rglob("*") if f.is_file()) if recycle.is_dir() else 0
     out["recycle_bin_gb"] = round(size / GB, 2)
     resume = [p for p in (root / "media").rglob("*.archos.resume.xml")] if (root / "media").is_dir() else []
-    out["nova_resume_files"] = {"files": len(resume),
-                                "orphans": len([p for p in resume if not Path(str(p)[:-len(".archos.resume.xml")]).exists()])}
+    out["nova_resume_files"] = {"files": len(resume), "orphans": len([p for p in resume if not resume_video(p).exists()])}
     return out
+
+
+def resume_video(resume: Path) -> Path:
+    """Nova writes `.<video file name>.<n>.archos.resume.xml` beside the video (seen on a live
+    server); the leading dot and the number are optional here."""
+    name = re.sub(r"(\.\d+)?\.archos\.resume\.xml$", "", resume.name)
+    return resume.with_name(name[1:] if name.startswith(".") else name)
