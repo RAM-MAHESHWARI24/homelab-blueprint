@@ -231,7 +231,16 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 
 **Split into two PRs.**
 - **2a, this one:** the `stuck`, `sweep` and `prune` jobs, the schedule, state files, installer step, ADR-0005 and `docs/DOWNLOAD_DOCTOR.md`.
-- **2b, next:** the compact replacement job (section 8.6) and the weekly space report. It depends on Appendix K items 3–5 (how Sonarr sizes season packs, grabbing a release the app calls "not an upgrade", and a manual import over existing files). Those need one owner-approved test on the live server first. Splitting means stuck-download replacement doesn't wait for them.
+- **2b:** the compact replacement job (section 8.6) and the weekly space report, in `scripts/compact_replace.py`, run by the Doctor as `--job compact` (hourly; a new pick every 6 hours) and `--job space` (Sundays 08:00). It depends on Appendix K items 4 and 5, tested on the live server on *Succession* with the owner's approval (item 4 confirmed; item 5 in the test record below).
+
+**Phase 2b implementation notes.**
+- Coverage comes from Sonarr's `mappedEpisodeNumbers`: some whole-season releases are not flagged `fullSeason` (seen live: `episodeNumbers` 1–10, `fullSeason` false). A release covering every episode on disk counts as a pack.
+- Sizes come from each file's `mediaInfo.runTime`, and the second-language check from `mediaInfo.audioLanguages`; candidates must then match a `Lang · {LANG}` format.
+- The job never grabs while anything for those episodes is queued: Sonarr's "Release in queue" rejection blocks it. That held in the live dry run while the S01E01 test was queued.
+- "Replaced" means a new episode-file id, not a new path: Sonarr can give the new file the same name.
+- "A TV is streaming" (section 9.5) is read from `smbstatus -L` (the Doctor runs as root): any open video file pauses the job.
+- The space report found Nova's resume files named `.<video>.0.archos.resume.xml` beside the video (Appendix K item 8, partly).
+- Live dry run (2026-11-29, read-only, scratch state): it picked *Succession* S01 (most GB) and correctly refused every candidate while the S01E01 test sat in the queue; 138 candidates were refused as lower resolution.
 
 **Code layout.**
 - `apps/mediaserver/scripts/download_doctor.py`: class `Doctor` with `run_stuck()`, `run_sweep()` and `run_prune()`.
@@ -264,6 +273,21 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - **Live trial** (read-only, 2026-11-29: a copy in `/tmp` with `--dry-run` and a scratch state folder, removed afterwards):
   - all 3 torrents in qBittorrent were recognised as managed and classified correctly: *Goldfinger* (4%, availability below 1) and *Spectre* dead, *Thunderball* stuck on metadata;
   - the sweep found 89 candidates, oversized first (*Supergirl*, *Jaws*, then the *Succession* seasons).
+
+**After deploy (2026-11-29).**
+- The Doctor runs on the live server from `/etc/cron.d/mediaserver-download-doctor` (installed with the installer's `install_cron`, recorded in the install manifest). Watch-only until 2026-12-06.
+- **The three stuck Bond films, a lesson.** *Goldfinger*, *Thunderball* and *Spectre* had been re-searched during Phase 0, while the legacy `Hindi Audio` format still scored +50,000. All three picked a Hindi + English release that the indexer advertised with 8 or 20 seeders; qBittorrent found 1, 1 and 0 in the swarm. Today's profiles would still rank the Goldfinger one first: score decides before seeders, and the minimum of 4 seeders trusts the indexer's count, which can be stale (RC2). The designed answer is the Doctor's quick replacement, so a dead Hindi pick falls back to the next healthy release, then the daily sweep keeps looking for a healthy Hindi one.
+- With the owner's approval the three were replaced by hand through Radarr's queue (remove, blocklist, search again), the Doctor's own path, without waiting out the watch-only week. Radarr then grabbed the well-seeded English HEVC releases (HazMatt, HazMatt, PSA: 30, 45 and 43 seeders), and all three started downloading at once.
+
+**Owner decision for TV packs (2026-11-29).** Season packs are preferred. Episode-by-episode is used when a pack is far too big per episode or has very few seeders.
+- Normal grabs already mostly follow this:
+  - packs score `TV · Season Pack` +150, and Sonarr itself prefers full seasons;
+  - Sonarr checks a pack against the per-episode size limit ("87.0 GB is larger than maximum allowed 20.2 GB"), so an oversized pack loses to the episodes;
+  - packs under the 4-seeder minimum are rejected.
+- What remains, that a pack with 5 seeders still beats single episodes with hundreds, is handled where it matters most, in the compact replacement job (section 8.6):
+  - a pack must have at least 10 seeders;
+  - otherwise the job replaces episode by episode (4 seeders each);
+  - a 4–9 seeder pack is used only when the episodes can't all be found individually.
 
 ---
 
@@ -922,7 +946,7 @@ Goal (owner's request): for oversized titles on `1080p Compact`, keep looking fo
    - same or higher resolution;
    - language no worse: if the current files have Hindi audio, the candidate must carry the Hindi token;
    - no `Junk ·`/`Compat ·` match and at least 4 seeders;
-   - for TV, a full-season pack covering every episode on disk for that season (single episodes only when no pack exists);
+   - for TV, a full-season pack covering every episode on disk for that season, with at least 10 seeders. Otherwise single episodes with at least 4 seeders each, and a 4–9 seeder pack only when the episodes can't all be found individually (decision 16);
    - the app's only objection is "not an upgrade".
 4. **Grab** it (`POST /api/v3/release` with the candidate's ID). Tag the torrent `compact-replace` and record the expected file list.
 5. **Import safely.** The app blocks the finished download as "not an upgrade". The job then runs the same verified manual import as [auto_import.py](apps/mediaserver/scripts/auto_import.py): file count matches the episodes, title match, no samples, sizes as expected. Sonarr/Radarr replace each old file **during** import, so an old file goes to the recycle bin only after its replacement is in place.
@@ -1272,6 +1296,7 @@ Every change ships with its documentation, following [AGENTS.md](AGENTS.md) §3:
 | 8 | Oversized titles such as *Succession* | **Keep hunting for compact versions;** delete old files only after a verified import (section 8.6) |
 | 14 | Who is the second profile for? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **`1080p Family`: Hindi required, English a bonus.** The owner understands both, the parents only Hindi. 1080p dual > 720p dual > 1080p Hindi only > 720p Hindi only; English-only rejected (minimum score 1400) |
 | 15 | May HEVC or other small extras trigger an upgrade? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **No.** Only language, resolution, leaving the oversized range or moving into the compact band; the extras together stay under the 400 step. TV size savings go through the compact replacement job |
+| 16 | TV: season pack or single episodes? (2026-11-29) | **Season packs preferred.** Go episode by episode when a pack is far too big per episode or has very few seeders. The compact replacement job takes a pack only with at least 10 seeders ([Phase 2 notes](#phase-2-implementation-notes)) |
 
 Still open, with the default the plan uses:
 
@@ -1979,12 +2004,12 @@ Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleare
 | ---: | :--- | :--- |
 | 1 | ~~TRaSH IDs for the vendored formats.~~ **Cleared** (K.1) | TRaSH repository `docs/json/{radarr,sonarr}/cf/*.json` |
 | 2 | ~~How "Whitelisted Hardcoded Subs" matches (exact or substring, case)~~ **Cleared** from the source (K.2) and live in Phase 0 | Set the list, re-run the *Goldfinger* interactive search: corpus #6 must lose "Hardcode subs found" |
-| 3 | Whether Sonarr passes a season pack's total or per-episode size to the Size condition | Sonarr source: callers of `ParseCustomFormat(RemoteEpisode, size)` |
-| 4 | `POST /release` grabbing a release rejected as "not an upgrade" | One test episode, Doctor in dry-run mode first |
+| 3 | ~~Whether Sonarr passes a season pack's total or per-episode size to the Size condition~~ **Not needed:** the compact job measures sizes itself. Sonarr's quality size limit does judge packs per episode ("87.0 GB is larger than maximum allowed 20.2 GB" for a 10-episode season) | Sonarr source: callers of `ParseCustomFormat(RemoteEpisode, size)` |
+| 4 | ~~`POST /release` grabbing a release rejected as "not an upgrade"~~ **Cleared** 2026-11-29: `{guid, indexerId}` grabbed *Succession* S01E01 (rejected as "not an upgrade" and under the seeder minimum), HTTP 200, queued at once | One test episode, Doctor in dry-run mode first |
 | 5 | `ManualImport` over an existing file sends the old file to the recycle bin and imports the new one | One test episode, recycle bin enabled |
 | 6 | qBittorrent 5.2+ API key: where it's created and the request header | qBittorrent WebUI options and release notes |
 | 7 | ~~Field name for private torrents in `torrents/info`~~ **Cleared** in Phase 2: `private` (qBittorrent 5.3.0, live) | Inspect a known private torrent, or the qBittorrent source |
-| 8 | Nova setting names (preferred audio and subtitle language, NFO export) and which NFO name it reads (`movie.nfo` or `<file>.nfo`) | On a TV. Match Radarr's `useMovieNfo` |
+| 8 | Nova setting names (preferred audio and subtitle language, NFO export) and which NFO name it reads (`movie.nfo` or `<file>.nfo`). Resume files are `.<video>.0.archos.resume.xml` beside the video (seen live) | On a TV. Match Radarr's `useMovieNfo` |
 | 9 | Which Seerr permission lets users pick a quality profile per request | Seerr user permissions ("Advanced Requests") |
 | 10 | Jellyfin's real-time monitoring default when the library options don't set it | Jellyfin dashboard → Libraries |
 | 11 | ~~Radarr's audio-languages naming token~~ **Cleared** (K.11) | Naming UI preview |

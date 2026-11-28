@@ -333,9 +333,9 @@ class TestSchedule(unittest.TestCase):
         """Only placeholders the installer renders; every job shares one lock and state folder."""
         import re
         text = (Path(__file__).resolve().parent.parent / "host" / "cron" / "mediaserver-download-doctor").read_text(encoding="utf-8")
-        self.assertLessEqual(set(re.findall(r"{{([A-Z_]+)}}", text)), {"MEDIA_APPDATA_DIR", "STATE_DIR", "ETC_DIR", "INSTALL_DIR"})
+        self.assertLessEqual(set(re.findall(r"{{([A-Z_]+)}}", text)), {"MEDIA_APPDATA_DIR", "STATE_DIR", "ETC_DIR", "INSTALL_DIR", "DATA_DIR"})
         jobs = [line for line in text.splitlines() if line and not line.startswith("#")]
-        self.assertEqual([re.search(r"--job (\w+)", j).group(1) for j in jobs], ["stuck", "sweep", "prune"])
+        self.assertEqual([re.search(r"--job (\w+)", j).group(1) for j in jobs], ["stuck", "sweep", "prune", "compact", "space"])
         for j in jobs:
             self.assertIn(" root /usr/bin/flock -w ", j)
             self.assertIn("{{STATE_DIR}}/download-doctor/.lock", j)

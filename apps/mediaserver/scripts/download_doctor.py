@@ -11,6 +11,9 @@ Jobs (`--job`, comma list):
          upgrades), oversized ones first, none searched in the last 14 days.
   prune  monthly. Deletes blocklist entries older than 60 days for titles that are
          still missing: dead swarms do revive.
+  compact  hourly. Compact replacement of oversized TV seasons (compact_replace.py,
+         plan section 8.6): one title in flight, a new pick every 6 hours.
+  space  weekly. Space report only: orphaned torrent files, recycle bin, resume files.
 
 Safety: only torrents that a Radarr/Sonarr queue owns, in that app's category; never
 completed or seeding ones; `keep` tag and private torrents skipped; no strikes while
@@ -36,6 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from auto_import import ArrClient, read_api_key_from_config  # noqa: E402
+from compact_replace import CompactJob, space_report  # noqa: E402
 from wire_arr import QBit, jloads, read_env_file  # noqa: E402
 
 HOUR = 3600
@@ -188,8 +192,9 @@ def arr_queue(arr: ArrClient, app: str) -> Optional[List[Dict[str, Any]]]:
 class Doctor:
     def __init__(self, qbit: Any, arrs: Dict[str, Any], state_dir: Path, *, now: Callable[[], float] = time.time,
                  watch_days: float = 7, dry_run: bool = False, enabled: bool = True,
-                 logger: Optional[logging.Logger] = None):
+                 logger: Optional[logging.Logger] = None, data_dir: str = "", language: str = ""):
         self.qbit, self.arrs, self.dir = qbit, arrs, Path(state_dir)
+        self.data_dir, self.language = data_dir, language
         self.now = now()
         self.dry_run, self.enabled = dry_run, enabled
         self.log = logger or logging.getLogger("mediaserver.download_doctor")
@@ -227,7 +232,7 @@ class Doctor:
         self.state["history"] = [h for h in self.state["history"] if self.now - h["ts"] < 30 * DAY]
         self.state["searched"] = {k: v for k, v in self.state["searched"].items() if self.now - v < 2 * SWEEP_REPEAT}
         previous = read_json(self.dir / "status.json", {})
-        status = dict({k: previous[k] for k in ("sweep", "prune") if k in previous}, **status)
+        status = dict({k: previous[k] for k in ("sweep", "prune", "compact", "space") if k in previous}, **status)
         write_json(self.dir / "state.json", self.state)
         write_json(self.dir / "status.json", status)
 
@@ -494,6 +499,19 @@ class Doctor:
                             f.get("size") or 0, s.get("runtime") or 0)
         return list(out.values())
 
+    # --------------------------------------------------------- compact + space
+    def run_compact(self, job: Optional[CompactJob] = None) -> Dict[str, Any]:
+        status = (job or CompactJob(self, self.data_dir, self.language)).run()
+        status["updated"] = iso(self.now)
+        self.save(self._finish(dict(read_json(self.dir / "status.json", {}), compact=status)))
+        return status
+
+    def run_space(self) -> Dict[str, Any]:
+        torrents = self.qbit.torrents() if getattr(self.qbit, "ready", True) else None
+        status = dict(space_report(self.data_dir, torrents), job="space", updated=iso(self.now))
+        self.save(self._finish(dict(read_json(self.dir / "status.json", {}), space=status)))
+        return status
+
     # ----------------------------------------------------------------- prune
     def run_prune(self) -> Dict[str, Any]:
         """Blocklist entries older than 60 days, for titles that still have no file."""
@@ -545,12 +563,14 @@ def build(args: argparse.Namespace) -> Doctor:
     enabled = str(env.get("MEDIA_STUCK_DOWNLOADS", "replace")).strip().lower() != "off"
     logger = logging.getLogger("mediaserver.download_doctor")
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    return Doctor(qbit, arrs, Path(args.state_dir), watch_days=args.watch_days, dry_run=args.dry_run, enabled=enabled, logger=logger)
+    return Doctor(qbit, arrs, Path(args.state_dir), watch_days=args.watch_days, dry_run=args.dry_run, enabled=enabled,
+                  logger=logger, data_dir=args.data_dir, language=str(env.get("MEDIA_SECOND_LANGUAGE") or "").strip())
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Replace stuck downloads through Radarr/Sonarr (media pipeline plan section 8).")
-    p.add_argument("--job", default="stuck", help="Comma list of stuck, sweep, prune")
+    p.add_argument("--job", default="stuck", help="Comma list of stuck, sweep, prune, compact, space")
+    p.add_argument("--data-dir", default="", help="Host path mounted as /data (free-space check and the space report)")
     p.add_argument("--config-dir", default=os.getenv("CONFIG_DIR", ""), help="Appdata dir holding radarr/sonarr config.xml")
     p.add_argument("--env-file", default="", help="mediaserver.env: qBittorrent login and MEDIA_STUCK_DOWNLOADS")
     p.add_argument("--state-dir", default="/var/lib/homelab/download-doctor", help="state.json, status.json, actions.jsonl")
@@ -563,7 +583,7 @@ def main() -> int:
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
     jobs = [j.strip() for j in args.job.split(",") if j.strip()]
-    bad = [j for j in jobs if j not in ("stuck", "sweep", "prune")]
+    bad = [j for j in jobs if j not in ("stuck", "sweep", "prune", "compact", "space")]
     if bad:
         p.error(f"unknown job {bad}")
     doctor = build(args)

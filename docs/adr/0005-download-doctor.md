@@ -1,7 +1,7 @@
 # ADR-0005: A Native Download Doctor Replaces Stuck Downloads Through the Apps
 
 ## Status
-**Accepted** (2026-11-29). Part 1 (stuck downloads, cutoff sweep, blocklist pruning) is implemented. Part 2, the compact replacement job for oversized TV, follows after the app behaviours it relies on are confirmed on a live server.
+**Accepted** (2026-11-29). Part 1 (stuck downloads, cutoff sweep, blocklist pruning) and part 2 (compact replacement of oversized TV, weekly space report) are implemented.
 
 ## Context
 Radarr and Sonarr grab a release and then wait for it forever. Nothing marks a torrent as failed when its swarm is dead, when it never gets past "downloading metadata", or when 4 MB of it exist nowhere among the peers. On the live server this blueprint was built for, 20 managed torrents sat in exactly those states, some for six days, while healthier releases of the same titles were available.
@@ -18,7 +18,9 @@ The mediaserver module ships `scripts/download_doctor.py`, a scheduled job (cron
 3. **Safety rails**: seeding, completed, private and `keep`-tagged torrents are never touched; a circuit breaker stops when at least 60% of torrents (minimum 5) turn bad in the same check; at most 3 replacements per run and 15 per day; three replacements of one title in 7 days mark it "needs attention" and stop; torrents at 90% or more with a full copy reachable get a re-announce and twice the patience. The first 7 days are **watch-only**: decisions are logged as "would …" and nothing changes. `MEDIA_STUCK_DOWNLOADS=off` switches the Doctor off.
 4. **`sweep`, daily**: searches up to 10 titles whose files are below their profile's upgrade-until score or quality, oversized ones first, none searched in the last 14 days. It reads each file's custom-format score itself, because Radarr 7's own "Cutoff Unmet" list ignores the custom-format cutoff (7 titles listed against 53 such files on the live server).
 5. **`prune`, monthly**: deletes blocklist entries older than 60 days for titles that still have no file, because dead swarms do revive.
-6. **Outputs**: `status.json` (for the Control Hub card in a later phase), `actions.jsonl` (an audit line per decision) and `overrides.json` (protect or extend a torrent, written by the Control Hub), under `/var/lib/homelab/download-doctor/`.
+6. **`compact`, hourly** (a new pick every 6 hours, one title in flight): oversized TV seasons on `1080p Compact` are replaced by Sonarr's own search results that are 1080p, at least 35% smaller per minute, free of junk, still in the second language where the files have it, and rejected by Sonarr only as "not an upgrade". Season packs need 10 seeders, otherwise episodes with 4 each. It grabs with `POST /api/v3/release`, imports with Sonarr's `ManualImport` after verifying the files, and checks that every episode got a new, smaller file. It needs the release size plus 20 GB free and pauses while a video is open on the Samba share.
+7. **`space`, weekly**: a report of torrent-folder files nothing uses, the recycle bin and orphaned resume files; it deletes nothing.
+8. **Outputs**: `status.json` (for the Control Hub card in a later phase), `actions.jsonl` (an audit line per decision) and `overrides.json` (protect or extend a torrent, written by the Control Hub), under `/var/lib/homelab/download-doctor/`.
 
 ## Alternatives Considered
 * **Cleanuparr:**
@@ -40,7 +42,8 @@ The mediaserver module ships `scripts/download_doctor.py`, a scheduled job (cron
 ### Negative / Trade-offs
 * A blocklisted release that would have revived is lost until the monthly prune (60 days).
 * Replacements and sweeps add indexer searches; the rate limits keep them to a few per hour.
-* Compact replacement of oversized TV (for example *Succession*) waits for part 2: it needs a grab of a release the app calls "not an upgrade" and a manual import over existing files, both still to be confirmed on a live server ([plan Appendix K](../../Media%20Pipeline%20Reliability%20Plan.md#appendix-k-verify-before-relying-on-it), items 3–5).
+* Compact replacement relies on two Sonarr behaviours: grabbing a release it rejected as "not an upgrade", and a manual import over existing files that sends the old ones to the recycle bin. Both are tested on a live server ([plan Appendix K](../../Media%20Pipeline%20Reliability%20Plan.md#appendix-k-verify-before-relying-on-it), items 4 and 5). A Sonarr change could break them, so the job verifies every import.
+* Replacing a season means downloading it again; with packs of 10 seeders and one title at a time, a large show takes days, not hours.
 * Never run it together with another cleaner (Cleanuparr, Decluttarr): two owners would race each other.
 
 ## References
