@@ -62,7 +62,7 @@ Update this table when a phase lands.
 | :--- | :--- | :--- | :--- |
 | 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Done 2026-11-28 (steps 1–9, 11–12 applied by an agent with approval; see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). The owner still does steps 10 and 11 on the TVs (Nova). 2-hour check pending | `docs/phase0-live-fixes` |
 | 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Done 2026-11-28: merged with revision 4 and the untagged-language fix, deployed and migrated on the live server by an agent with the owner's approval (live record in the [notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
-| 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
+| 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Split in two. **2a** (stuck downloads, daily sweep, monthly prune): implemented, in review. **2b** (compact replacement and space report): waits for Appendix K items 3–5 on the live server | `feat/download-doctor`, [PR #93](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/93) |
 | 3 | Control Hub (six PRs) | Not started | — |
 | 4 | Housekeeping | Not started | — |
 
