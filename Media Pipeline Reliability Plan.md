@@ -1,6 +1,6 @@
 # Media Pipeline Reliability Plan
 
-> **Status:** Phase 0 was applied on the live server on 2026-11-28 ([record](#phase-0-record-applied-2026-11-28)). Phase 1 is implemented in the repo ([implementation notes](#phase-1-implementation-notes)); the live server is migrated to it after merge. Later phases are not implemented yet.
+> **Status:** Phase 0 was applied on the live server on 2026-11-28 ([record](#phase-0-record-applied-2026-11-28)). Phase 1 was merged ([#89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89)) and deployed on the live server on 2026-11-28 ([record](#phase-1-implementation-notes)). Later phases are not implemented yet.
 > **Revision 2 (2026-11-28):** updated with the owner's decisions (summarised just below), including NFO metadata for Nova and automatic compact replacement of oversized titles.
 > **Revision 3 (2026-11-28):** made self-contained for implementation in a new session: [section 0](#0-implementation-handoff-start-here) (handoff) and appendices F–K (live baseline, API cheat-sheet, test corpus, fixtures, safe observation, verification list).
 > **Revision 4 (2026-11-28):** the owner's decisions on the profiles and on scoring ([record](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)): `1080p Compact` is 1080p only, `1080p Family` replaces `Dual Audio First` and requires Hindi, and small tie-breakers never trigger an upgrade. Applied throughout this plan and in Phase 1 ([notes](#phase-1-implementation-notes)).
@@ -61,8 +61,8 @@ Update this table when a phase lands.
 | Phase | Scope | Status | Branch / PR |
 | :--- | :--- | :--- | :--- |
 | 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Done 2026-11-28 (steps 1–9, 11–12 applied by an agent with approval; see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). The owner still does steps 10 and 11 on the TVs (Nova). 2-hour check pending | `docs/phase0-live-fixes` |
-| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review; revision 4 applied. After merge an agent (owner-approved) deploys it and runs `profiles migrate` on the live server ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
-| 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
+| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Done 2026-11-28: merged with revision 4 and the untagged-language fix, deployed and migrated on the live server by an agent with the owner's approval (live record in the [notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
+| 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Split in two. **2a** (stuck downloads, daily sweep, monthly prune): implemented, in review. **2b** (compact replacement and space report): waits for Appendix K items 3–5 on the live server | `feat/download-doctor`, [PR #93](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/93) |
 | 3 | Control Hub (six PRs) | Not started | — |
 | 4 | Housekeeping | Not started | — |
 
@@ -184,11 +184,17 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - Corpus test (`apps/mediaserver/tests/test_profile_pack.py`): all 39 Appendix H titles (plus variants for #24 and #25 with and without the original language parsed) give the expected formats. Regexes run for real in Python's `re`; what the apps parse (resolution, source, languages, size, release type) is recorded per title. TRaSH's three variable-width look-behinds (BR-DISK, Sonarr Extras and Upscaled) are rewritten into equivalents for Python. *Goldfinger* #1 is the top pick in both profiles (5010 in Compact and 4210 in Family since revision 4), packs outrank single episodes, and the section 5.3 space-reclaim numbers (3050 → 3500) hold.
 - `apply` then `check` against in-memory fakes reports no drift, `migrate` keeps profile ID 9, and an offline replay against the sanitised live snapshot (all apps' real objects) planned and applied cleanly with no drift afterwards.
 - **Live `profiles migrate --dry-run`** (2026-11-28, with the owner's OK; run before the release-profile cleanup above was added, so that deletion was not in its plan): run from a throwaway copy of `scripts/` and `profiles/` in `/tmp` on the server (removed afterwards), `--language Hindi --skip qbittorrent`, GET requests only. Exit 0, **60 planned changes**: 46 custom formats to create (24 Radarr, 22 Sonarr); `1080p Compact` updated in place in both apps (upgrade-until 10000 → 4500, increment 1 → 400, Radarr language Original → Any, one merged `HD` group including 720p, all pack scores); `Dual Audio First` created in both; the default delay profile's bypass in both; Sonarr's recycle bin; Prowlarr's `Live seeders` app profile; and 6 legacy formats deleted (`Hindi Audio` and `x265 (HD)` in both apps, `Season Complete` and `Multi Episode` in Sonarr). Already in place on the server at that time, so not planned: the size limits, Radarr's subtitle whitelist and recycle bin, Prowlarr Full Sync and minimum seeders, and removal of both `1080p Balanced` profiles (see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). qBittorrent was not checked (its password is in the root-only env file). Revision 4 changes this plan: `1080p Family` instead of `Dual Audio First`, Radarr Compact upgrade-until 4700 instead of 4500, and Compact keeps the four 1080p qualities Phase 0 set. Run the dry run again before applying.
-- **Still to do on the live server after merge** (the owner approved an agent doing these):
-  1. Recyclarr's cron line: already commented out in Phase 0; delete the line once the pack is live.
-  2. Deploy through git: `/opt/homelab-blueprint` to `develop`, then restart `control-hub.service`.
-  3. Run the schema migrator, then set `MEDIA_PROFILES=on` and `MEDIA_SECOND_LANGUAGE=Hindi` in `/etc/homelab/mediaserver.env`.
-  4. `profiles migrate --dry-run --env-file /etc/homelab/mediaserver.env`, review, then `profiles migrate`, then `profiles check` (expect no drift), the Phase 0 step 13 checks in both profiles and a *Slow Horses* season search.
+- **Live deploy (2026-11-28, done by an agent with the owner's approval):**
+  1. Backups first: Radarr and Sonarr `Backup` commands (HTTP 201) and a copy of `mediaserver.env`.
+  2. Recyclarr's commented-out cron line deleted from the server user's crontab.
+  3. `/opt/homelab-blueprint` pulled to `develop` at the #89 merge (clean tree).
+  4. Schema migrator run: 7 `MEDIA_*` keys added to `mediaserver.env` and 3 photo-backup keys to `control-hub.env` (their default paths exist on the server). Then `MEDIA_PROFILES=on` and `MEDIA_SECOND_LANGUAGE=Hindi`.
+     - **Incident:** the migrator rewrote `mediaserver.env` as `0644` (world-readable) and `control-hub.env` without its `homelab` group. Modes were restored by hand within about a minute (`0600 root:root` and `0640 root:homelab`), and the backups were made `0600`. Root cause and fix: [#91](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/91).
+  5. `profiles migrate --dry-run`: 64 planned changes (48 formats, 25 in Radarr and 23 in Sonarr, including the untagged-language one; both profiles, delay-profile bypass, Sonarr recycle bin, Prowlarr `Live seeders`, qBittorrent excluded files, 6 legacy formats and the interim release profile deleted). No quality-order change: Phase 0's 1080p group already matched. Then `profiles migrate` (exit 0, no failures) and `profiles check`: **0 drift**.
+  6. Checks:
+     - *Goldfinger* interactive search: the `[Hindi English]` 1080p BDRip ranks first at 5010, as the tests predict.
+     - *Slow Horses* season search: season packs rank first (3330). Season 1 on disk is not re-grabbed ("within Custom Format score increment: 400"), so codec alone does not upgrade.
+  7. `control-hub.service` restarted: active, `/api/health`, `/api/livez` and `/api/readyz` return 200, no errors in the journal.
 
 **Phase 2**
 
