@@ -9,10 +9,12 @@ The Download Doctor finds downloads that will never finish and replaces them thr
 3. [What it never touches](#what-it-never-touches)
 4. [The first week: watch-only](#the-first-week-watch-only)
 5. [Daily upgrade sweep](#daily-upgrade-sweep)
-6. [Files it writes](#files-it-writes)
-7. [Commands](#commands)
-8. [Switching it off](#switching-it-off)
-9. [Troubleshooting](#troubleshooting)
+6. [Compact replacement of oversized TV](#compact-replacement-of-oversized-tv)
+7. [Weekly space report](#weekly-space-report)
+8. [Files it writes](#files-it-writes)
+9. [Commands](#commands)
+10. [Switching it off](#switching-it-off)
+11. [Troubleshooting](#troubleshooting)
 
 ## What it does
 
@@ -21,6 +23,8 @@ The Download Doctor finds downloads that will never finish and replaces them thr
 | `stuck` | Every 10 minutes | Counts strikes for each download an app owns. Past its patience, removes it **through the app's queue** with "remove from client", "blocklist" and "search again", so the app picks the next release itself |
 | `sweep` | Daily at 07:15 | Searches up to 10 titles whose file is below its profile's upgrade-until score (for example an English-only film when a Hindi + English release would be preferred), oversized ones first |
 | `prune` | 07:45 on the 1st | Deletes blocklist entries older than 60 days for titles that still have no file: dead swarms do come back |
+| `compact` | Hourly (a new pick every 6 hours) | Replaces oversized TV seasons with smaller releases, one title at a time, and deletes the old files only after the new ones have imported |
+| `space` | Sundays at 08:00 | Reports space that could be reclaimed; deletes nothing |
 
 Removing a dead torrent in qBittorrent, or with the Control Hub's delete button, is not the same: the app neither blocklists it nor searches again, so its next search can grab the same dead torrent.
 
@@ -67,13 +71,39 @@ The apps only find better releases of titles you already have when someone asks.
 
 It reads each file's score itself, because Radarr's own "Cutoff Unmet" list leaves out files that are only below the custom-format cutoff. With the [release profiles](MEDIA_RELEASE_PROFILES.md), this is what turns "Hindi preferred" into actual upgrades.
 
+## Compact replacement of oversized TV
+
+Films need no special job: with the [release profiles](MEDIA_RELEASE_PROFILES.md), a compact HEVC release of an oversized film is an ordinary upgrade, and the daily sweep finds it. TV is different. A codec change never counts as an upgrade, and Sonarr cannot judge a season pack's size per episode, so oversized TV seasons get this job.
+
+1. **Pick.** The season on `1080p Compact` above 30 MB per minute (about 1.35 GB for 45 minutes) with the most GB on disk, not searched in the last 3 days. Series tagged `keep` in Sonarr are skipped. One title at a time.
+2. **Search.** Sonarr's own season search, so its parsing and rejections are reused.
+3. **Accept** a release only if it is:
+   * 1080p (never lower), at least 35% smaller per minute, and above the quality's minimum size (no starved encodes);
+   * free of `Junk ·` and `Compat ·` formats;
+   * still in your second language when the current files have it (checked from the files' audio tracks);
+   * rejected by Sonarr for nothing except "not an upgrade";
+   * a **season pack with at least 10 seeders**. Otherwise single episodes with at least 4 seeders each; a 4–9 seeder pack only when the episodes can't all be found one by one.
+4. **Grab** it, but only with the release size plus 20 GB free, and not while a video is open on the Samba share (someone is watching).
+5. **Import.** Sonarr holds the finished download as "not an upgrade". The job checks the files the way the auto-importer does (videos only, no samples, the series title in the name, exactly the expected episodes) and runs Sonarr's manual import. Sonarr replaces each old file during the import, so the old one goes to the recycle bin only after its replacement is in place.
+6. **Verify.** Every episode has a new file, the total is smaller, and the second-language audio is still there. The GB saved go into `status.json`. On a mismatch you get an alert; the old files stay in the recycle bin for 7 days.
+7. **Retry.** If a download fails or is replaced as stuck, the next run picks again. After three failed candidates the title rests for 14 days.
+
+It is watch-only in the Doctor's first week, like everything else: it logs `would_compact` with the release it would grab. To protect a series, tag it `keep` in Sonarr.
+
+## Weekly space report
+
+Report only, in `status.json` under `space`:
+* files in the torrents folder that no torrent uses and that aren't hardlinked into the library;
+* the size of the recycle bin;
+* Nova resume files (`.<video>.0.archos.resume.xml`) whose video is gone.
+
 ## Files it writes
 
 Under `/var/lib/homelab/download-doctor/`:
 
 | File | What |
 | :--- | :--- |
-| `status.json` | The latest summary: mode, downloads with problems and how long they have been stuck, actions in the last 24 hours, titles that need attention, alerts, and the last sweep and prune. The Control Hub will show it as a card |
+| `status.json` | The latest summary: mode, downloads with problems and how long they have been stuck, actions in the last 24 hours, titles that need attention, alerts, the last sweep and prune, the compact job (title in flight, per-title results, GB saved) and the space report. The Control Hub will show it as a card |
 | `actions.jsonl` | One line per decision: time, app, title, reason, hours stuck, indexer, action and result. Rotated at 1 MB |
 | `state.json` | Strikes and history; survives restarts and updates |
 | `overrides.json` | Optional, written by you or (later) the Control Hub: `{"protect": ["<hash>"], "extend": {"<hash>": <unix time>}}` exempts a torrent, or gives it unlimited patience until a time |
