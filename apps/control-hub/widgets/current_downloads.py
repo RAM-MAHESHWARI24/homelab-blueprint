@@ -7,11 +7,12 @@ limits compatible with both qBittorrent 5.x and 4.x.
 
 import json
 import re
-from typing import Iterable, Tuple
+from typing import Iterable, List, Optional, Tuple
 
+import requests
 from flask import Blueprint, jsonify, request
 
-from config import QBITTORRENT_URL
+from config import QBITTORRENT_URL, RADARR_API_KEY, RADARR_URL, SONARR_API_KEY, SONARR_URL
 from core.telemetry_sampler import qb_lock, qb_login, qb_session, telemetry_lock, telemetry_state
 
 current_downloads_bp = Blueprint("current_downloads", __name__)
@@ -90,6 +91,42 @@ def toggle_torrents():
         return jsonify({"success": False, "error": f"Could not reach qBittorrent: {e}"}), 502
 
 
+def _queue_owner(torrent_hash: str) -> Optional[Tuple[str, str, str, List[int]]]:
+    """(app, url, key, queue ids) when Radarr or Sonarr owns this download, else None.
+    Raises RuntimeError when an app is configured but could not be asked: a download
+    it owns must never be deleted behind its back."""
+    want, errors = torrent_hash.upper(), []
+    for app, url, key in (("radarr", RADARR_URL, RADARR_API_KEY), ("sonarr", SONARR_URL, SONARR_API_KEY)):
+        if not key:
+            continue
+        try:
+            resp = requests.get(f"{url}/api/v3/queue", params={"page": 1, "pageSize": 1000},
+                                headers={"X-Api-Key": key}, timeout=5)
+            resp.raise_for_status()
+            ids = [r["id"] for r in (resp.json() or {}).get("records", []) if str(r.get("downloadId", "")).upper() == want]
+        except Exception as e:  # noqa: BLE001 - any failure means "could not ask"
+            errors.append(f"{app}: {e}")
+            continue
+        if ids:
+            return app, url, key, ids
+    if errors:
+        raise RuntimeError("; ".join(errors))
+    return None
+
+
+def _remove_through_app(owner: Tuple[str, str, str, List[int]], blocklist: bool, search: bool) -> Tuple[bool, str]:
+    """Remove from the client through the app's queue, so it can blocklist the release and
+    search again (one bulk call for a season pack's records)."""
+    app, url, key, ids = owner
+    params = {"removeFromClient": "true", "blocklist": str(blocklist).lower(), "skipRedownload": str(not search).lower()}
+    headers = {"X-Api-Key": key}
+    if len(ids) == 1:
+        resp = requests.delete(f"{url}/api/v3/queue/{ids[0]}", params=params, headers=headers, timeout=15)
+    else:
+        resp = requests.delete(f"{url}/api/v3/queue/bulk", params=params, json={"ids": ids}, headers=headers, timeout=15)
+    return resp.status_code in (200, 202, 204), f"{app} returned HTTP {resp.status_code}"
+
+
 @current_downloads_bp.route("/api/torrents/<torrent_hash>/action", methods=["POST"])
 def torrent_action(torrent_hash: str):
     """Per-torrent control: pause, resume, delete (optional delete_files), or priority change."""
@@ -103,6 +140,28 @@ def torrent_action(torrent_hash: str):
 
     data = {"hashes": torrent_hash}
     if action == "delete":
+        # A download Radarr or Sonarr owns goes through the app's queue (remove, blocklist,
+        # search again); deleting it in qBittorrent would leave the app waiting for it, and
+        # its next search could grab the same release. Plain deletes are for manual torrents.
+        try:
+            owner = _queue_owner(torrent_hash)
+        except RuntimeError as e:
+            if not payload.get("force_client"):
+                return jsonify({"success": False, "hash": torrent_hash, "action": action,
+                                "error": f"Could not check whether Radarr/Sonarr own this download ({e}). Try again, "
+                                         "or remove it in the app's queue."}), 502
+            owner = None
+        if owner:
+            blocklist = payload.get("blocklist", True) is not False
+            search = payload.get("search", True) is not False
+            try:
+                ok, err = _remove_through_app(owner, blocklist, search)
+            except Exception as e:  # noqa: BLE001
+                ok, err = False, f"Could not reach {owner[0]}: {e}"
+            if ok:
+                return jsonify({"success": True, "hash": torrent_hash, "action": action, "via": owner[0],
+                                "blocklisted": blocklist, "search_again": search})
+            return jsonify({"success": False, "hash": torrent_hash, "action": action, "via": owner[0], "error": err}), 502
         data["deleteFiles"] = "true" if bool(payload.get("delete_files", False)) else "false"
 
     try:

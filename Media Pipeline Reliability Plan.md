@@ -987,6 +987,11 @@ Everything here keeps to the Control Hub budget (under 25 MB RAM, under 0.2% CPU
 - The renderer in [env_manager.py](apps/control-hub/core/config_core/env_manager.py) never writes them, so this affects every install.
 - **Fix:** render `RADARR_API_KEY`, `SONARR_API_KEY`, `SEERR_API_KEY` (read from Seerr's settings) and `JELLYFIN_API_KEY` into `control-hub.env`. Create the Jellyfin key during wiring; `wire_arr.py` already logs into Jellyfin.
 - **This also matters for other users.** [server-suspend.sh](apps/control-hub/host/server-suspend.sh) only defers suspend for Jellyfin playback when `JELLYFIN_API_KEY` is set. It never is, so **any install that plays through Jellyfin can suspend mid-movie at midnight**. This household plays over SMB, which the SMB guard already protects.
+- **Implemented (Phase 3, first PR):**
+  - **Key files instead of env lines.** `wire_arr.py hub-keys` writes `radarr.key`, `sonarr.key`, `seerr.key` and `jellyfin.key` beside `prowlarr.key` (0640 root:homelab), the same pattern the indexer picker already uses. The Jellyfin key is a named API key (`homelab-control-hub`), created once.
+  - **Readers.** The installer runs it after wiring; `config.py` reads the environment first, then the file; `server-suspend.sh` falls back to `jellyfin.key`.
+  - **Why files.** Existing installs are fixed with one command and a hub restart, without re-rendering `control-hub.env`, and there is one copy of each key.
+  - **D4 and D6** are fixed in the same PR (section 10).
 
 ### 9.2 Unified queue with the Download Doctor
 
@@ -1087,10 +1092,10 @@ New endpoints, to document in `apps/control-hub/docs/openapi.yaml`:
 | :--- | :--- | :--- | :--- | :--- |
 | D1 | `1080p Balanced` profiles need a score of 200,000 | *Bhay* 0/8 can never download; *Khauf* can never upgrade | Pack `migrate` step | High |
 | D2 | The Ozlem block is a silent no-op | `/api/v3/restriction` → 404; 0 release profiles; a German-only *Quantum of Solace* | `Junk · Banned uploaders` format; replace that file | High |
-| D3 | Media views (and the Jellyfin sleep guard for others) switched off | No media keys in `control-hub.env` (renderer gap) | Section 9.1 | High |
-| D4 | Dashboard delete bypasses the apps | `torrent_action()` deletes in qBittorrent | Use the app queue removal for app-managed torrents; plain delete only for manual torrents | High |
+| D3 | Media views (and the Jellyfin sleep guard for others) switched off | No media keys in `control-hub.env` (renderer gap) | Section 9.1. **Fixed** in Phase 3 (key files) | High |
+| D4 | Dashboard delete bypasses the apps | `torrent_action()` deletes in qBittorrent | Use the app queue removal for app-managed torrents; plain delete only for manual torrents. **Fixed** in Phase 3: refused when the app can't be asked, unless forced | High |
 | D5 | Sleep Guard treats any connected SMB share as activity | A PC with the share mapped deferred sleep at 00:00 on 2026-11-28; idle TVs can do the same | Check open media files instead (section 9.5) | High |
-| D6 | Download list cosmetics | `&amp;` and `&#039;` in names; dead torrents counted as active | Decode names with `html.unescape`; count by health | Medium |
+| D6 | Download list cosmetics | `&amp;` and `&#039;` in names; dead torrents counted as active | Decode names with `html.unescape`; count by health. **Fixed** in Phase 3 (`health` per item, `stalled_count`) | Medium |
 | D7 | No recycle bin in Radarr or Sonarr | 145 episode and 43 movie file deletions in the history window | Section 5.5 | Medium |
 | D8 | Recyclarr runs outside the repo; README asks users to set it up by hand; a second, unused `recyclarr.yml` in appdata uses unsupported inline syntax | User crontab line; module README; stale file | Section 5.9 | Medium |
 | D9 | Jellyfin background work for a server nobody plays from | Trickplay and chapter-image extraction already off; `SaveLocalMetadata` off; real-time monitoring not set explicitly | Check real-time monitoring and the scan schedule; keep `SaveLocalMetadata` off | Low |

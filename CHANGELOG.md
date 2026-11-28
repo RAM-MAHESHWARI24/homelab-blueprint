@@ -11,6 +11,8 @@ All notable changes to this project are listed here. The format follows [Keep a 
 - Guide: [playing over SMB with Nova Video Player](docs/SMB_PLAYBACK_WITH_NOVA.md) (NFO metadata owned by Radarr/Sonarr, audio and subtitle language, codecs, resume files).
 
 ### Changed
+- **Control Hub: deletes go through the apps.** Deleting a download Radarr or Sonarr owns removes it through that app's queue (remove, blocklist, search again), so the app picks another release; only manual torrents are deleted in qBittorrent. Download names are HTML-decoded, and stalled or metadata-stuck torrents count as stalled instead of active.
+- **Control Hub media views and the Jellyfin sleep guard now work on every install.** `wire_arr.py hub-keys` (run by the installer) writes the Radarr, Sonarr, Seerr and Jellyfin API keys to `/etc/homelab/*.key` (0640 root:homelab), and the hub reads them. Before, `control-hub.env` had none of them, so the calendar, wanted, requests and recently-added views reported "not configured", and Jellyfin playback could not defer the nightly suspend.
 - `wire_arr.py wire` moves Prowlarr's existing app links to Full Sync, so indexer priorities reach Radarr and Sonarr, and wires the download clients to the apps' default categories `radarr` and `tv-sonarr` (an existing `movies`/`tv` pair is left alone).
 - Seerr is registered after the profiles are applied, with the chosen default profile.
 - The schema migrator adds `MEDIA_PROFILES=off` to an existing install's `mediaserver.env`: an upgraded server keeps its current profiles until its owner runs `profiles migrate`.

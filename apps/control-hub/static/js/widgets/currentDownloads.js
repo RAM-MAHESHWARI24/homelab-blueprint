@@ -32,9 +32,10 @@ async function runTorrentAction(hash, name, action, triggerEl = null, deleteFile
   if (action === "delete") {
     const ok = await confirmAction({
       title: deleteFiles ? "Delete Torrent & Files?" : "Remove Torrent from Queue?",
-      message: deleteFiles
+      message: (deleteFiles
         ? `Delete "${name}" and erase downloaded files from disk?`
-        : `Remove "${name}" from qBittorrent (downloaded files stay on disk)?`,
+        : `Remove "${name}" from qBittorrent (downloaded files stay on disk)?`)
+        + " If Radarr or Sonarr is waiting for it, it is removed through that app instead, which blocklists the release and searches again.",
       confirmLabel: deleteFiles ? "Delete Files" : "Remove Torrent",
       danger: deleteFiles,
       triggerEl,
@@ -50,7 +51,11 @@ async function runTorrentAction(hash, name, action, triggerEl = null, deleteFile
       body: JSON.stringify({ action, delete_files: deleteFiles }),
     });
     const data = await res.json();
-    if (res.ok && data.success) {
+    if (res.ok && data.success && data.via) {
+      const app = data.via.charAt(0).toUpperCase() + data.via.slice(1);
+      showToast(`Removed through ${app}`, `${name}: the release is blocklisted and ${app} searches again.`, "success");
+      lastRenderedKey = "";
+    } else if (res.ok && data.success) {
       showToast("Torrent Updated", `${name}: ${action.replace("_", " ")} applied.`, "success");
       lastRenderedKey = "";
     } else {
