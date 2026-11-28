@@ -1,6 +1,6 @@
 # Media Pipeline Reliability Plan
 
-> **Status:** plan only. Nothing has been changed on the server or in the code yet.
+> **Status:** Phase 0 was applied on the live server on 2026-11-28 ([record](#phase-0-record-applied-2026-11-28)). Later phases are not implemented yet.
 > **Revision 2 (2026-11-28):** updated with the owner's decisions (summarised just below), including NFO metadata for Nova and automatic compact replacement of oversized titles.
 > **Revision 3 (2026-11-28):** made self-contained for implementation in a new session: [section 0](#0-implementation-handoff-start-here) (handoff) and appendices F–K (live baseline, API cheat-sheet, test corpus, fixtures, safe observation, verification list).
 > **Scope:** Prowlarr, Radarr, Sonarr, qBittorrent, Bazarr, Jellyfin, the Control Hub and the Setup Wizard. It also covers replacing Recyclarr.
@@ -58,7 +58,7 @@ Update this table when a phase lands.
 
 | Phase | Scope | Status | Branch / PR |
 | :--- | :--- | :--- | :--- |
-| 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Not started. The owner does it in the app UIs, or an agent does it only with explicit approval | — |
+| 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Done 2026-11-28 (steps 1–9, 11–12 applied by an agent with approval; see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). The owner still does steps 10 and 11 on the TVs (Nova). 2-hour check pending | `docs/phase0-live-fixes` |
 | 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Not started | — |
 | 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
 | 3 | Control Hub (six PRs) | Not started | — |
@@ -1024,6 +1024,49 @@ Do these in order. Nothing here needs code, and each step can be undone.
     - An interactive search for *Goldfinger* lists the `[Hindi English]` 1080p BDRip first.
     - The re-searches grab tagged, seeded releases.
     - Nothing new sits at 0 B/s after 2 h.
+
+#### Phase 0 record (applied 2026-11-28)
+
+Applied by an agent through the APIs with the owner's approval. [Appendix F](#appendix-f-live-baseline-2026-11-28) stays the **pre-Phase-0** baseline.
+
+**Backups (step 1):**
+- A media settings archive (Control Hub "Back up now"), and manual Radarr, Sonarr and Prowlarr backups (`Backups/manual/` in each app's appdata).
+- An exact JSON snapshot of every object Phase 0 touched, in `~/phase0-backup-20261128/` on the server (mode `0700`; it contains keys, so it stays there).
+
+**What changed, by step:**
+
+| Step | Result |
+| :--- | :--- |
+| 2 | Recyclarr's crontab line is commented out (marked `# phase0 2026-11-28 disabled`). Its binary, config and log are untouched |
+| 3 | Profile 9 in both apps (ID kept): the four 1080p qualities form one allowed group, `HD 1080p` (group ID 1002), at the top; `cutoff` = 1002. Scores, `Hindi Audio` and Radarr's `Original` language unchanged |
+| 4 | Section 5.4 sizes in both apps. Sonarr's "4–5" row: WEBRip-1080p 5, HDTV-1080p 4. Radarr HDTV-720p (not in 5.4) left at 0/8/20 |
+| 5 | Radarr whitelist `ESub,ESubs,MSub,MSubs,EngSub,EngSubs`; Allow Hardcoded Subs stays off |
+| 6 | Prowlarr: both apps on Full Sync; profile "Standard" minimum seeders 4; priorities EZTV 10, LimeTorrents 15, YTS 20, 1337x 25, The Pirate Bay 40. Synced to both apps; the indexer set didn't change |
+| 7 | *The Dark Knight*, *Bhay* and *Khauf* moved to profile 9; profiles 7 and 8 deleted in both apps. Radarr also needed *The Dark Knight Collection* (unmonitored) moved from 8 to 9 first: "QualityProfile [8] is in use" |
+| 8 | qBittorrent: ratio 1.0 / 1440 min / 60 idle min, then stop; scheduler 18:00–00:00 daily, alternative limits upload 1 MiB/s and download unlimited; queue 8 / 20 / 5 uploads, slow torrents not counted (4 KiB/s, 300 s); trackers from the ngosang `trackers_best.txt` URL; re-announce on address change. Excluded file names and the API key were left for Phase 1 |
+| 9 | All 20 stuck items removed through the app queues with blocklist and redownload (Radarr 17, Sonarr 3). The one try for *Live and Let Die* and *A View To A Kill* (the tracker list added to each, forced re-announce): 6 working trackers, still 0 seeds in the swarm, so both were removed too. Every re-search grabbed a tagged release: Bluray or WEB-DL, almost all HEVC, 4 with Hindi + English (*Goldfinger*, *From Russia with Love*, *Thunderball*, *Spectre*) |
+| 10 | Owner, on each TV (Nova preferred audio and subtitle language) |
+| 11 | Radarr Kodi (XBMC) / Emby metadata enabled with its existing fields (`useMovieNfo` off, so `<file>.nfo`). Turning off Nova's NFO export on each TV is for the owner |
+| 12 | **The release profile was created before step 9**, not after: without it the re-searches would pick the Ozlem *Goldfinger* (104 seeders, untagged). Radarr release profile 1, "Phase 0 bans (until profile pack)", ignores `rifftrax` and `Ozlem`. Radarr's recycle bin was turned on (`/data/media/.recycle`, 7 days; section 5.5) before deleting, so both files can be restored until 2026-12-05. *Casino Royale* now has `… Uncut 1080p BluRay DD+ 5.1 x265-edge2020` and *Quantum of Solace* `… REPACK 1080p BluRay HDR10 DDP 5 1 x265-edge2020` downloading |
+| 13 | Results in the next table |
+
+**Step 13 checks:**
+
+| Check | Result |
+| :--- | :--- |
+| *Goldfinger* interactive search | Pass. `Goldfinger (1964) DS4K 1080p BDRip HEVC [Hindi English] DDP 5.1 — PeruGuy` ranked first (score 50,250, 8 seeders). The 5.17 GB Netflix WEB-DL is no longer rejected for size, and Ozlem is rejected by the ignored term |
+| Re-searches grab tagged, seeded releases | Pass. All 22 replacements are tagged; 8 of them were downloading at 0.3–4.3 MiB/s within minutes. The rest waited in the new 8-download queue |
+| Nothing new at 0 B/s after 2 h | PENDING |
+
+**Appendix K items cleared:**
+- **2:** the whitelist works. ESub, ESubs and MSubs titles (*Drishyam 2*, *3 Idiots*) no longer get "Hardcode subs found", and `Drishyam 2 (2022) - Hindi - 1080p HDRip - x264 - AAC - 2.9GB - ESub` is approved. Hyphenated `E-SuB`/`M-SuB` were never matched by the parser. `NLSub` (Dutch, really burned in) is still rejected, as intended. Exact versus substring matching is untested, because the list names every variant seen.
+- **14:** the API uses bytes/s. Setting `alt_up_limit` to 1048576 stores `AlternativeGlobalUPSpeedLimit=1024` (KiB) in `qBittorrent.conf`, so the Control Hub's assumption is right.
+- **16:** `qBittorrent.conf` has no `ShareLimitAction` override, so the default (Stop) applies, and the API reports it as `max_ratio_act` 0.
+
+**For Phase 1 (`profiles migrate`):**
+- Profile 9 already holds the merged group 1002, and profiles 7 and 8 no longer exist; migrate must handle both.
+- Remove Radarr release profile 1 once the `Junk ·` formats are in.
+- Recyclarr's cron line is already commented out.
 
 ### Phase 1: profile pack and wizard step (PR `feat(mediaserver): repo-owned release profiles replace Recyclarr`)
 
