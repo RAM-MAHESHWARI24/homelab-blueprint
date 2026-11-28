@@ -7,6 +7,7 @@ hardlink verification, secrets generation, static assets and a dry-run deploy.
 """
 
 import json
+import os
 import sys
 import threading
 import time
@@ -176,7 +177,18 @@ def test_schema_migrator_upgrade_default():
         text = env.read_text(encoding="utf-8")
         assert "\nMEDIA_PROFILES=off\n" in text and "MEDIA_PROFILES=on" not in text, text
         assert "MEDIA_SECOND_LANGUAGE=" in text
-    print("  [OK] existing installs opt in to the profile pack")
+        if os.name == "posix":  # env files hold secrets: the rewrite must keep the original's mode
+            secret = Path(tmp) / "secret.env"
+            secret.write_text("PUID=1000\n", encoding="utf-8")
+            secret.chmod(0o600)
+            migrate_single_env(secret, REPO_ROOT / "apps" / "mediaserver" / ".env.example", backup_dir=Path(tmp) / "bak")
+            assert (secret.stat().st_mode & 0o777) == 0o600, oct(secret.stat().st_mode)
+            shared = Path(tmp) / "shared.env"
+            shared.write_text("PUID=1000\n", encoding="utf-8")
+            shared.chmod(0o640)
+            migrate_single_env(shared, REPO_ROOT / "apps" / "mediaserver" / ".env.example", backup_dir=Path(tmp) / "bak")
+            assert (shared.stat().st_mode & 0o777) == 0o640, oct(shared.stat().st_mode)
+    print("  [OK] existing installs opt in to the profile pack; env file modes are kept")
 
 
 def test_no_stdlib_shadowing():
