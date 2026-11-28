@@ -4,6 +4,8 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-28
+
 ### Added
 - **Control Hub Operations Console redesign (Pivot A–C, PRs `#56`–`#65`):** Restructured the dashboard into a 5-view hash-routed workspace (`Overview`, `Apps`, `Backups`, `TVs`, `System`) using the Hallmark `Console` design system (`console: graphite` dark, `console: paper` light), self-hosted offline `.woff2` fonts (`Host Grotesk` & `Atkinson Hyperlegible Mono`), collapsible icon-rail navigation, hairline-divided benches/ledgers, and zero fake or fallback telemetry.
 - **Update Centre & Auto-Patch Policy (Phase 2C, PRs `#66`–`#67`):** Compares running Compose tags and Blueprint release versions against GitHub releases, surfaces major-upgrade warnings, and runs one-click container updates or blueprint self-updates with pre-update config backup and automatic health rollback via `homelab-update`.

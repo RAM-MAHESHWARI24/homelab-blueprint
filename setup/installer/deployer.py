@@ -55,7 +55,7 @@ from .host import (
 )
 from .manifest import InstallManifest
 
-BLUEPRINT_VERSION = "2.1.1"
+BLUEPRINT_VERSION = "2.2.0"
 
 # Accepted module ids and legacy aliases coming from older configs / the UI.
 MODULE_ALIASES = {
