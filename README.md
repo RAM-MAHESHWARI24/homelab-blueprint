@@ -9,15 +9,15 @@ A browser-driven installer for an Ubuntu home server. It sets up a media stack, 
 
 - **Installs and wires the media chain.** qBittorrent, Prowlarr, Radarr, Sonarr, Bazarr, Jellyfin and Seerr come up with download clients, root folders, Prowlarr app sync, Jellyfin libraries and Seerr already configured.
 - **Adds a photo library** (Open-Noodle Gallery, an Immich fork) with optional scheduled ML, a face-tag XMP exporter and nightly backup.
-- **Runs a dashboard**, the Control Hub, for health, downloads, cron jobs, sleep scheduling and static-IP changes.
+- **Runs a dashboard**, the Control Hub, for health, container lifecycle & inline logs, downloads & media/photo hubs, storage analytics & cleanup, cron schedules, sleep scheduling, static-IP changes, alerts, Tailscale HTTPS, PWA push notifications, and Home Assistant/UPS integrations.
 - **Changes the server's IP safely.** A new static address is reverted automatically unless you confirm it from the new address.
 - **Offers opt-ins** for Sleep Guard (scheduled suspend and wake), Samba shares, Tailscale subnet routing, an Android TV app updater, and regional workarounds (Byparr, TMDB bypass, container DNS override).
 
 ## What it does not do
 
 - It does not choose indexers for you. After install, the Control Hub lists Prowlarr's own indexer definitions with nothing selected. No tracker list ships in this repository.
-- It does not expose anything to the internet. There is no reverse proxy, TLS or domain setup. Keep it on your LAN or behind Tailscale.
-- It does not update container images on its own. Every image is pinned, and Dependabot proposes updates as pull requests.
+- It does not expose anything to the internet. There is no public port forwarding or public domain setup; keep it on your LAN or behind Tailscale (`tailscale serve` provides private tailnet HTTPS).
+- It keeps container images pinned by default (Dependabot proposes updates as PRs), while Control Hub's Update Centre lets you inspect releases, run one-click updates with config backup and automatic rollback, or opt into automated patch updates (never majors).
 
 ## Requirements
 

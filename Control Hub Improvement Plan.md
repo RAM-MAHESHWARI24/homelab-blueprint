@@ -1,6 +1,6 @@
 # Control Hub Improvement Plan
 
-Nov 27, 2026 · *(Phases 1–4 complete across PRs `#45`–`#82`; deployed and verified live on `develop`)*
+Nov 28, 2026 · *(v2.2.0 released & mirrored across module repos; Phases 1–4 complete across PRs `#45`–`#85`)*
 
 ## Summary
 
@@ -847,6 +847,20 @@ Every item in build order, updated after PRs `#45`–`#55` and Audit v2. Effort 
 | 45 | 3F | Schedules | Editable schedules across all timed jobs with clash warnings (e.g. backup vs sleep window) | Done (`PR #78`) | M |
 | 46 | 3G | Access | Server-side session store (signed-in devices & per-device sign-out), read-only family view, optional TOTP | Done (`PR #79`) | M |
 | 47–52 | 4 | Extras | Tailscale HTTPS guide, installable PWA + web push, 24 h / 7 d / 30 d history graphs, custom card layout & i18n, Home Assistant / NUT / scoped API tokens, Troubleshoot & how-to pages | Done (`PR #80`–`#82`) | L |
+
+## Post-v2.2.0 Operations & Next Steps Backlog
+
+With `v2.2.0` tagged, released, and mirrored (`PRs #45`–`#85`), remaining work falls into three practical tracks:
+
+1. **Live Host Helper Sync & Hygiene (`AGENTS.md` §4.1.5, [INSTALL_ON_EXISTING_SERVER.md](docs/INSTALL_ON_EXISTING_SERVER.md#upgrading-or-syncing-an-existing-v2-server)):**
+   - Verify `/usr/local/sbin/*` helpers (`homelab-update`, `homelab-storage-ops`, `homelab-config-apply`), `homelab-storage-sizes.timer`, sudoers rules, and `/etc/cron.d/mediaserver-autoimport` are synced on any existing v2 server upgraded via `git pull`.
+   - Clean up legacy untracked `apps/tv-updater` remnants from pre-v2.1 installs so `testing/test_module_contract.py` passes cleanly on-host.
+2. **Real-World "Zero-SSH" Soak Verification (Phase 2 & Phase 3 Gates):**
+   - Exercise `sudo tailscale serve --bg 7575`, PWA installation + Web Push notifications on mobile, read-only Family View vs owner TOTP, `mediaserver-autoimport` against live grabs, Guided Add-a-TV + TV profile CRUD, `homelab-update` app update + rollback, and 30-day history rollups.
+3. **`v2.2.1` Patch & Maintenance Backlog:**
+   - **Stabilize Playwright stylesheet loading (`Done`):** Use `wait_until="load"` in `apps/control-hub/tests/test_ui_accessibility.py` (`_new_authenticated_page`, Family View, and layout reload checks) to prevent unstyled `domcontentloaded` measurements under heavy CPU load.
+   - **Triage Open Dependabot PRs:** Review and merge/update `#59` (`valkey/valkey` in `noodle-gallery`), `#27` (`mediaserver-images`), `#26` (`softprops/action-gh-release` v2→v3), and `#25` (`actions/upload-artifact` v4→v7).
+   - **Optional Chart Engine Upgrade:** Evaluate swapping the zero-dependency HiDPI `<canvas>` renderer in `historyInsights.js` for `uPlot` (`~45 KB`) only if interactive zoom/pan scrubbing becomes desired.
 
 ## Open questions
 

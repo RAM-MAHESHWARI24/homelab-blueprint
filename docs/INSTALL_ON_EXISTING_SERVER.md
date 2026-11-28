@@ -135,3 +135,27 @@ Keep `/opt/immich` and `/root/pre-v2` for a few weeks.
 3. `cd /opt/immich && docker compose up -d`.
 4. Restore the old sudoers file and `sudo systemctl enable --now serverff-control-hub.service`.
 5. `sudo crontab -u server_ff /root/pre-v2/server_ff.crontab`.
+
+## Upgrading or syncing an existing v2 server
+
+On an already-installed v2 server under `/opt/homelab-blueprint`:
+
+1. **Update application code:** Use Control Hub's **Update Centre -> Self-Update Blueprint**, or pull on the host directly:
+
+   ```bash
+   sudo git -C /opt/homelab-blueprint pull --ff-only origin develop   # or checkout a release tag such as v2.2.0
+   sudo systemctl restart control-hub.service
+   ```
+
+2. **Sync newly added host helpers, cron jobs, timers, and `.env` keys:** `git pull` updates files inside `/opt/homelab-blueprint`, while host-installed files (`/usr/local/sbin/homelab-*` helpers like `homelab-update`, `homelab-storage-ops`, `homelab-config-apply`; systemd units/timers like `homelab-storage-sizes.timer`; sudoers rules; and `/etc/cron.d/*` jobs like `mediaserver-autoimport`) are rendered by Setup. After checking diffs cleanly, check `.env` schema updates and re-apply headless setup using the saved profile:
+
+   ```bash
+   cd /opt/homelab-blueprint
+   sudo ./setup.sh --migrate --check
+   sudo ./setup.sh --migrate
+   sudo ./setup.sh --headless --config /etc/homelab/config.json --dry-run
+   # Once satisfied with the dry-run preview:
+   sudo ./setup.sh --headless --config /etc/homelab/config.json
+   ```
+
+3. **Remove legacy pre-v2.1 untracked directories (if upgrading from v2.0):** If `/opt/homelab-blueprint/apps/tv-updater` still exists alongside `apps/tv-autoupdater` as an untracked directory, remove or archive it once `tv-autoupdater` is confirmed active so `testing/test_module_contract.py` stays clean.
