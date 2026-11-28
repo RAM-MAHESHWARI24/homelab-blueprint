@@ -181,7 +181,7 @@ An existing install keeps `MEDIA_PROFILES=off` after an upgrade, so nothing chan
 1. Back up: Control Hub → Backups → **Back up now**, plus System → Backup in Radarr and Sonarr.
 2. Remove the Recyclarr line from the crontab that runs it (`crontab -l`, then `crontab -e`), or its next sync puts the old profiles back.
 3. Set `MEDIA_PROFILES=on` and your `MEDIA_SECOND_LANGUAGE` in the env file.
-4. Run `profiles migrate --dry-run` and read the plan. It lists the formats it will create, the profile changes, and the legacy cleanup: the old `Hindi Audio`, `x265 (HD)`, `Season Complete` and `Multi Episode` formats are deleted, and titles on `1080p Balanced` or `1080p Balanced (Hindi)` move to `1080p Compact` before those profiles are deleted.
+4. Run `profiles migrate --dry-run` and read the plan. It lists the formats it will create, the profile changes, and the legacy cleanup: the old `Hindi Audio`, `x265 (HD)`, `Season Complete` and `Multi Episode` formats are deleted, titles on `1080p Balanced` or `1080p Balanced (Hindi)` move to `1080p Compact` before those profiles are deleted, and a temporary release profile named `Phase 0 bans (until profile pack)` is removed (the `Junk ·` formats replace it). Release profiles with other names are left alone.
 5. Run `profiles migrate` without `--dry-run`, then `profiles check` (it should report no drift).
 6. Delete Recyclarr's binary and config files when you no longer need them.
 

@@ -962,6 +962,15 @@ class PackRunner:
                                               run=lambda a=arr, ids=[t["id"] for t in users], k=key, e=editor: self._move_titles(a, ids, k, e, target)))
                     actions.append(Action(app, f"delete profile {prof['name']}", [f"id {prof['id']}"],
                                           run=lambda a=arr, pid=prof["id"]: self._ok(*a.delete(f"qualityprofile/{pid}"))))
+            # Interim "must not contain" release profiles that the pack's Junk formats replace.
+            wanted = legacy.get("release_profiles") or []
+            if wanted:
+                st, release_profiles = arr.get("releaseprofile")
+                for rp in (release_profiles if st == 200 and isinstance(release_profiles, list) else []):
+                    if rp.get("name") in wanted:
+                        actions.append(Action(app, f"delete interim release profile {rp['name']}",
+                                              [f"id {rp['id']}; replaced by the Junk · formats"],
+                                              run=lambda a=arr, rid=rp["id"]: self._ok(*a.delete(f"releaseprofile/{rid}"))))
             formats = self._get_list(arr, "customformat") or []
             for fmt in formats:
                 if fmt.get("name") in legacy["custom_formats"]:

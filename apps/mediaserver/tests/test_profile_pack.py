@@ -427,6 +427,8 @@ class FakeArr:
                 legacy_profile(name, defs, 9, "1080p Compact", {"Bluray-1080p", "WEBRip-1080p", "WEBDL-1080p", "HDTV-1080p"}),
             ],
             "delayprofile": [{"id": 1, "order": 2147483647, "bypassIfAboveCustomFormatScore": False, "minimumCustomFormatScore": 0}],
+            "releaseprofile": [{"id": 1, "name": "Phase 0 bans (until profile pack)", "ignored": ["rifftrax", "Ozlem"]},
+                               {"id": 2, "name": "My own bans", "ignored": ["cam"]}] if name == "radarr" else [],
             "movie" if name == "radarr" else "series": [{"id": 11, "title": "Stranded", "qualityProfileId": 7},
                                                         {"id": 12, "title": "Fine", "qualityProfileId": 9}],
         }
@@ -594,13 +596,35 @@ class TestApplyCheckMigrate(unittest.TestCase):
         self.assertIn("delete profile 1080p Balanced", whats)
         self.assertIn("delete legacy format Hindi Audio", whats)
         self.assertNotIn("delete legacy format My Own Format", whats)
+        self.assertEqual(whats.count("delete interim release profile Phase 0 bans (until profile pack)"), 1)
         self.assertEqual(r.execute(actions), 0, wire_arr.report["errors"])
+        self.assertEqual([rp["name"] for rp in self.radarr.db["releaseprofile"]], ["My own bans"],
+                         "only the interim Phase 0 release profile is removed")
         for arr, coll in ((self.radarr, "movie"), (self.sonarr, "series")):
             self.assertEqual({t["qualityProfileId"] for t in arr.db[coll]}, {9})
             self.assertNotIn("1080p Balanced", {p["name"] for p in arr.db["qualityprofile"]})
             self.assertFalse({"Hindi Audio", "x265 (HD)"} & {f["name"] for f in arr.db["customformat"]})
         self.assertEqual(self.runner().legacy_plan(), [])
         self.assertEqual(self.runner().plan(), [])
+
+    def test_phase0_merged_group_converges(self):
+        """Phase 0 left profile 9 with the four 1080p qualities in a group with id 1002."""
+        for arr in (self.radarr, self.sonarr):
+            prof = next(p for p in arr.db["qualityprofile"] if p["id"] == 9)
+            group_names = {"Bluray-1080p", "WEBDL-1080p", "WEBRip-1080p", "HDTV-1080p"}
+            members = [i for i in prof["items"] if i["quality"]["name"] in group_names]
+            prof["items"] = [i for i in prof["items"] if i["quality"]["name"] not in group_names]
+            prof["items"].append({"id": 1002, "name": "HD 1080p", "allowed": True, "items": members})
+            prof["cutoff"] = 1002
+            arr.db["qualityprofile"] = [p for p in arr.db["qualityprofile"] if p["name"] != "1080p Balanced"]
+        r = self.runner()
+        actions = r.plan() + r.legacy_plan()
+        self.assertFalse(any(a.what.startswith("move ") or "1080p Balanced" in a.what for a in actions))
+        self.assertEqual(r.execute(actions), 0, wire_arr.report["errors"])
+        self.assertEqual(self.runner().plan(), [])
+        compact = next(p for p in self.radarr.db["qualityprofile"] if p["id"] == 9)
+        self.assertEqual(compact["items"][-1]["name"], "HD")
+        self.assertEqual(sum(1 for i in compact["items"] if i.get("items")), 1, "one group only")
 
     def test_dry_run_changes_nothing(self):
         before = copy.deepcopy(self.radarr.db)
