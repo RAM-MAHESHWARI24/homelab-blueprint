@@ -730,7 +730,7 @@ class TestControlHubUiAccessibility(unittest.TestCase):
         )
         self.assertEqual(login_res.status, 200)
 
-        page.goto(f"{self.base_url}/{initial_hash}", wait_until="domcontentloaded")
+        page.goto(f"{self.base_url}/{initial_hash}", wait_until="load")
         page.wait_for_selector("#hub-header")
         page.wait_for_selector(".service-row", state="attached", timeout=15000)
         page.wait_for_timeout(350)
@@ -1273,7 +1273,7 @@ class TestControlHubUiAccessibility(unittest.TestCase):
                     data={"password": "FamilyViewPass1!"},
                 )
                 self.assertEqual(login_res.status, 200)
-                page.goto(f"{self.base_url}/#/overview", wait_until="domcontentloaded")
+                page.goto(f"{self.base_url}/#/overview", wait_until="load")
                 page.wait_for_selector("#family-mode-banner", state="visible", timeout=5000)
                 page.wait_for_selector("#family-whats-new-panel", state="visible", timeout=5000)
                 page.wait_for_function(
@@ -1382,7 +1382,7 @@ class TestControlHubUiAccessibility(unittest.TestCase):
                     page.evaluate("() => document.getElementById('integrations-panel')?.dataset.userHidden"),
                     "true",
                 )
-                page.reload(wait_until="domcontentloaded")
+                page.reload(wait_until="load")
                 page.wait_for_function(
                     "() => document.getElementById('integrations-panel')?.dataset.userHidden === 'true'",
                     timeout=5000,
