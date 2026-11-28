@@ -44,7 +44,7 @@ Both profiles exist in Radarr and Sonarr. `1080p Family` is created only when a 
 
 | | `1080p Compact` (default) | `1080p Family` |
 | :--- | :--- | :--- |
-| Goal | The best 1080p. Dual audio is preferred among 1080p releases; English-only is fine | The second language is **required**, for viewers who only understand it; the original language is a bonus |
+| Goal | The best 1080p. The second language (dual audio) is preferred among 1080p releases, so it never costs resolution; English-only is fine | The second language is **required**, for viewers who only understand it; the original language is a bonus |
 | Qualities | One group `HD`: Bluray, WEB-DL, WEBRip and HDTV at 1080p. **No 720p** | The same group plus Bluray, WEB-DL and WEBRip at 720p |
 | Order | Dual audio first, then the most efficient 1080p release | 1. 1080p dual audio · 2. 720p dual audio · 3. 1080p with only the second language · 4. 720p with only the second language. Releases without the second language are rejected |
 | Upgrade until score | 4700 in Radarr (1080p dual audio in the compact band), 4500 in Sonarr (1080p dual audio). Without a second language: 3200 in Radarr (1080p in the compact band, or HEVC) and 3000 in Sonarr | 4000 (1080p dual audio) |
@@ -73,6 +73,7 @@ The pack's formats all start with a prefix, so you can tell them from your own. 
 | `Res · 1080p` | +3000 | +1000 | Resolution 1080 |
 | `Lang · {Lang} + Original (named)` | +1500 | +3000 | A `{Lang}` token in the title, and the parsed languages include the original |
 | `Lang · {Lang} + Dual/Multi tag` | +1500 | +3000 | A `{Lang}` token plus `Dual Audio`, `Dual` or `Multi`, when the original isn't named |
+| `Lang · {Lang} original (untagged)` | +1500 | +3000 | A title whose original language is `{Lang}`, released without a language in its name: the apps assume the original language, so its audio is `{Lang}`. Left out in an app that doesn't know `{Lang}` |
 | `Lang · {Lang} only (original missing)` | −500 | +1500 | A `{Lang}` dub without the original track |
 | `Lang · Not Original or {Lang}` | −10000 | −10000 | Third-language-only releases (German-only, Italian-only). Without a second language it is `Lang · Not Original` |
 | `Eff · HEVC` | +250 movies, +150 TV | +150 | x265/HEVC at 720p or 1080p (TRaSH "x265 (HD)") |
@@ -95,7 +96,7 @@ Notes on language matching:
 * Short tokens that are also ordinary words (`tel`, `mal`, `kan`) only count next to another language marker, so *Malcolm X* is not Malayalam.
 * Radarr reads `ESub`, `ESubs` and `MSubs` as burned-in subtitles; in Indian release names they mean soft subtitles. The pack adds them to Radarr's **Whitelisted Hardcoded Subs** (Settings → Indexers). Radarr matches that list as case-insensitive substrings and does not trim spaces, so the list is written without spaces.
 * A Hindi-only dub scores −500 in Compact: a 1080p dub still clears the minimum score (2500 and up), so it is a last resort below any English 1080p release. In Family it scores +1500: a 1080p dub (2500) and a 720p dub (1500) are both accepted, below the dual-audio releases.
-* Family needs the language **in the release name**. An untagged release of a film whose original language is the second language (many international WEB releases of Hindi films carry no language tag) counts as having no second language and is rejected. Hindi-language films belong in Compact anyway: their original audio is Hindi.
+* A film or series whose original language is the second language counts as having it even when the release name says nothing (many international WEB releases of Hindi films carry no language tag): untagged and tagged releases score alike, in both profiles.
 * Upgrades of files already on disk use the same scores, with an upgrade step of 400. Language, resolution (Family only), leaving the oversized range and moving into the compact band can reach it. HEVC, source, season pack and repack together add at most 317 (Compact movies), 217 (Family movies) or 347 (TV), so none of them causes an upgrade on its own.
 * Example: a 9.7 GB x264 film (3050) is replaced by a 4.3 GB HEVC release (3500, +450), and the new file is always the smaller one. A bigger HEVC file in the same band (+250) is not an upgrade. TV episodes are never upgraded for the codec alone (+150, or +300 as a season pack); making oversized episodes smaller is the compact replacement job of the Download Doctor (a later release).
 

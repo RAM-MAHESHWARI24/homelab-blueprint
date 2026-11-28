@@ -132,8 +132,11 @@ def render_formats(pack: Dict[str, Any], app: str, lang: Optional[Dict[str, Any]
                 if isinstance(v, dict) and app in v:
                     v = v[app]
                 fields[k] = _sub(v, lang_name, lang_rx)
-            specs.append({"name": _sub(s.get("name", ""), lang_name, lang_rx), "implementation": s["implementation"],
-                          "negate": bool(s.get("negate")), "required": bool(s.get("required")), "fields": fields})
+            spec = {"name": _sub(s.get("name", ""), lang_name, lang_rx), "implementation": s["implementation"],
+                    "negate": bool(s.get("negate")), "required": bool(s.get("required")), "fields": fields}
+            if s.get("needs_app_language"):
+                spec["needs_app_language"] = True
+            specs.append(spec)
         out.append({"name": render_name(fmt["name"], lang, fmt.get("name_without_language")),
                     "includeCustomFormatWhenRenaming": bool(fmt.get("includeCustomFormatWhenRenaming", False)),
                     "specifications": specs, "source": f"custom_formats/{fmt['_file']}"})
@@ -197,9 +200,11 @@ def language_id(app_languages: List[Dict[str, Any]], name: str) -> Optional[int]
     return None
 
 
-def to_api_format(fmt: Dict[str, Any], app_languages: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[str]]:
+def to_api_format(fmt: Dict[str, Any], app_languages: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], List[str]]:
     """Neutral format -> API payload. Language names become ids; a language the app does
-    not know drops that condition (returned as a note) so the format still works on title tokens."""
+    not know drops that condition (returned as a note) so the format still works on title tokens.
+    A condition marked needs_app_language cannot be dropped: the whole format is left out
+    (payload None), because without it the format would match far too much."""
     notes: List[str] = []
     specs = []
     for s in fmt["specifications"]:
@@ -208,6 +213,8 @@ def to_api_format(fmt: Dict[str, Any], app_languages: List[Dict[str, Any]]) -> T
             value = fields.get("value")
             lid = value if isinstance(value, int) else language_id(app_languages, value)
             if lid is None:
+                if s.get("needs_app_language"):
+                    return None, [f"{fmt['name']}: the app has no language '{value}'; the format is left out"]
                 notes.append(f"{fmt['name']}: the app has no language '{value}'; that condition is left out")
                 continue
             fields["value"] = lid

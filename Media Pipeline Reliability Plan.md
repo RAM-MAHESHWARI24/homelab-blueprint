@@ -170,8 +170,11 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - `wire_arr.py` takes "needs a second language" from the profile's `requires_language` instead of a hard-coded slug.
 - New tests: the tie-breakers add at most 317 (Radarr Compact), 217 (Radarr Family) and 347 (Sonarr), all under the 400 step; Family's order, with the best English-only release at 1217 (1347 for a Sonarr season pack) under its minimum; Compact rejects 720p; codec changes never upgrade TV episodes.
 
-**Finding for the owner to decide** (raised while applying revision 4; tests assert today's behaviour):
-1. **`1080p Family` rejects untagged releases of Hindi-original films.** The language formats need a Hindi token in the release name. An untagged release of a Hindi film (corpus #20, and many international WEB-DLs) falls back to the original language, matches no `Lang ·` format and scores like English-only (about 1040). Compact is not affected, and the guide tells users to keep films in the second language on Compact. A fix: a Radarr-only format `Lang · {LANG} original (untagged)` (parsed language `{LANG}`, no `{LANG}` token) scored like dual audio, +3000 in Family and +1500 in Compact. That would also stop Compact from upgrading an untagged Hindi film to a tagged copy with the same audio (+1500). Check first how Sonarr labels untagged releases.
+**Untagged Hindi-original titles** (found while applying revision 4, decided by the owner the same day: a film whose original audio is Hindi has Hindi audio whether or not the release name says so; Hindi as well is only wanted for foreign films):
+- Before: the language formats needed a Hindi token, so an untagged release of a Hindi film (corpus #20, and many international WEB-DLs) scored like English-only in Family (1040, rejected) and 1500 below a tagged copy in Compact, which would have "upgraded" to a tagged copy with the same audio.
+- Now: a new format, `Lang · {LANG} original (untagged)`, matches when the parsed language is `{LANG}` and the name has no `{LANG}` token. It is scored like dual audio: +3000 in Family, +1500 in Compact. Both Radarr and Sonarr give an untagged release the title's original language (`AggregateLanguages.cs` on develop: "fallback to movie/series original language"), so it covers Hindi series too.
+- Guard: without its language condition the format would match every release, so an app that does not know `{LANG}` (Sonarr has no Telugu, Kannada, Bengali or Marathi) gets neither the format nor its score (`needs_app_language` in the format file; `to_api_format` returns no payload).
+- Tests: tagged and untagged releases of a Hindi film score the same in both profiles; a Hindi series pack passes Family; English films never match; an app without the language converges with no drift.
 
 **Findings settled by revision 4** (for the record):
 1. ~~**720p Hindi-only releases are rejected in both profiles.**~~ Compact now takes no 720p, and Family scores a Hindi-only dub +1500 against a minimum of 1400. The original finding: `Lang · Hindi only` (−500) plus source and band leaves a 720p dub at −240 (Compact) or −440 (Dual Audio First), under the minimum score of 0. At 1080p a Hindi-only dub is accepted (2500 in Compact, 500 in Dual Audio First). If a 720p dub should be a last resort in `Dual Audio First`, its `Lang · Hindi only` score needs to be about −50 or the minimum score lowered.
@@ -492,7 +495,7 @@ Both profiles exist in Radarr and Sonarr. `1080p Family` is only created when a 
 
 | Where | How |
 | :--- | :--- |
-| Default for everything | `1080p Compact`: Seerr's default and the installer default. Hindi-language films stay here too, because their original audio is Hindi |
+| Default for everything | `1080p Compact`: Seerr's default and the installer default. Hindi-language films are fine here: their releases count as Hindi even without a language tag |
 | Per request | In Seerr, users with the "Advanced Requests" permission pick `1080p Family` when requesting |
 | Per title, later | Control Hub `1080p Family` switch (section 9.3). It moves the title to `1080p Family` and searches. Radarr's mass editor does the same in bulk |
 | Defaults for others | A household where most people need the second language can make `1080p Family` the default in the Setup Wizard ([section 5.10](#510-any-second-language-and-a-setup-wizard-step)) |
@@ -510,6 +513,7 @@ Specifications are in [Appendix B](#appendix-b-custom-format-specifications). La
 | Res · 1080p | **+3000** | +1000 | Resolution 1080 (every release Compact accepts has it) |
 | Lang · Hindi + Original (named) | +1500 | **+3000** | A Hindi token, and the parsed languages include the original |
 | Lang · Hindi + Dual/Multi tag | +1500 | **+3000** | A Hindi token plus `Dual Audio`, `Dual` or `Multi`, when the original isn't named |
+| Lang · Hindi original (untagged) | +1500 | **+3000** | A Hindi-original title released without a language in its name (the apps assume the original language): its audio is Hindi |
 | Lang · Hindi only (original missing) | −500 | **+1500** | A Hindi dub without the original track: a last resort in Compact, accepted in Family |
 | Lang · Not Original or Hindi | −10000 | −10000 | Third-language-only releases, such as German-only or Italian-only |
 | Eff · HEVC (TRaSH "x265 (HD)") | **+250** (TV +150) | +150 | Efficient codec for 720p and 1080p; a tie-breaker |
@@ -737,7 +741,7 @@ The answers go to the installer config. `wire_arr.py profiles apply` runs at the
 | Play | Nova's **preferred audio language** on each TV (Hindi on one, English on another), so dual files open in the right language. Subtitles: Bazarr keeps English always and Hindi only for Hindi audio (already set) | Section 7 |
 
 Three notes:
-- **No language in the title.** For releases without a language in the title, the apps assume the original language. A mislabelled file can therefore only be caught after import, which is why the media-info check exists. Example: *Quantum of Solace* is German-only. The same rule means `1080p Family` sees no Hindi in an untagged release of a Hindi film and rejects it, so Hindi films stay on Compact (Phase 1 finding in [section 0](#phase-1-implementation-notes)).
+- **No language in the title.** For releases without a language in the title, the apps assume the original language. A mislabelled file can therefore only be caught after import, which is why the media-info check exists. Example: *Quantum of Solace* is German-only. The same rule lets `Lang · Hindi original (untagged)` recognise an untagged release of a Hindi film as Hindi, so it scores like a tagged one in both profiles.
 - **`und` tracks.** Treat `und` ("undetermined") audio as unknown, not wrong. Many Hindi encodes don't tag their tracks.
 - **South Indian films.** `Hindi + Tamil` (or `Multi Audio`) releases count as dual audio. A Hindi-only dub of a Tamil film scores −500 in Compact, so the Tamil original wins there unless a dual release exists. Family accepts the dub (+1500), because Hindi is what it needs.
 
@@ -1242,7 +1246,7 @@ Still open, with the default the plan uses:
 | Risk | Mitigation |
 | :--- | :--- |
 | Minimum seeders 4 hides rare Hindi titles | Two Prowlarr profiles (strict and live); "needs attention" list; per-title switch to `1080p Family` (which also accepts 720p, with Hindi) |
-| `1080p Family` misses Hindi audio that the release name doesn't mention | Hindi films stay on Compact; the fix proposed in the Phase 1 finding ([section 0](#phase-1-implementation-notes)) |
+| A title's original language is recorded wrongly in TMDB, so an untagged release counts as Hindi when it isn't | Rare; the media-info check after import (section 6) flags files without a Hindi track |
 | Regex false positives (`Line` in titles, `Hin`, short language tokens) | Adjacency rules in the regexes, a corpus test, Radarr's custom format test tool, and monitoring rejection reasons |
 | Compact's space-reclaim upgrades swap a source-quality file for a re-encode | Only when the re-encode is in the compact band and scores at least 400 more; `keep` tag; recycle bin |
 | Compact replacement swaps in a worse encode | Only when at least 35% smaller per minute **and** above the size floor; same or higher resolution; language no worse; verified after import; restore from the recycle bin; `keep` tag and "never compact this title" |
@@ -1331,6 +1335,11 @@ The format is tool-neutral; field names follow the *arr API. Within one format, 
     - {implementation: ReleaseTitleSpecification, required: true,  negate: false, value: '\b({TOKENS})\b'}
     - {implementation: ReleaseTitleSpecification, required: true,  negate: false, value: '\b(dual[ ._-]?audio|multi[ ._-]?audio|dual|multi)\b'}
     - {implementation: LanguageSpecification,     required: true,  negate: true,  value: Original}
+
+- name: "Lang · {LANG} original (untagged)"        # left out when the app does not know {LANG}
+  specifications:
+    - {implementation: LanguageSpecification,     required: true,  negate: false, value: "{LANG}"}
+    - {implementation: ReleaseTitleSpecification, required: true,  negate: true,  value: '\b({TOKENS})\b'}
 
 - name: "Lang · {LANG} only (original missing)"
   specifications:
@@ -1828,7 +1837,7 @@ Real titles seen on 2026-11-28 (plus marked synthetic ones). The Phase 1 corpus 
 | 17 | `Goldfinger (1964)-JAMES BOND-Sean Connery-1080p-H264-AC 3 (DolbyDigital-5.1) & nickarad` | The dead torrent in the queue | No source, so HDTV-1080p (untagged): Res · 1080p only. Ranks below tagged releases |
 | 18 | `Goldfinger.1964.1080p.BluRay.REMUX-DDB` | Radarr search | Remux, not in profile |
 | 19 | `Casino Royale (2006) 1080p Rifftrax 6ch 2ch v2` | Radarr history (imported) | Junk · Commentary editions, so rejected |
-| 20 | `Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS` | Radarr history (Hindi original) | Src · WEBRip, no language match (untagged; language falls back to Hindi = original). Rejected in `1080p Family` (Phase 1 finding) |
+| 20 | `Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS` | Radarr history (Hindi original) | Lang · Hindi original (untagged): the language falls back to Hindi, the original, so it scores like a tagged release. Src · WEBRip |
 | 21 | `Drishyam 2 (2022) Hindi 1080p WEB-DL DD5.1 ESub` | synthetic (Hindi original) | Dual (named: Hindi is the original), Src · WEB-DL |
 | 22 | `Oppenheimer (2023) 1080p BluRay [Hindi DD5.1 + English DD5.1] x264 ESubs` | synthetic | Dual (named), Src · Bluray |
 | 23 | `Movie.2023.1080p.AMZN.WEB-DL.DDP5.1.Hindi.English.x264-GRP` | synthetic | Dual (named), Src · WEB-DL |

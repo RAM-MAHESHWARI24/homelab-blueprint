@@ -1,0 +1,31 @@
+{
+  "name": "Lang · {LANG} original (untagged)",
+  "comment": "A title whose original language is {LANG}, released without a language in its name. Radarr and Sonarr give such a release the title's original language, so its audio is {LANG}: scored like dual audio. Left out of an app that does not know {LANG}, because without that condition it would match everything.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "language",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Parsed language {LANG}",
+      "implementation": "LanguageSpecification",
+      "negate": false,
+      "required": true,
+      "needs_app_language": true,
+      "fields": {
+        "value": "{LANG}"
+      }
+    },
+    {
+      "name": "No {LANG} token",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "{LANG_RX}"
+      }
+    }
+  ]
+}

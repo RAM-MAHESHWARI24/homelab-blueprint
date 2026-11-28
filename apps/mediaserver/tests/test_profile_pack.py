@@ -33,12 +33,13 @@ NAMED = "Lang · Hindi + Original (named)"
 DUAL = "Lang · Hindi + Dual/Multi tag"
 ONLY = "Lang · Hindi only (original missing)"
 NOTORIG = "Lang · Not Original or Hindi"
-LANG_FORMATS = {NAMED, DUAL, ONLY, NOTORIG}
+ORIG = "Lang · Hindi original (untagged)"
+LANG_FORMATS = {NAMED, DUAL, ONLY, NOTORIG, ORIG}
 RES = "Res · 1080p"
 HEVC = "Eff · HEVC"
 BD, WEBDL, WEBRIP = "Src · Bluray", "Src · WEB-DL", "Src · WEBRip"
 BAND, OVER = "Size · Compact band", "Size · Oversized"
-HINDI_FORMATS = {NAMED, DUAL, ONLY}
+HINDI_FORMATS = {NAMED, DUAL, ONLY, ORIG}
 COMPACT, FAMILY = "1080p Compact", "1080p Family"
 PROFILES = (COMPACT, FAMILY)
 
@@ -178,7 +179,8 @@ CORPUS = [
       has={RES}),
     R(18, "Goldfinger.1964.1080p.BluRay.REMUX-DDB", source="bluray", quality="Remux-1080p", quality_ok=False),
     R(19, "Casino Royale (2006) 1080p Rifftrax 6ch 2ch v2", has={"Junk · Commentary editions"}, rejected=True),
-    R(20, "Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS", original="Hindi", source="webrip", has={WEBRIP}),
+    R(20, "Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS", original="Hindi", source="webrip", lang={ORIG},
+      has={WEBRIP}),
     R(21, "Drishyam 2 (2022) Hindi 1080p WEB-DL DD5.1 ESub", original="Hindi", languages=["Hindi"], source="webdl",
       lang={NAMED}, has={WEBDL}),
     R(22, "Oppenheimer (2023) 1080p BluRay [Hindi DD5.1 + English DD5.1] x264 ESubs", languages=["Hindi", "English"],
@@ -233,7 +235,7 @@ class TestCorpus(unittest.TestCase):
                     if not blocked and quality_ok(rel, name):
                         # Compact accepts every release that isn't blocked. Family requires the second
                         # language (revision 4), so a release without a Hindi format stays under its
-                        # minimum score. That includes #20, an untagged release of a Hindi-original film.
+                        # minimum score. A Hindi-original film counts even untagged (#20).
                         accepted = score(rel["app"], rel, name) >= profile(rel["app"], name)["min_format_score"]
                         self.assertEqual(accepted, name == COMPACT or bool(got & HINDI_FORMATS),
                                          f"#{rel['n']} accepted in {name}: {score(rel['app'], rel, name)}")
@@ -284,6 +286,23 @@ class TestCorpus(unittest.TestCase):
         self.assertLess(score("sonarr", best_english_pack, FAMILY), tv_min)
         self.assertEqual(score("sonarr", hindi_720_episode, FAMILY), 1500 + 30)
         self.assertGreaterEqual(score("sonarr", hindi_720_episode, FAMILY), tv_min)
+
+    def test_untagged_hindi_original_counts_as_hindi(self):
+        """A Hindi film's audio is Hindi whether or not the release name says so: untagged and
+        tagged releases score alike, in both apps, so Family accepts it and Compact never
+        'upgrades' to a tagged copy with the same audio. English films are untouched."""
+        untagged, tagged = BY_N[20], R(0, "Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 Hindi -YTS",
+                                       original="Hindi", languages=["Hindi"], source="webrip")
+        self.assertEqual(matched("radarr", tagged) & LANG_FORMATS, {NAMED})
+        for name in PROFILES:
+            self.assertEqual(score("radarr", untagged, name), score("radarr", tagged, name), name)
+        self.assertEqual(score("radarr", untagged, FAMILY), 1000 + 3000 + 40)
+        show = R(0, "Panchayat.S03.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP", app="sonarr", original="Hindi", source="webdl",
+                 release_type=3)
+        self.assertIn(ORIG, matched("sonarr", show))
+        self.assertGreaterEqual(score("sonarr", show, FAMILY), profile("sonarr", FAMILY)["min_format_score"])
+        english = R(0, "Film.2020.1080p.WEB-DL.x264-GRP", source="webdl")
+        self.assertNotIn(ORIG, matched("radarr", english))
 
     def test_compact_is_1080p_only(self):
         for app in pp.APPS:
@@ -363,6 +382,15 @@ class TestLanguages(unittest.TestCase):
         with self.assertRaises(ValueError):
             pp.find_language(PACK, "Klingon")
         self.assertIsNone(pp.find_language(PACK, "none"))
+
+    def test_untagged_format_left_out_when_app_lacks_language(self):
+        """Without its language condition the untagged format would match every release, so
+        an app that does not know the language gets neither the format nor its score."""
+        telugu = pp.find_language(PACK, "Telugu")
+        fmt = next(f for f in pp.render_formats(PACK, "sonarr", telugu) if f["name"] == "Lang · Telugu original (untagged)")
+        api, notes = pp.to_api_format(fmt, [{"id": 27, "name": "Hindi"}, {"id": 1, "name": "English"}])
+        self.assertIsNone(api)
+        self.assertIn("left out", notes[0])
 
     def test_language_missing_in_app_keeps_title_tokens(self):
         telugu = pp.find_language(PACK, "Telugu")
@@ -718,6 +746,15 @@ class TestApplyCheckMigrate(unittest.TestCase):
         r.legacy_plan()
         self.assertEqual(self.radarr.calls, [])
         self.assertEqual(self.radarr.db, before)
+
+    def test_language_unknown_to_the_apps_converges(self):
+        """The fakes know no Telugu: the untagged format is skipped and no score drift remains."""
+        r = self.runner(language="Telugu")
+        self.assertEqual(r.execute(r.plan()), 0, wire_arr.report["errors"])
+        names = {f["name"] for f in self.sonarr.db["customformat"]}
+        self.assertIn("Lang · Telugu + Original (named)", names)
+        self.assertNotIn("Lang · Telugu original (untagged)", names)
+        self.assertEqual(self.runner(language="Telugu").plan(), [])
 
     def test_seeding_off(self):
         r = self.runner(seeding="off")

@@ -750,8 +750,14 @@ class PackRunner:
         for fmt in pp.render_formats(self.pack, app, self.s["language"]):
             api, notes = pp.to_api_format(fmt, langs)
             self.notes += [f"{app}: {n}" for n in notes]
-            desired.append(api)
+            if api is not None:
+                desired.append(api)
         return desired, langs
+
+    def _left_out_formats(self, app: str, arr: "Arr") -> set:
+        """Formats this app cannot hold (a language it does not know); their scores are dropped too."""
+        langs = self._get_list(arr, "language") or []
+        return {f["name"] for f in pp.render_formats(self.pack, app, self.s["language"]) if pp.to_api_format(f, langs)[0] is None}
 
     def _plan_formats(self, app: str, arr: "Arr") -> List[Action]:
         live = self._get_list(arr, "customformat")
@@ -788,7 +794,9 @@ class PackRunner:
         if live_profiles is None or live_formats is None or defs is None:
             return []
         actions = []
+        left_out = self._left_out_formats(app, arr)
         for desired in pp.render_profiles(self.pack, app, self.s["language"], self.s["codecs"]):
+            desired = dict(desired, scores={n: s for n, s in desired["scores"].items() if n not in left_out})
             existing = next((p for p in live_profiles if p.get("name") == desired["name"]), None)
             payload = pp.build_profile_payload(desired, app, defs, live_formats, existing)
             if existing is None:

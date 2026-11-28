@@ -35,7 +35,7 @@ profiles/
 * every file parses, and every quality name exists in the app;
 * qualities are listed highest first, and an unknown-source quality (`HDTV-1080p`, what the apps call an untagged "1080p") never sits above BluRay or WEB on its own;
 * every format the pack creates carries an owned prefix and is scored in every profile;
-* the minimum score and the upgrade-until score are reachable, `1080p Compact` holds only 1080p qualities, and `1080p Family` ranks dual audio over a single second language and rejects releases without it;
+* the minimum score and the upgrade-until score are reachable, `1080p Compact` holds only 1080p qualities, and `1080p Family` ranks dual audio over a single second language and rejects releases without it (an untagged release of a title in that language counts as having it);
 * the small tie-breakers (HEVC, source, season pack, repack) add up to less than the 400 upgrade step in every profile, so none of them triggers an upgrade on its own;
 * every regex matches a corpus of real release titles as expected, including guards like *The Thin Red Line* (not "line audio") and *Ben-Hur* (not Bengali).
 

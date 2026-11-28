@@ -27,6 +27,7 @@
     "Res · 1080p": 1000,
     "Lang · {LANG} + Original (named)": 3000,
     "Lang · {LANG} + Dual/Multi tag": 3000,
+    "Lang · {LANG} original (untagged)": 3000,
     "Lang · {LANG} only (original missing)": 1500,
     "Lang · Not Original or {LANG}": -10000,
     "Eff · HEVC": 150,
