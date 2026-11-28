@@ -2,8 +2,8 @@
   "pack_version": 1,
   "description": "Release profiles for Radarr and Sonarr, applied by scripts/wire_arr.py profiles apply. JSON only so the standard library can read it.",
   "owned_prefixes": ["Lang · ", "Res · ", "Src · ", "Eff · ", "Size · ", "Compat · ", "Junk · ", "Fix · ", "TV · "],
-  "owned_profiles": ["1080p Compact", "Dual Audio First"],
-  "profile_slugs": {"compact": "1080p Compact", "dual-audio-first": "Dual Audio First"},
+  "owned_profiles": ["1080p Compact", "1080p Family"],
+  "profile_slugs": {"compact": "1080p Compact", "family": "1080p Family"},
   "legacy": {
     "custom_formats": ["Hindi Audio", "Season Complete", "Multi Episode", "x265 (HD)"],
     "profiles": ["1080p Balanced", "1080p Balanced (Hindi)"],

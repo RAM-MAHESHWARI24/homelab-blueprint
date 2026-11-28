@@ -662,8 +662,10 @@ def resolve_pack_settings(args, pack: Dict[str, Any]) -> Dict[str, Any]:
     slugs = pack["meta"]["profile_slugs"]
     if default_profile not in slugs:
         raise ValueError(f"unknown default profile '{default_profile}' (choose from {', '.join(slugs)})")
-    if default_profile == "dual-audio-first" and language is None:
-        raise ValueError("the Dual Audio First profile needs a second language")
+    needs_language = any(p.get("requires_language") for app in pp.APPS for p in pack["profiles"][app]
+                         if p["name"] == slugs[default_profile])
+    if needs_language and language is None:
+        raise ValueError(f"the {slugs[default_profile]} profile needs a second language")
     seeding = pick("seeding", "MEDIA_SEEDING").strip().lower()
     if seeding not in pp.SEEDING_CHOICES:
         raise ValueError(f"unknown seeding choice '{seeding}' (choose from {', '.join(pp.SEEDING_CHOICES)})")
@@ -1172,7 +1174,7 @@ def main() -> int:
     prof.add_argument("--host", default="127.0.0.1")
     prof.add_argument("--env-file", default="", help="Read MEDIA_* choices and qBittorrent login from this env file")
     prof.add_argument("--language", default=None, help="Second audio language (e.g. Hindi), or 'none'")
-    prof.add_argument("--default-profile", default=None, choices=["compact", "dual-audio-first"])
+    prof.add_argument("--default-profile", default=None, choices=["compact", "family"])
     prof.add_argument("--codecs", default=None, help="What the players decode: comma list of hevc,av1,dv")
     prof.add_argument("--seeding", default=None, choices=list(pp.SEEDING_CHOICES))
     prof.add_argument("--no-public-trackers", action="store_true", help="Do not append the public tracker list (private trackers)")

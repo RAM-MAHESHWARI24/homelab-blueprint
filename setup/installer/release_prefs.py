@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-PROFILE_CHOICES = ("compact", "dual-audio-first")
+PROFILE_CHOICES = ("compact", "family")
 CODEC_CHOICES = ("hevc", "av1", "dv")
 SEEDING_CHOICES = ("while-it-helps", "off")
 STUCK_CHOICES = ("replace", "off")
@@ -102,8 +102,8 @@ def normalize_release_prefs(config: Dict[str, Any], repo_root: Path,
     profile = str(prefs.get("media_default_profile") or "").strip().lower()
     if profile not in PROFILE_CHOICES:
         errors.append(f"media_default_profile must be one of {', '.join(PROFILE_CHOICES)}")
-    elif profile == "dual-audio-first" and not prefs["media_second_language"]:
-        errors.append("media_default_profile 'dual-audio-first' needs a second audio language")
+    elif profile == "family" and not prefs["media_second_language"]:
+        errors.append("media_default_profile 'family' (1080p Family) needs a second audio language")
     prefs["media_default_profile"] = profile
 
     codecs = _codecs(prefs.get("media_codecs"))

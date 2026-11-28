@@ -152,9 +152,9 @@ def owned_format(pack: Dict[str, Any], name: str) -> bool:
 
 
 def render_profiles(pack: Dict[str, Any], app: str, lang: Optional[Dict[str, Any]], codecs: Iterable[str]) -> List[Dict[str, Any]]:
-    """Profiles for `app` with scores keyed by rendered format names. Dual Audio First
-    is skipped without a second language. Codec choices turn blocks into neutral scores
-    (AV1, DV allowed) or block HEVC when the players cannot decode it."""
+    """Profiles for `app` with scores keyed by rendered format names. A profile that
+    requires a language (1080p Family) is skipped without one. Codec choices turn blocks
+    into neutral scores (AV1, DV allowed) or block HEVC when the players cannot decode it."""
     codecs = set(codecs)
     codec_formats = {info["name"]: info.get("codec") for rel, (info, _) in pack["vendored"].items()
                      if rel.startswith(app + "/") and info.get("codec")}

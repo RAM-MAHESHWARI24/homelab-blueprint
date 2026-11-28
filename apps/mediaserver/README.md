@@ -18,7 +18,7 @@
 * **Ingest Automation:** Sonarr (TV), Radarr (Movies), Bazarr (Subtitles), Prowlarr (Indexers)
 * **Downloader:** qBittorrent
 * **Cloudflare Solver:** Byparr (FlareSolverr fork)
-* **Release profiles:** a profile pack in [`profiles/`](profiles/README.md), applied by `wire_arr.py profiles apply`: `1080p Compact` (best quality per GB) and `Dual Audio First` (for a second audio language such as Hindi)
+* **Release profiles:** a profile pack in [`profiles/`](profiles/README.md), applied by `wire_arr.py profiles apply`: `1080p Compact` (the best 1080p) and `1080p Family` (requires a second audio language such as Hindi)
 
 ---
 
@@ -97,13 +97,13 @@ The [homelab-blueprint](https://github.com/RAM-MAHESHWARI24/homelab-blueprint) i
 
 ## 🎚️ Release profiles
 
-Radarr and Sonarr compare quality position first and custom-format score second, long before seeders. The profile pack in [`profiles/`](profiles/README.md) puts every acceptable 720p/1080p quality in one group and lets scores decide: 1080p, your second audio language, HEVC, a compact size band and the source; junk, theatre recordings, banned uploaders and codecs your TVs can't play are rejected. It also sets size limits, a soft-subtitle whitelist (`ESub`), the recycle bin, Prowlarr Full Sync and minimum seeders, and qBittorrent's "seed while it helps" limits.
+Radarr and Sonarr compare quality position first and custom-format score second, long before seeders. The profile pack in [`profiles/`](profiles/README.md) puts every acceptable quality in one group (1080p; the Family profile adds 720p) and lets scores decide: 1080p, your second audio language, HEVC, a compact size band and the source; junk, theatre recordings, banned uploaders and codecs your TVs can't play are rejected. It also sets size limits, a soft-subtitle whitelist (`ESub`), the recycle bin, Prowlarr Full Sync and minimum seeders, and qBittorrent's "seed while it helps" limits.
 
 `install.sh` applies it. Your choices are `MEDIA_*` keys in `.env`:
 
 ```bash
 MEDIA_SECOND_LANGUAGE=Hindi           # empty = none; names in profiles/languages.json
-MEDIA_DEFAULT_PROFILE=compact         # or dual-audio-first
+MEDIA_DEFAULT_PROFILE=compact         # or family (1080p Family, needs a language)
 MEDIA_CODECS=hevc                     # add av1, dv if your players decode them
 MEDIA_SEEDING=while-it-helps          # or off
 ```
@@ -114,7 +114,7 @@ python3 scripts/wire_arr.py profiles check   --config-dir ./config --env-file .e
 python3 scripts/wire_arr.py profiles migrate --config-dir ./config --env-file .env --dry-run   # older setups
 ```
 
-Only formats with the pack's prefixes (`Lang ·`, `Res ·`, `Junk ·`, ...) and the profiles `1080p Compact` and `Dual Audio First` are changed; your own formats and profiles are left alone. The full guide (ranking, every format and score, moving from Recyclarr, a "why isn't it downloading?" checklist): [release profiles and dual audio](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/MEDIA_RELEASE_PROFILES.md). Watching on Android TVs from the Samba share: [playing over SMB with Nova](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/SMB_PLAYBACK_WITH_NOVA.md).
+Only formats with the pack's prefixes (`Lang ·`, `Res ·`, `Junk ·`, ...) and the profiles `1080p Compact` and `1080p Family` are changed; your own formats and profiles are left alone. The full guide (ranking, every format and score, moving from Recyclarr, a "why isn't it downloading?" checklist): [release profiles and dual audio](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/MEDIA_RELEASE_PROFILES.md). Watching on Android TVs from the Samba share: [playing over SMB with Nova](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/SMB_PLAYBACK_WITH_NOVA.md).
 
 **Using Recyclarr instead:** set `MEDIA_PROFILES=off` so the pack leaves profiles alone, and never run both against the same profiles. Recyclarr cannot define custom formats, so the language formats are not available that way.
 

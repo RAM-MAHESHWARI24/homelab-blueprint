@@ -141,12 +141,12 @@ def test_release_preferences():
     assert not errors and prefs["media_profiles"] is True and prefs["media_second_language"] == ""
     assert prefs["media_default_profile"] == "compact" and prefs["media_codecs"] == ["hevc"], prefs
 
-    prefs, errors = normalize_release_prefs({"media_second_language": "hindi", "media_default_profile": "dual-audio-first",
+    prefs, errors = normalize_release_prefs({"media_second_language": "hindi", "media_default_profile": "family",
                                              "media_codecs": "av1,hevc", "media_seeding": "off"}, REPO_ROOT)
     assert not errors, errors
     assert prefs["media_second_language"] == "Hindi" and prefs["media_codecs"] == ["hevc", "av1"]
 
-    for bad in ({"media_default_profile": "dual-audio-first"}, {"media_second_language": "Klingon"},
+    for bad in ({"media_default_profile": "family"}, {"media_second_language": "Klingon"},
                 {"media_codecs": ["vp9"]}, {"media_seeding": "forever"}, {"media_stuck_downloads": "maybe"}):
         _, errors = normalize_release_prefs(bad, REPO_ROOT)
         assert errors, f"expected an error for {bad}"
@@ -313,22 +313,22 @@ def run_tests():
             assert f'id="{element_id}"' in html, f"wizard page is missing #{element_id}"
         assert "media_second_language" in js and "/api/release/languages" in js
         try:
-            request("/api/deploy", dict(deploy_payload, media_default_profile="dual-audio-first", media_second_language=""))
-            raise AssertionError("expected HTTP 400 for Dual Audio First without a language")
+            request("/api/deploy", dict(deploy_payload, media_default_profile="family", media_second_language=""))
+            raise AssertionError("expected HTTP 400 for 1080p Family without a language")
         except urllib.error.HTTPError as e:
             assert e.code == 400, e.code
             body = json.loads(e.read().decode())
             assert body["errors"] and body["errors"][0]["service"] == "media", body
         status, deploy_res = request("/api/deploy", dict(deploy_payload, media_profiles=True, media_second_language="Hindi",
-                                                          media_default_profile="dual-audio-first", media_codecs=["hevc", "av1"],
+                                                          media_default_profile="family", media_codecs=["hevc", "av1"],
                                                           media_seeding="off", media_stuck_downloads="replace"))
         assert status == 200 and deploy_res["success"] is True, deploy_res.get("errors")
         rendered = preview_env.read_text(encoding="utf-8")
-        for line in ("MEDIA_PROFILES=on", "MEDIA_SECOND_LANGUAGE=Hindi", "MEDIA_DEFAULT_PROFILE=dual-audio-first",
+        for line in ("MEDIA_PROFILES=on", "MEDIA_SECOND_LANGUAGE=Hindi", "MEDIA_DEFAULT_PROFILE=family",
                      "MEDIA_CODECS=hevc,av1", "MEDIA_SEEDING=off", "MEDIA_STUCK_DOWNLOADS=replace"):
             assert line in rendered.splitlines(), f"{line} missing from the rendered mediaserver.env"
         assert any("release profile pack" in line for line in deploy_res["logs"]), "dry run should say it would apply the pack"
-        assert any("'Dual Audio First' as the default profile" in line for line in deploy_res["logs"])
+        assert any("'1080p Family' as the default profile" in line for line in deploy_res["logs"])
 
         test_exit_waits_for_netplan_confirm()
         test_release_preferences()

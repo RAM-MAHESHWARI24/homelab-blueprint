@@ -422,7 +422,7 @@ class Deployment:
 
     def _default_profile_name(self) -> str:
         slug = str(self.config.get("media_default_profile") or "compact")
-        return "Dual Audio First" if slug == "dual-audio-first" else "1080p Compact"
+        return "1080p Family" if slug == "family" else "1080p Compact"
 
     def _apply_release_profiles(self) -> None:
         """Release profiles from apps/mediaserver/profiles (choices from mediaserver.env), then Seerr."""

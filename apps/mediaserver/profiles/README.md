@@ -20,9 +20,9 @@ profiles/
 │   └── sonarr/*.json
 ├── profiles/                 # one file per app and profile; qualities listed highest first
 │   ├── radarr-1080p-compact.json
-│   ├── radarr-dual-audio-first.json
+│   ├── radarr-1080p-family.json
 │   ├── sonarr-1080p-compact.json
-│   └── sonarr-dual-audio-first.json
+│   └── sonarr-1080p-family.json
 └── quality_definitions/      # size limits in MB per minute (global in each app)
     ├── radarr.json
     └── sonarr.json
@@ -35,7 +35,8 @@ profiles/
 * every file parses, and every quality name exists in the app;
 * qualities are listed highest first, and an unknown-source quality (`HDTV-1080p`, what the apps call an untagged "1080p") never sits above BluRay or WEB on its own;
 * every format the pack creates carries an owned prefix and is scored in every profile;
-* the minimum score (0) and the upgrade-until score are reachable;
+* the minimum score and the upgrade-until score are reachable, `1080p Compact` holds only 1080p qualities, and `1080p Family` ranks dual audio over a single second language and rejects releases without it;
+* the small tie-breakers (HEVC, source, season pack, repack) add up to less than the 400 upgrade step in every profile, so none of them triggers an upgrade on its own;
 * every regex matches a corpus of real release titles as expected, including guards like *The Thin Red Line* (not "line audio") and *Ben-Hur* (not Bengali).
 
 ## Changing the pack
@@ -45,4 +46,4 @@ profiles/
 * **A language:** add an entry to `languages.json` with its name as the apps spell it and safe title tokens. A token that is also an ordinary word goes in `adjacent_tokens`; add guard titles to the tests.
 * **Vendored TRaSH formats:** do not edit them by hand. `scripts/trash_sync.py --check` compares them with upstream and `--write` updates them; the blueprint runs it weekly and opens a pull request.
 
-Objects without one of the pack's prefixes, and profiles other than `1080p Compact` and `Dual Audio First`, are never changed. To manage profiles another way (for example with Recyclarr), set `MEDIA_PROFILES=off`.
+Objects without one of the pack's prefixes, and profiles other than `1080p Compact` and `1080p Family`, are never changed. To manage profiles another way (for example with Recyclarr), set `MEDIA_PROFILES=off`.

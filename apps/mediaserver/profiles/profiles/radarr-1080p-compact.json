@@ -1,13 +1,13 @@
 {
   "name": "1080p Compact",
-  "description": "Best quality per GB at 1080p. Dual audio preferred among 1080p releases of sensible size.",
+  "description": "The best 1080p: 1080p only. Dual audio is preferred among 1080p releases and English-only is fine; HEVC and source are small tie-breakers that never trigger an upgrade on their own.",
   "requires_language": false,
   "language": "Any",
   "upgrade": {
     "allowed": true,
     "until_quality": "HD",
-    "until_score": 4500,
-    "until_score_without_language": 3600
+    "until_score": 4700,
+    "until_score_without_language": 3200
   },
   "min_format_score": 0,
   "min_upgrade_format_score": 400,
@@ -18,10 +18,7 @@
         "Bluray-1080p",
         "WEBDL-1080p",
         "WEBRip-1080p",
-        "HDTV-1080p",
-        "Bluray-720p",
-        "WEBDL-720p",
-        "WEBRip-720p"
+        "HDTV-1080p"
       ]
     }
   ],
@@ -31,7 +28,7 @@
     "Lang · {LANG} + Dual/Multi tag": 1500,
     "Lang · {LANG} only (original missing)": -500,
     "Lang · Not Original or {LANG}": -10000,
-    "Eff · HEVC": 400,
+    "Eff · HEVC": 250,
     "Size · Compact band": 200,
     "Size · Oversized": -2000,
     "Src · Bluray": 60,

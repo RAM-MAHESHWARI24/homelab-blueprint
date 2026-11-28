@@ -73,14 +73,14 @@ async function loadReleaseLanguages() {
   syncReleaseDefaults();
 }
 
-// "Dual Audio First" only makes sense with a second language.
+// "1080p Family" requires the second language, so it needs one.
 function syncReleaseDefaults() {
   const lang = document.getElementById("pow-rel-language");
   const def = document.getElementById("pow-rel-default");
   if (!lang || !def) return;
-  const dual = def.querySelector('option[value="dual-audio-first"]');
-  dual.disabled = !lang.value;
-  if (!lang.value && def.value === "dual-audio-first") def.value = "compact";
+  const family = def.querySelector('option[value="family"]');
+  family.disabled = !lang.value;
+  if (!lang.value && def.value === "family") def.value = "compact";
 }
 
 function releasePreferences(mode) {

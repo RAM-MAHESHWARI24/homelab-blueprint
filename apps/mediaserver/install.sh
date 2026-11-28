@@ -98,7 +98,7 @@ if [ "$PROFILES" = "on" ]; then
     python3 scripts/wire_arr.py profiles apply --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
         --env-file .env --data-dir "$DATA_DIR" --puid "$PUID" --pgid "$PGID"
     DEFAULT_PROFILE="1080p Compact"
-    [ "$(env_get MEDIA_DEFAULT_PROFILE)" = "dual-audio-first" ] && DEFAULT_PROFILE="Dual Audio First"
+    [ "$(env_get MEDIA_DEFAULT_PROFILE)" = "family" ] && DEFAULT_PROFILE="1080p Family"
     python3 scripts/wire_arr.py seerr --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
         --admin-pass "$ADMIN_PASS" --profile "$DEFAULT_PROFILE"
 else

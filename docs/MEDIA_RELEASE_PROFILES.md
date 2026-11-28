@@ -40,25 +40,26 @@ Two consequences shape the pack:
 
 ## The two profiles
 
-Both profiles exist in Radarr and Sonarr. `Dual Audio First` is created only when a second language is chosen.
+Both profiles exist in Radarr and Sonarr. `1080p Family` is created only when a second language is chosen.
 
-| | `1080p Compact` (default) | `Dual Audio First` |
+| | `1080p Compact` (default) | `1080p Family` |
 | :--- | :--- | :--- |
-| Goal | Best quality per GB at 1080p. Dual audio preferred among 1080p releases of sensible size | The second language matters most. A 720p dual-audio release beats a 1080p one without it, then upgrades to 1080p dual audio |
-| Qualities | One group `HD`: Bluray, WEB-DL, WEBRip and HDTV at 1080p, then Bluray, WEB-DL and WEBRip at 720p | Same |
-| 720p | Fallback only: any 1080p outranks any 720p | A 720p dual-audio release outranks a 1080p release without the language |
-| Upgrade until score | 4500 (1080p with dual audio); 3600 in Radarr and 3400 in Sonarr without a second language | 4000 |
-| Minimum score / upgrade step | 0 / 400 | 0 / 400 |
+| Goal | The best 1080p. Dual audio is preferred among 1080p releases; English-only is fine | The second language is **required**, for viewers who only understand it; the original language is a bonus |
+| Qualities | One group `HD`: Bluray, WEB-DL, WEBRip and HDTV at 1080p. **No 720p** | The same group plus Bluray, WEB-DL and WEBRip at 720p |
+| Order | Dual audio first, then the most efficient 1080p release | 1. 1080p dual audio · 2. 720p dual audio · 3. 1080p with only the second language · 4. 720p with only the second language. Releases without the second language are rejected |
+| Upgrade until score | 4700 in Radarr (1080p dual audio in the compact band), 4500 in Sonarr (1080p dual audio). Without a second language: 3200 in Radarr (1080p in the compact band, or HEVC) and 3000 in Sonarr | 4000 (1080p dual audio) |
+| Minimum score / upgrade step | 0 / 400 | **1400** / 400 |
 | Radarr profile language | Any (custom formats handle language) | Any |
 
 Worked example, *Goldfinger* (1964), with Hindi as the second language:
 
-| Release | `1080p Compact` | `Dual Audio First` |
+| Release | `1080p Compact` | `1080p Family` |
 | :--- | ---: | ---: |
-| `1080p BDRip HEVC [Hindi English] DDP 5.1`, 5.7 GB | 3000 + 1500 + 400 + 200 + 60 = **5160** | 1000 + 3000 + 200 + 60 = **4260** |
-| `1080p NF WEB-DL DDP5 1 Atmos H 264`, 5.2 GB | 3000 + 200 + 50 = 3250 | 1000 + 50 = 1050 |
-| `720p BluRay x264 Dual Audio [English + Hindi]`, 1.0 GB | 1500 + 200 + 60 = 1760 | 3000 + 60 = 3060 |
-| `1080p H264 AC3 ... nickarad` (no source named) | 3000 | 1000 |
+| `1080p BDRip HEVC [Hindi English] DDP 5.1`, 5.7 GB | 3000 + 1500 + 250 + 200 + 60 = **5010** | 1000 + 3000 + 150 + 60 = **4210** |
+| `1080p NF WEB-DL DDP5 1 Atmos H 264`, 5.2 GB | 3000 + 200 + 50 = 3250 | 1000 + 50 = 1050, under 1400: rejected |
+| `720p BluRay x264 Dual Audio [English + Hindi]`, 1.0 GB | not wanted (720p) | 3000 + 60 = 3060 |
+| `720p BluRay Hindi DD 2.0 Esub`, 1.4 GB | not wanted (720p) | 1500 + 60 = 1560 |
+| `1080p H264 AC3 ... nickarad` (no source named) | 3000 | 1000: rejected |
 | `... -Ozlem` (banned uploader) | rejected | rejected |
 
 Both profiles upgrade on their own when a 1080p dual-audio release appears. To keep one particular big file, tag the title `keep` (used by the Download Doctor in a later release) or move it to a profile of your own.
@@ -67,18 +68,18 @@ Both profiles upgrade on their own when a 1080p dual-audio release appears. To k
 
 The pack's formats all start with a prefix, so you can tell them from your own. `{Lang}` is the second language you chose.
 
-| Format | `1080p Compact` | `Dual Audio First` | Matches |
+| Format | `1080p Compact` | `1080p Family` | Matches |
 | :--- | ---: | ---: | :--- |
 | `Res · 1080p` | +3000 | +1000 | Resolution 1080 |
 | `Lang · {Lang} + Original (named)` | +1500 | +3000 | A `{Lang}` token in the title, and the parsed languages include the original |
 | `Lang · {Lang} + Dual/Multi tag` | +1500 | +3000 | A `{Lang}` token plus `Dual Audio`, `Dual` or `Multi`, when the original isn't named |
-| `Lang · {Lang} only (original missing)` | −500 | −500 | A `{Lang}` dub without the original track |
+| `Lang · {Lang} only (original missing)` | −500 | +1500 | A `{Lang}` dub without the original track |
 | `Lang · Not Original or {Lang}` | −10000 | −10000 | Third-language-only releases (German-only, Italian-only). Without a second language it is `Lang · Not Original` |
-| `Eff · HEVC` | +400 | +200 | x265/HEVC at 720p or 1080p (TRaSH "x265 (HD)") |
+| `Eff · HEVC` | +250 movies, +150 TV | +150 | x265/HEVC at 720p or 1080p (TRaSH "x265 (HD)") |
 | `Size · Compact band` (Radarr) | +200 | 0 | Movies up to 6 GB |
 | `Size · Oversized` (Radarr) | −2000 | −500 | Movies above 10 GB |
-| `Src · Bluray` / `WEB-DL` / `WEBRip` | +60 / +50 / +40 | same | Gentle source preference inside the group |
-| `TV · Season Pack` (Sonarr) | +300 | +300 | Complete seasons (single old episodes are the deadest torrents) |
+| `Src · Bluray` / `WEB-DL` / `WEBRip` | +60 / +50 / +40 movies, +40 / +30 / +20 TV | same | Gentle source preference inside the group |
+| `TV · Season Pack` (Sonarr) | +150 | +150 | Complete seasons (single old episodes are the deadest torrents) |
 | `Fix · Repack/Proper`, `Repack2`, `Repack3` | +5 / +6 / +7 | same | Fixed releases |
 | `Compat · AV1` | −10000 | −10000 | AV1; many TV chips cannot decode it. Allowed when you say your players can |
 | `Compat · DV w/o HDR fallback` | −10000 | −10000 | Dolby Vision WEB releases without HDR10: wrong colours on non-DV screens |
@@ -93,8 +94,10 @@ Notes on language matching:
 * The apps recognise a language only by its full name ("hindi"); "Hin" and "Dual Audio" map to nothing, and a title without a language falls back to the film's original language. The pack's title tokens fill that gap.
 * Short tokens that are also ordinary words (`tel`, `mal`, `kan`) only count next to another language marker, so *Malcolm X* is not Malayalam.
 * Radarr reads `ESub`, `ESubs` and `MSubs` as burned-in subtitles; in Indian release names they mean soft subtitles. The pack adds them to Radarr's **Whitelisted Hardcoded Subs** (Settings → Indexers). Radarr matches that list as case-insensitive substrings and does not trim spaces, so the list is written without spaces.
-* A Hindi-only dub scores −500. At 1080p that still clears the minimum score (2500 in Compact), so it is a last resort; a 720p Hindi-only dub stays below 0 in both profiles and is not downloaded.
-* Upgrades of files already on disk use the same scores. A 9.7 GB x264 film (3050) is replaced by a 4.3 GB HEVC release (3650). HEVC alone is worth exactly the 400 upgrade step, so a bigger HEVC file still counts as an upgrade unless it leaves the compact band.
+* A Hindi-only dub scores −500 in Compact: a 1080p dub still clears the minimum score (2500 and up), so it is a last resort below any English 1080p release. In Family it scores +1500: a 1080p dub (2500) and a 720p dub (1500) are both accepted, below the dual-audio releases.
+* Family needs the language **in the release name**. An untagged release of a film whose original language is the second language (many international WEB releases of Hindi films carry no language tag) counts as having no second language and is rejected. Hindi-language films belong in Compact anyway: their original audio is Hindi.
+* Upgrades of files already on disk use the same scores, with an upgrade step of 400. Language, resolution (Family only), leaving the oversized range and moving into the compact band can reach it. HEVC, source, season pack and repack together add at most 317 (Compact movies), 217 (Family movies) or 347 (TV), so none of them causes an upgrade on its own.
+* Example: a 9.7 GB x264 film (3050) is replaced by a 4.3 GB HEVC release (3500, +450), and the new file is always the smaller one. A bigger HEVC file in the same band (+250) is not an upgrade. TV episodes are never upgraded for the codec alone (+150, or +300 as a season pack); making oversized episodes smaller is the compact replacement job of the Download Doctor (a later release).
 
 ## Size limits
 
@@ -109,7 +112,7 @@ Size limits are global in each app (shared by every profile), in MB per minute; 
 | Bluray-720p | 6 / 20 / 40 | 0.7–4.8 GB | 3 / 10 / 22 | 0.15–1.1 GB |
 | WEBDL / WEBRip-720p | 6 / 18 / 35 | 0.7–4.2 GB | 3 / 10 / 22 | 0.15–1.1 GB |
 
-The maximum leaves room for two audio tracks and blocks remux-sized files; the minimum stops sub-1.5 Mbit/s "1080p".
+The maximum leaves room for two audio tracks and blocks remux-sized files; the minimum stops sub-1.5 Mbit/s "1080p". The 720p rows only matter for `1080p Family`; `1080p Compact` takes no 720p.
 
 ## Choosing and changing your settings
 
@@ -118,7 +121,7 @@ The Setup Wizard's **Release preferences** step asks five questions and writes t
 | Question | Key | Values (default first) |
 | :--- | :--- | :--- |
 | Second audio language | `MEDIA_SECOND_LANGUAGE` | empty, `Hindi`, `Tamil`, `Telugu`, `Malayalam`, `Kannada`, `Bengali`, `Marathi`, `Spanish`, `French`, `German`, `Italian`, `Portuguese`, `Japanese`, `Korean`, `Arabic` |
-| Default profile for new titles | `MEDIA_DEFAULT_PROFILE` | `compact`, `dual-audio-first` (needs a language) |
+| Default profile for new titles | `MEDIA_DEFAULT_PROFILE` | `compact`, `family` (`1080p Family`, needs a language) |
 | What your TVs and players decode | `MEDIA_CODECS` | `hevc`; add `av1` and/or `dv` if they decode them; remove `hevc` if they cannot (HEVC is then blocked) |
 | Seeding | `MEDIA_SEEDING` | `while-it-helps`, `off` |
 | Stuck downloads | `MEDIA_STUCK_DOWNLOADS` | `replace`, `off` (used by the Download Doctor, a later release) |
@@ -139,6 +142,15 @@ Changing the language creates the new language's formats and rescores both profi
 Languages the app itself doesn't know (Sonarr has no Telugu, Kannada, Bengali or Marathi) are matched by title tokens only.
 
 ## Moving a title to the other profile
+
+Which profile a title should use:
+
+| Profile | Use it for |
+| :--- | :--- |
+| `1080p Compact` | Everything by default, including films in your second language (their original audio already is that language) |
+| `1080p Family` | Titles in another language that someone needs in your second language: it waits for a release with that language instead of downloading English-only. While none exists, the title stays missing and keeps being searched; switch it to `1080p Compact` to get English meanwhile |
+
+A title with no healthy 1080p release gets nothing in `1080p Compact`, which takes no 720p. If a 720p release with your second language exists, `1080p Family` will take it.
 
 | Where | How |
 | :--- | :--- |
@@ -168,7 +180,7 @@ sudo python3 scripts/wire_arr.py profiles migrate --config-dir /srv/homelab/appd
 What `apply` changes, and nothing else:
 
 * custom formats with the pack's prefixes (created or updated);
-* the `1080p Compact` and `Dual Audio First` profiles (updated in place, so Seerr's profile IDs stay valid);
+* the `1080p Compact` and `1080p Family` profiles (updated in place, so Seerr's profile IDs stay valid);
 * size limits for the qualities listed above;
 * Radarr's soft-subtitle whitelist (merged, never shrunk); the recycle bin (`/data/media/.recycle`, 7 days) only if none is set; the default delay profile's "bypass if score ≥ 4000";
 * Prowlarr: Full Sync on the Radarr and Sonarr links, minimum seeders 4 on the default app profile, and a `Live seeders` app profile (minimum 2) to assign to indexers with accurate counts;
@@ -194,12 +206,12 @@ Set `MEDIA_PROFILES=off` (or untick **Manage release profiles** in the wizard) a
 Work down the list:
 
 1. **Search interactively.** In Radarr/Sonarr, open the title → Search (the person icon). Every result shows its quality, score and the reason it was rejected. Nothing is grabbed until you click.
-2. **"Not wanted in profile" / quality.** Remux, 2160p, 480p and HDTV-720p are outside the `HD` group by design.
-3. **"Custom Formats ... score of -X is below minimum".** A −10000 format matched; hover the score to see which. Check the title against the format list above.
+2. **"Not wanted in profile" / quality.** Remux, 2160p, 480p and HDTV-720p are outside the `HD` group by design, and `1080p Compact` takes no 720p at all.
+3. **"Custom Formats ... score of X is below minimum".** A −10000 format matched; hover the score to see which, and check the title against the format list above. In `1080p Family` (minimum 1400) it also means the release name doesn't mention the second language.
 4. **"Hardcode subs found".** A tag other than `ESub`/`MSub`/`EngSub` looks burned in. Add it to Whitelisted Hardcoded Subs only if it really means soft subtitles.
 5. **"Original Language ... wanted".** The Radarr profile language must be `Any`; run `profiles check`.
 6. **"Larger than maximum allowed" / "smaller than minimum".** See [size limits](#size-limits).
-7. **Nothing found at all.** Indexers: Prowlarr → Indexers → Test All. Minimum seeders 4 hides releases with 0–3 seeders; rare titles may need an indexer on the `Live seeders` profile, or the `Dual Audio First` profile, which also accepts 720p.
+7. **Nothing found at all.** Indexers: Prowlarr → Indexers → Test All. Minimum seeders 4 hides releases with 0–3 seeders; rare titles may need an indexer on the `Live seeders` profile. If only 720p releases with the second language exist, `1080p Family` takes them.
 8. **Grabbed but stuck at 0%.** A dead torrent. Remove it from the app's queue (Activity → Queue → remove, with **Blocklist** and **Search again** ticked), never directly in qBittorrent, so the app blocklists it and picks the next release.
 9. **Profiles look wrong again.** Something else changed them: `profiles check` lists the differences; look for another sync tool on the server.
 

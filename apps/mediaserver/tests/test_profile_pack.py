@@ -38,6 +38,9 @@ RES = "Res · 1080p"
 HEVC = "Eff · HEVC"
 BD, WEBDL, WEBRIP = "Src · Bluray", "Src · WEB-DL", "Src · WEBRip"
 BAND, OVER = "Size · Compact band", "Size · Oversized"
+HINDI_FORMATS = {NAMED, DUAL, ONLY}
+COMPACT, FAMILY = "1080p Compact", "1080p Family"
+PROFILES = (COMPACT, FAMILY)
 
 # Quality names as the apps list them (lowest first), from GET /qualitydefinition.
 RADARR_QUALITIES = ["Unknown", "WORKPRINT", "CAM", "TELESYNC", "TELECINE", "REGIONAL", "DVDSCR", "SDTV", "DVD", "DVD-R",
@@ -115,14 +118,20 @@ def score(app, rel, profile_name, lang=HINDI, codecs=("hevc",)):
     return sum(scores.get(n, 0) for n in matched(app, rel, lang))
 
 
-def in_group(app, quality, profile_name="1080p Compact"):
+def in_group(app, quality, profile_name=COMPACT):
     return any(quality in e.get("qualities", [e.get("quality")]) for e in profile(app, profile_name)["qualities"])
+
+
+def quality_ok(rel, profile_name):
+    """`quality_ok` in the corpus means inside 1080p Family's group (1080p and 720p);
+    1080p Compact's group is 1080p only (revision 4)."""
+    return rel["quality_ok"] and (profile_name != COMPACT or rel["quality"].endswith("1080p"))
 
 
 # --------------------------------------------------------------------- corpus
 def R(n, title, original="English", languages=None, resolution=1080, source="unknown", quality=None, size_gb=None,
       group=None, release_type=None, app="radarr", lang=frozenset(), has=frozenset(), hasnot=frozenset(),
-      rejected=False, quality_ok=True, below_minimum=False):
+      rejected=False, quality_ok=True):
     if quality is None:
         names = {"bluray": "Bluray", "webdl": "WEBDL", "webrip": "WEBRip", "tv": "HDTV", "unknown": "HDTV"}
         quality = f"{names[source]}-{resolution}p" if resolution else "Unknown"
@@ -132,7 +141,7 @@ def R(n, title, original="English", languages=None, resolution=1080, source="unk
     return {"n": n, "app": app, "title": title, "original": original, "languages": languages or [original],
             "resolution": resolution, "source": source, "quality": quality, "size_gb": size_gb, "group": group,
             "release_type": release_type, "lang": set(lang), "has": set(has), "hasnot": set(hasnot),
-            "rejected": rejected, "quality_ok": quality_ok, "below_minimum": below_minimum}
+            "rejected": rejected, "quality_ok": quality_ok}
 
 
 # Appendix H of the Media Pipeline Reliability Plan. Languages are what Radarr/Sonarr
@@ -150,7 +159,7 @@ CORPUS = [
     R(5, "James Bond Goldfinger (1964) BRRip x264 AC3 [Dual Audio] [Hindi-", languages=["Hindi"], resolution=480,
       source="bluray", group="", lang={DUAL}, quality_ok=False),
     R(6, "James Bond   Goldfinger (1964) 720p BluRay Hindi DD 2.0   Esub ~AbhiSona~", languages=["Hindi"], resolution=720,
-      source="bluray", size_gb=1.4, group="", lang={ONLY}, has={BD}, below_minimum=True),
+      source="bluray", size_gb=1.4, group="", lang={ONLY}, has={BD}),
     R(7, "James Bond 007-GoldFinger(1964)HDTVrip[Dual audio][Eng Hindi]Cur", languages=["English", "Hindi"], resolution=0,
       source="tv", quality="Unknown", group="", lang={NAMED}, quality_ok=False),
     R(8, "Goldfinger (James Bond 3) (1964) [MicroHD 1080p][DUAL]", lang=set(), has={RES}),
@@ -215,40 +224,74 @@ class TestCorpus(unittest.TestCase):
                 self.assertTrue(rel["has"] <= got, f"#{rel['n']} missing {rel['has'] - got}; got {sorted(got)}")
                 self.assertFalse(rel["hasnot"] & got, f"#{rel['n']} must not match {rel['hasnot'] & got}")
                 self.assertFalse({NAMED, DUAL} <= got, "named and dual-tag must never both match")
-                self.assertEqual(in_group(rel["app"], rel["quality"]), rel["quality_ok"], f"quality {rel['quality']}")
-                for name in ("1080p Compact", "Dual Audio First"):
+                for name in PROFILES:
+                    self.assertEqual(in_group(rel["app"], rel["quality"], name), quality_ok(rel, name),
+                                     f"quality {rel['quality']} in {name}")
                     scores = profile(rel["app"], name)["scores"]
                     blocked = any(scores.get(n, 0) <= pp.BLOCK for n in got)
                     self.assertEqual(blocked, rel["rejected"], f"#{rel['n']} blocked in {name}: {sorted(got)}")
-                    if not blocked:
-                        below = score(rel["app"], rel, name) < profile(rel["app"], name)["min_format_score"]
-                        self.assertEqual(below, rel["below_minimum"], f"#{rel['n']} under the minimum score in {name}")
+                    if not blocked and quality_ok(rel, name):
+                        # Compact accepts every release that isn't blocked. Family requires the second
+                        # language (revision 4), so a release without a Hindi format stays under its
+                        # minimum score. That includes #20, an untagged release of a Hindi-original film.
+                        accepted = score(rel["app"], rel, name) >= profile(rel["app"], name)["min_format_score"]
+                        self.assertEqual(accepted, name == COMPACT or bool(got & HINDI_FORMATS),
+                                         f"#{rel['n']} accepted in {name}: {score(rel['app'], rel, name)}")
 
-    def test_hindi_only_is_a_1080p_last_resort(self):
-        """Hindi only (-500) leaves a 720p dub under the minimum score of 0 in both profiles;
-        at 1080p it is accepted (recorded in the plan's implementation notes)."""
+    def test_hindi_only_dubs(self):
+        """A dub without the original track: a last resort in Compact (-500, still above the
+        minimum at 1080p) and an accepted release in Family (+1500, at 1080p and 720p)."""
         dub_1080 = R(0, "Film (2020) 1080p BluRay Hindi DD 2.0 Esub", languages=["Hindi"], source="bluray")
-        self.assertEqual(score("radarr", dub_1080, "1080p Compact"), 3000 - 500 + 60)
-        self.assertGreater(score("radarr", dub_1080, "Dual Audio First"), 0)
+        english_1080 = R(0, "Film (2020) 1080p BluRay x264-GRP", source="bluray")
+        self.assertEqual(score("radarr", dub_1080, COMPACT), 3000 - 500 + 60)
+        self.assertLess(score("radarr", dub_1080, COMPACT), score("radarr", english_1080, COMPACT))
+        self.assertEqual(score("radarr", dub_1080, FAMILY), 1000 + 1500 + 60)
+        self.assertEqual(score("radarr", BY_N[6], FAMILY), 1500 + 60)
+        self.assertGreaterEqual(score("radarr", BY_N[6], FAMILY), profile("radarr", FAMILY)["min_format_score"])
 
     def test_untagged_1080p_ranks_below_tagged(self):
         self.assertEqual(matched("radarr", BY_N[17]) - {BAND}, {RES})
-        for name in ("1080p Compact", "Dual Audio First"):
+        for name in PROFILES:
             self.assertLess(score("radarr", BY_N[17], name), score("radarr", BY_N[13], name))
 
     def test_goldfinger_top_pick_in_both_profiles(self):
-        candidates = [r for r in CORPUS if r["app"] == "radarr" and r["title"].lower().find("goldfinger") >= 0
-                      and r["quality_ok"] and not r["rejected"]]
-        for name in ("1080p Compact", "Dual Audio First"):
+        for name in PROFILES:
+            candidates = [r for r in CORPUS if r["app"] == "radarr" and "goldfinger" in r["title"].lower()
+                          and quality_ok(r, name) and not r["rejected"]]
             ranked = sorted(candidates, key=lambda r: score("radarr", r, name), reverse=True)
             self.assertEqual(ranked[0]["n"], 1, f"{name}: {[(r['n'], score('radarr', r, name)) for r in ranked[:4]]}")
-        self.assertEqual(score("radarr", BY_N[1], "1080p Compact"), 3000 + 1500 + 400 + 200 + 60)
-        self.assertEqual(score("radarr", BY_N[1], "Dual Audio First"), 1000 + 3000 + 200 + 60)
+        self.assertEqual(score("radarr", BY_N[1], COMPACT), 3000 + 1500 + 250 + 200 + 60)
+        self.assertEqual(score("radarr", BY_N[1], FAMILY), 1000 + 3000 + 150 + 60)
 
-    def test_dual_audio_first_prefers_720p_dual_over_1080p_english(self):
-        dual_720, english_1080 = BY_N[3], BY_N[13]
-        self.assertGreater(score("radarr", dual_720, "Dual Audio First"), score("radarr", english_1080, "Dual Audio First"))
-        self.assertGreater(score("radarr", english_1080, "1080p Compact"), score("radarr", dual_720, "1080p Compact"))
+    def test_family_order(self):
+        """Revision 4: 1080p dual > 720p dual > 1080p Hindi only > 720p Hindi only, and
+        English-only releases are rejected (minimum score 1400)."""
+        fam_min = profile("radarr", FAMILY)["min_format_score"]
+        hindi_1080 = R(0, "Film (2020) 1080p BluRay Hindi DD 2.0 Esub", languages=["Hindi"], source="bluray")
+        ladder = [BY_N[22], BY_N[3], hindi_1080, BY_N[6]]
+        scores = [score("radarr", r, FAMILY) for r in ladder]
+        self.assertEqual(scores, [1000 + 3000 + 60, 3000 + 60, 1000 + 1500 + 60, 1500 + 60])
+        self.assertGreaterEqual(scores[-1], fam_min, "a 720p Hindi-only release passes")
+        best_english = R(0, "Film.2020.1080p.BluRay.REPACK3.x265-GRP", source="bluray")  # every extra that applies
+        self.assertEqual(score("radarr", best_english, FAMILY), 1000 + 150 + 60 + 7)
+        self.assertLess(score("radarr", best_english, FAMILY), fam_min, "English-only is rejected")
+        # TV: a season pack adds 150, and English-only still stays under the minimum.
+        best_english_pack = R(0, "Show.S01.1080p.BluRay.REPACK3.x265-GRP", app="sonarr", source="bluray", release_type=3)
+        hindi_720_episode = R(0, "Show S01E01 720p WEB-DL Hindi AAC", app="sonarr", languages=["Hindi"], resolution=720,
+                              source="webdl", release_type=1)
+        tv_min = profile("sonarr", FAMILY)["min_format_score"]
+        self.assertEqual(score("sonarr", best_english_pack, FAMILY), 1000 + 150 + 150 + 40 + 7)
+        self.assertLess(score("sonarr", best_english_pack, FAMILY), tv_min)
+        self.assertEqual(score("sonarr", hindi_720_episode, FAMILY), 1500 + 30)
+        self.assertGreaterEqual(score("sonarr", hindi_720_episode, FAMILY), tv_min)
+
+    def test_compact_is_1080p_only(self):
+        for app in pp.APPS:
+            for q in ("Bluray-720p", "WEBDL-720p", "WEBRip-720p"):
+                self.assertFalse(in_group(app, q, COMPACT), f"{app} Compact must reject {q}")
+                self.assertTrue(in_group(app, q, FAMILY), f"{app} Family keeps {q}")
+            self.assertTrue(all(q.endswith("1080p") for e in profile(app, COMPACT)["qualities"] for q in e["qualities"]))
+        self.assertFalse(quality_ok(BY_N[3], COMPACT), "720p dual audio is not wanted in Compact")
 
     def test_season_packs_rank_first(self):
         self.assertGreater(score("sonarr", BY_N[36], "1080p Compact"), score("sonarr", BY_N[35], "1080p Compact"))
@@ -263,21 +306,34 @@ class TestCorpus(unittest.TestCase):
         self.assertFalse(any(t.lower() in "korsub" for t in whitelist.split(",")), "real burned-in tags stay blocked")
 
     def test_space_reclaim_examples(self):
-        """Section 5.3: compact upgrades count only when they are worth 400 or more."""
+        """Compact movies (revision 4): HEVC moving into the compact band is +450, an upgrade,
+        and the new file is always smaller. A bigger HEVC file never counts as an upgrade."""
         base = dict(title="Film 2020 1080p WEB-DL x264-GRP", source="webdl", resolution=1080)
-        big_x264 = R(0, **dict(base, size_gb=9.7))
-        small_hevc = R(0, **dict(base, title="Film 2020 1080p WEB-DL HEVC-GRP", size_gb=4.3))
-        compact_x264 = R(0, **dict(base, size_gb=4.0))
-        bigger_hevc = R(0, **dict(base, title="Film 2020 1080p WEB-DL HEVC-GRP", size_gb=7.0))
-        huge = R(0, **dict(base, size_gb=11))
-        c = "1080p Compact"
-        self.assertEqual(score("radarr", big_x264, c), 3050)
-        self.assertEqual(score("radarr", small_hevc, c), 3650)
-        self.assertGreaterEqual(score("radarr", small_hevc, c) - score("radarr", big_x264, c), 400)
-        # A bigger HEVC file is held back only when it leaves the compact band (+400 - 200).
-        # Inside the same band HEVC alone is +400, which equals the increment (plan notes).
-        self.assertLess(score("radarr", bigger_hevc, c) - score("radarr", compact_x264, c), 400)
-        self.assertLess(score("radarr", huge, c), 3050 - 400)
+        hevc = dict(base, title="Film 2020 1080p WEB-DL HEVC-GRP")
+        big_x264, compact_x264, huge = (R(0, **dict(base, size_gb=gb)) for gb in (9.7, 4.0, 11))
+        small_hevc, band_hevc, out_hevc = (R(0, **dict(hevc, size_gb=gb)) for gb in (4.3, 5.5, 9.9))
+
+        def s(rel):
+            return score("radarr", rel, COMPACT)
+
+        self.assertEqual((s(big_x264), s(small_hevc)), (3050, 3500))
+        self.assertGreaterEqual(s(small_hevc) - s(big_x264), 400, "into the band with HEVC: an upgrade")
+        self.assertLess(s(band_hevc) - s(compact_x264), 400, "a bigger HEVC file in the same band")
+        self.assertLess(s(out_hevc) - s(big_x264), 400, "a bigger HEVC file, both outside the band")
+        self.assertLess(s(out_hevc) - s(compact_x264), 400, "an HEVC file that leaves the band")
+        self.assertLess(s(huge), 3050 - 400, "anything sensible replaces an oversized file")
+
+    def test_tv_codec_alone_never_upgrades(self):
+        """TV size savings go through the compact replacement job (plan section 8.6), never
+        through the score: x264 to HEVC is +150, or +300 as a season pack."""
+        x264 = R(0, "Show.S01E01.1080p.WEB-DL.x264-GRP", app="sonarr", source="webdl", release_type=1)
+        hevc = R(0, "Show.S01E01.1080p.WEB-DL.HEVC-GRP", app="sonarr", source="webdl", release_type=1)
+        hevc_pack = R(0, "Show.S01.1080p.WEB-DL.HEVC-GRP", app="sonarr", source="webdl", release_type=3)
+        for name in PROFILES:
+            step = profile("sonarr", name)["min_upgrade_format_score"]
+            self.assertEqual(score("sonarr", hevc, name) - score("sonarr", x264, name), 150, name)
+            self.assertEqual(score("sonarr", hevc_pack, name) - score("sonarr", x264, name), 300, name)
+            self.assertLess(300, step, name)
 
 
 class TestLanguages(unittest.TestCase):
@@ -342,18 +398,42 @@ class TestPackInvariants(unittest.TestCase):
                 self.assertEqual(res, sorted(res, reverse=True), "qualities are listed highest first")
                 self.assertEqual(prof["upgrade"]["until_quality"], prof["qualities"][0].get("group"))
 
+    @staticmethod
+    def best_extras(scores):
+        """The most the small tie-breakers add to one release: HEVC, one source, one repack
+        level and (Sonarr) the season pack. Sources exclude each other, and so do the repack levels."""
+        def top(prefix):
+            return max([s for n, s in scores.items() if n.startswith(prefix) and s > 0] + [0])
+        return top("Eff · ") + top("Src · ") + top("Fix · ") + top("TV · ")
+
+    def test_tie_breakers_stay_below_upgrade_step(self):
+        """Revision 4: HEVC, source, season pack and repack together stay below the upgrade
+        step, so none of them can trigger an upgrade on its own."""
+        expected = {("radarr", COMPACT): 317, ("radarr", FAMILY): 217, ("sonarr", COMPACT): 347, ("sonarr", FAMILY): 347}
+        for app in pp.APPS:
+            for lang in (HINDI, None):
+                for codecs in (["hevc"], ["hevc", "av1", "dv"]):
+                    for prof in pp.render_profiles(PACK, app, lang, codecs):
+                        extras = self.best_extras(prof["scores"])
+                        self.assertLess(extras, prof["min_upgrade_format_score"], f"{app} {prof['name']}")
+                        self.assertEqual(extras, expected[(app, prof["name"])], f"{app} {prof['name']}")
+
     def test_minimum_and_upgrade_scores_reachable(self):
-        tops = {"radarr": BY_N[1], "sonarr": None}
         for app in pp.APPS:
             for lang in (HINDI, None):
                 for prof in pp.render_profiles(PACK, app, lang, ["hevc"]):
-                    self.assertLessEqual(prof["min_format_score"], 0)
-                    positive = sum(s for n, s in prof["scores"].items() if s > 0 and not n.startswith("Lang · "))
-                    best_lang = max([s for n, s in prof["scores"].items() if n.startswith("Lang · ")] + [0])
-                    reachable = positive + best_lang - (300 if app == "sonarr" else 0)  # a season pack is not per episode
-                    self.assertGreaterEqual(reachable, prof["upgrade"]["until_score"], f"{app} {prof['name']}")
+                    sc, until = prof["scores"], prof["upgrade"]["until_score"]
+                    label = f"{app} {prof['name']} lang={lang and lang['name']}"
+                    best_lang = max([s for n, s in sc.items() if n.startswith("Lang · ")] + [0])
+                    # One file at its best: 1080p, the best language format, the compact band and every
+                    # tie-breaker except the season pack (an episode file is not a pack).
+                    pack_bonus = max(sc.get("TV · Season Pack", 0), 0)
+                    best = sc.get(RES, 0) + best_lang + max(sc.get(BAND, 0), 0) + self.best_extras(sc) - pack_bonus
+                    self.assertGreaterEqual(best, until, label)
+                    self.assertGreaterEqual(prof["min_format_score"], 0, label)
+                    self.assertLessEqual(prof["min_format_score"], until, label)
                     if app == "radarr" and lang is not None:
-                        self.assertGreaterEqual(score(app, tops[app], prof["name"]), prof["upgrade"]["until_score"])
+                        self.assertGreaterEqual(score(app, BY_N[1], prof["name"]), until, label)
 
     def test_codec_choices(self):
         blocked = profile("radarr", "1080p Compact", codecs=())["scores"]
@@ -563,7 +643,9 @@ class TestApplyCheckMigrate(unittest.TestCase):
         self.assertEqual(scores["Hindi Audio"], 50000, "legacy formats are only removed by migrate")
         self.assertEqual(scores[RES], 3000)
         self.assertEqual(len(compact["formatItems"]), len(self.radarr.db["customformat"]), "every format is listed")
-        self.assertTrue(any(p["name"] == "Dual Audio First" for p in self.sonarr.db["qualityprofile"]))
+        self.assertFalse(any(i["quality"]["name"].endswith("720p") for i in top["items"]), "Compact is 1080p only")
+        family = next(p for p in self.sonarr.db["qualityprofile"] if p["name"] == FAMILY)
+        self.assertEqual((family["minFormatScore"], family["cutoffFormatScore"]), (1400, 4000))
         self.assertEqual(self.radarr.config["config/indexer"]["whitelistedHardcodedSubs"], "ESub,ESubs,MSub,MSubs,EngSub,EngSubs")
         self.assertEqual(self.radarr.config["config/mediamanagement"]["recycleBin"], "/data/media/.recycle")
         bd = next(d for d in self.radarr.db["qualitydefinition"] if d["quality"]["name"] == "Bluray-1080p")
@@ -582,7 +664,10 @@ class TestApplyCheckMigrate(unittest.TestCase):
         r = self.runner(language=None)
         r.execute(r.plan())
         names = {p["name"] for p in self.radarr.db["qualityprofile"]}
-        self.assertNotIn("Dual Audio First", names)
+        self.assertNotIn(FAMILY, names)
+        for arr, until in ((self.radarr, 3200), (self.sonarr, 3000)):
+            compact = next(p for p in arr.db["qualityprofile"] if p["name"] == COMPACT)
+            self.assertEqual(compact["cutoffFormatScore"], until, f"{arr.name} upgrade-until without a language")
         formats = {f["name"] for f in self.radarr.db["customformat"]}
         self.assertIn("Lang · Not Original", formats)
         self.assertFalse(any("Hindi" in n and n.startswith("Lang") for n in formats))
@@ -651,11 +736,11 @@ class TestSettingsResolution(unittest.TestCase):
     def test_env_file_and_flags(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = Path(tmp) / "media.env"
-            env.write_text("MEDIA_PROFILES=on\nMEDIA_SECOND_LANGUAGE=Hindi\nMEDIA_DEFAULT_PROFILE=dual-audio-first\n"
+            env.write_text("MEDIA_PROFILES=on\nMEDIA_SECOND_LANGUAGE=Hindi\nMEDIA_DEFAULT_PROFILE=family\n"
                            "MEDIA_CODECS=hevc,av1\nMEDIA_SEEDING=off\nQBITTORRENT_PASS=pw\n", encoding="utf-8")
             s = wire_arr.resolve_pack_settings(self.args(env_file=str(env)), PACK)
             self.assertEqual((s["language_name"], s["default_profile_name"], s["codecs"], s["seeding"], s["qbit_pass"]),
-                             ("Hindi", "Dual Audio First", ["hevc", "av1"], "off", "pw"))
+                             ("Hindi", FAMILY, ["hevc", "av1"], "off", "pw"))
             s = wire_arr.resolve_pack_settings(self.args(env_file=str(env), language="Tamil", seeding="while-it-helps"), PACK)
             self.assertEqual((s["language_name"], s["seeding"]), ("Tamil", "while-it-helps"))
 
@@ -663,7 +748,7 @@ class TestSettingsResolution(unittest.TestCase):
         s = wire_arr.resolve_pack_settings(self.args(), PACK)
         self.assertEqual((s["enabled"], s["language"], s["default_profile"], s["codecs"]), (True, None, "compact", ["hevc"]))
         with self.assertRaises(ValueError):
-            wire_arr.resolve_pack_settings(self.args(default_profile="dual-audio-first"), PACK)
+            wire_arr.resolve_pack_settings(self.args(default_profile="family"), PACK)
         with self.assertRaises(ValueError):
             wire_arr.resolve_pack_settings(self.args(language="Klingon"), PACK)
 

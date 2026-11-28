@@ -93,14 +93,14 @@ A step in Power User Mode, next to the media extras. The answers are saved in th
 | Question | Config key | Env key | Choices (default first) |
 | :--- | :--- | :--- | :--- |
 | Second audio language | `media_second_language` | `MEDIA_SECOND_LANGUAGE` | None, or a language from `apps/mediaserver/profiles/languages.json` (Hindi, Tamil, Telugu, Spanish, ...) |
-| Default profile for new titles | `media_default_profile` | `MEDIA_DEFAULT_PROFILE` | `compact` (`1080p Compact`), `dual-audio-first` (needs a language) |
+| Default profile for new titles | `media_default_profile` | `MEDIA_DEFAULT_PROFILE` | `compact` (`1080p Compact`), `family` (`1080p Family`, needs a language) |
 | What can your TVs and players decode? | `media_codecs` | `MEDIA_CODECS` | `["hevc"]`; add `av1`, `dv` |
 | Seeding | `media_seeding` | `MEDIA_SEEDING` | `while-it-helps`, `off` |
 | Stuck downloads | `media_stuck_downloads` | `MEDIA_STUCK_DOWNLOADS` | `replace` (watch-only for the first 7 days), `off` |
 | Manage release profiles | `media_profiles` | `MEDIA_PROFILES` | `true`; `false` leaves profiles to you or Recyclarr |
 | (headless only) Public tracker list | `media_public_trackers` | `MEDIA_PUBLIC_TRACKERS` | `true`; `false` for private trackers |
 
-`/api/deploy` refuses invalid answers with HTTP 400 (for example `dual-audio-first` without a language). On an upgrade, a config without these keys keeps the existing `mediaserver.env` values, and a missing `MEDIA_PROFILES` means off, so an existing server's profiles are not overwritten until its owner opts in. What the profiles do: [release profiles guide](../docs/MEDIA_RELEASE_PROFILES.md).
+`/api/deploy` refuses invalid answers with HTTP 400 (for example `family` without a language). On an upgrade, a config without these keys keeps the existing `mediaserver.env` values, and a missing `MEDIA_PROFILES` means off, so an existing server's profiles are not overwritten until its owner opts in. What the profiles do: [release profiles guide](../docs/MEDIA_RELEASE_PROFILES.md).
 
 ---
 

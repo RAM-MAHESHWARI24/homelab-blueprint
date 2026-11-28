@@ -104,7 +104,7 @@ Find the most efficient entry point based on your current task:
 * **[Low-Power Direct Play Guide](HASWELL_DIRECT_PLAY_GUIDE.md)**
   * *Why it matters:* Optimization handbook for budget mini-PCs (Haswell Gen 4, Skylake, N100) to achieve 100% Direct Play and avoid transcoding bottlenecks.
 * **[Release Profiles and Dual Audio](MEDIA_RELEASE_PROFILES.md)**
-  * *Why it matters:* How Radarr and Sonarr rank releases, the `1080p Compact` and `Dual Audio First` profiles, changing the second language, moving from Recyclarr, a "why isn't it downloading?" checklist, and the seeding policy.
+  * *Why it matters:* How Radarr and Sonarr rank releases, the `1080p Compact` and `1080p Family` profiles, changing the second language, moving from Recyclarr, a "why isn't it downloading?" checklist, and the seeding policy.
 * **[Playing over SMB with Nova Video Player](SMB_PLAYBACK_WITH_NOVA.md)**
   * *Why it matters:* Watching the library on Android TVs from the Samba share: NFO metadata owned by Radarr/Sonarr, preferred audio and subtitle language, which codecs to allow, resume files and naming.
 * **[Power Management & RTC Wake](POWER_MANAGEMENT_RTCWAKE.md)**
