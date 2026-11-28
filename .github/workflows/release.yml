@@ -35,7 +35,7 @@ jobs:
           git archive --format=zip -o "dist/homelab-blueprint-${TAG}.zip" HEAD
 
       - name: Publish Release with Auto-Changelog
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name != 'develop' && github.ref_name != 'main' && github.ref_name || inputs.tag_name }}
           name: Homelab Blueprint ${{ github.ref_name != 'develop' && github.ref_name != 'main' && github.ref_name || inputs.tag_name }}
