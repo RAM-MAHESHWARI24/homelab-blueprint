@@ -3,6 +3,7 @@
 > **Status:** Phase 0 was applied on the live server on 2026-11-28 ([record](#phase-0-record-applied-2026-11-28)). Phase 1 is implemented in the repo ([implementation notes](#phase-1-implementation-notes)); the live server is migrated to it after merge. Later phases are not implemented yet.
 > **Revision 2 (2026-11-28):** updated with the owner's decisions (summarised just below), including NFO metadata for Nova and automatic compact replacement of oversized titles.
 > **Revision 3 (2026-11-28):** made self-contained for implementation in a new session: [section 0](#0-implementation-handoff-start-here) (handoff) and appendices F–K (live baseline, API cheat-sheet, test corpus, fixtures, safe observation, verification list).
+> **Revision 4 (2026-11-28):** the owner's decisions on the profiles and on scoring ([record](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)): `1080p Compact` is 1080p only, `1080p Family` replaces `Dual Audio First` and requires Hindi, and small tie-breakers never trigger an upgrade. Applied throughout this plan and in Phase 1 ([notes](#phase-1-implementation-notes)).
 > **Scope:** Prowlarr, Radarr, Sonarr, qBittorrent, Bazarr, Jellyfin, the Control Hub and the Setup Wizard. It also covers replacing Recyclarr.
 > **Evidence:** a read-only snapshot of the live server taken on 2026-11-28: API `GET` calls, a read-only look at config files, and two interactive searches (Radarr's "search without grabbing" endpoint). Server addresses, host names and account names are deliberately left out of this file.
 
@@ -17,7 +18,7 @@ Owner decisions (2026-11-28):
 
 | Topic | Decision | Effect on the plan |
 | :--- | :--- | :--- |
-| Profiles | Two profiles. **`Dual Audio First`**: a 720p dual-audio release wins. **`1080p Compact`**: best size-to-quality ratio | [Section 5.2](#52-two-profiles) |
+| Profiles | Two profiles. **`1080p Compact`**: the best 1080p (1080p only), dual audio preferred. **`1080p Family`**: Hindi required, English a bonus, 720p allowed, English-only rejected (revision 4; it replaced `Dual Audio First`) | [Section 5.2](#52-two-profiles) |
 | Playback | Over **SMB with Nova Video Player** on Android TVs | The TVs decode everything and the server never transcodes. HEVC is preferred; AV1 and Dolby Vision without a fallback are blocked. Jellyfin only stays as Seerr's backend ([section 7](#7-playback-over-smb-with-nova-video-player)) |
 | Seeding | Seed if it helps, otherwise a little. Bandwidth is plentiful; **disk, CPU and RAM are tight** | "Seed while it helps" policy ([section 5.7](#57-qbittorrent)); every component avoids new always-on services |
 | Build or adopt | Whatever is best for this setup and for a **few-click public installer** | Native Download Doctor ([section 8](#8-stuck-downloads-the-download-doctor)); **Recyclarr replaced by a repo-owned profile pack** ([section 5.9](#59-replacing-recyclarr-with-a-repo-owned-profile-pack)); a Setup Wizard step for these choices ([section 5.10](#510-any-second-language-and-a-setup-wizard-step)) |
@@ -45,6 +46,7 @@ Owner decisions (2026-11-28):
 15. [Risks](#15-risks)
 16. [References](#16-references)
 17. [Appendices](#appendices): A seeders · B custom formats · C profile pack layout · D evidence · E Decluttarr · [F live baseline](#appendix-f-live-baseline-2026-11-28) · [G API cheat-sheet](#appendix-g-api-cheat-sheet) · [H test corpus](#appendix-h-release-title-test-corpus) · [I Doctor fixtures](#appendix-i-download-doctor-test-fixtures) · [J observing the server](#appendix-j-observing-the-live-server-safely) · [K verify first](#appendix-k-verify-before-relying-on-it)
+18. [Revision 4: owner decisions on profiles and scoring](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)
 
 ---
 
@@ -59,7 +61,7 @@ Update this table when a phase lands.
 | Phase | Scope | Status | Branch / PR |
 | :--- | :--- | :--- | :--- |
 | 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Done 2026-11-28 (steps 1–9, 11–12 applied by an agent with approval; see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). The owner still does steps 10 and 11 on the TVs (Nova). 2-hour check pending | `docs/phase0-live-fixes` |
-| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review. After merge an agent (owner-approved) deploys it and runs `profiles migrate` on the live server ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
+| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review; revision 4 applied. After merge an agent (owner-approved) deploys it and runs `profiles migrate` on the live server ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
 | 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
 | 3 | Control Hub (six PRs) | Not started | — |
 | 4 | Housekeeping | Not started | — |
@@ -147,7 +149,7 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - Inside the pack's own profiles, a user's own format keeps its score; formats with pack prefixes get the pack's scores. Legacy formats keep their score until `migrate` deletes them, and `check` lists them as notes.
 
 **Behaviour choices.**
-- Without a second language: no `Dual Audio First`, no `Lang · {LANG}` formats, and a `Lang · Not Original` format (−10000) instead of `Not Original or {LANG}`. `1080p Compact`'s upgrade-until score drops to 3600 (Radarr) and 3400 (Sonarr), which is reachable without a language.
+- Without a second language: no `1080p Family`, no `Lang · {LANG}` formats, and a `Lang · Not Original` format (−10000) instead of `Not Original or {LANG}`. `1080p Compact`'s upgrade-until score drops to 3200 in Radarr (1080p in the compact band, or HEVC) and 3000 in Sonarr (any 1080p episode): without a language, no file at or above those scores can be upgraded any more.
 - Players that can't decode HEVC (HEVC unticked in the wizard) score `Eff · HEVC` −10000. Ticking AV1 or DV sets their `Compat ·` formats to 0.
 - A language an app doesn't know is matched by title tokens only (Sonarr has no Telugu, Kannada, Bengali or Marathi, and its Arabic id differs from Radarr's).
 - Short language tokens (`tel`, `mal`, `kan`) count only within 1–4 separator characters of another language marker, written without look-behind so the same regex runs in .NET and Python.
@@ -160,14 +162,25 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - Express mode in the wizard asks for the second language too; the other release preferences use their defaults there.
 - **Upgrades:** the schema migrator adds `MEDIA_PROFILES=off` to an existing `mediaserver.env`, and the installer keeps an existing install's `MEDIA_*` values when its config has no `media_*` keys. An upgraded server therefore keeps its current profiles until its owner opts in, which avoids two owners (Recyclarr and the pack) on servers other than this one.
 
-**Findings for the owner to decide** (the plan's scores were kept; tests assert the actual behaviour):
-1. **720p Hindi-only releases are rejected in both profiles.** `Lang · Hindi only` (−500) plus source and band leaves a 720p dub at −240 (Compact) or −440 (Dual Audio First), under the minimum score of 0. At 1080p a Hindi-only dub is accepted (2500 in Compact, 500 in Dual Audio First). If a 720p dub should be a last resort in `Dual Audio First`, its `Lang · Hindi only` score needs to be about −50 or the minimum score lowered.
-2. **A bigger HEVC file can still count as an upgrade.** Section 5.3 says an HEVC file bigger than the current one never does (+140 or less). With `Eff · HEVC` +400 and an upgrade step of 400, HEVC alone equals the step. A bigger HEVC release in the same size band as the current x264 file (both within 6 GB, or both between 6 and 10 GB) is therefore an upgrade; it is held back only when it leaves the compact band (+400 − 200). Setting the step to 401 or HEVC to +350 would fix this, but the latter also stops the x264 → HEVC episode upgrades that section 5.3 wants in Sonarr.
+**Revision 4, applied** ([record](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)). It settles both findings first raised here (kept below, struck through). What applying it changed:
+- `Dual Audio First` is renamed `1080p Family`: files `profiles/{radarr,sonarr}-1080p-family.json`, slug `family` for `MEDIA_DEFAULT_PROFILE`, and the wizard, installer and `install.sh` follow. Nothing was released under the old name, so there is no alias for it.
+- `1080p Compact`'s `HD` group holds only the four 1080p qualities, the same group Phase 0 set on the live server. Movies: HEVC +250. TV in both profiles: HEVC +150, season pack +150, sources +40/+30/+20.
+- `1080p Family`: dual audio +3000, Hindi only +1500, `Res · 1080p` +1000, HEVC +150, oversized −500, compact band 0; minimum score 1400, upgrade until 4000, step 400.
+- Upgrade-until scores sit where a file that can still be upgraded is below the line and one that can't is at or above it. Radarr Compact: 4700 with a language (1080p dual audio in the compact band, so an out-of-band dual-audio x264 file can still move into the band, +450) and 3200 without. Sonarr Compact: 4500 and 3000. Family: 4000.
+- `wire_arr.py` takes "needs a second language" from the profile's `requires_language` instead of a hard-coded slug.
+- New tests: the tie-breakers add at most 317 (Radarr Compact), 217 (Radarr Family) and 347 (Sonarr), all under the 400 step; Family's order, with the best English-only release at 1217 (1347 for a Sonarr season pack) under its minimum; Compact rejects 720p; codec changes never upgrade TV episodes.
+
+**Finding for the owner to decide** (raised while applying revision 4; tests assert today's behaviour):
+1. **`1080p Family` rejects untagged releases of Hindi-original films.** The language formats need a Hindi token in the release name. An untagged release of a Hindi film (corpus #20, and many international WEB-DLs) falls back to the original language, matches no `Lang ·` format and scores like English-only (about 1040). Compact is not affected, and the guide tells users to keep films in the second language on Compact. A fix: a Radarr-only format `Lang · {LANG} original (untagged)` (parsed language `{LANG}`, no `{LANG}` token) scored like dual audio, +3000 in Family and +1500 in Compact. That would also stop Compact from upgrading an untagged Hindi film to a tagged copy with the same audio (+1500). Check first how Sonarr labels untagged releases.
+
+**Findings settled by revision 4** (for the record):
+1. ~~**720p Hindi-only releases are rejected in both profiles.**~~ Compact now takes no 720p, and Family scores a Hindi-only dub +1500 against a minimum of 1400. The original finding: `Lang · Hindi only` (−500) plus source and band leaves a 720p dub at −240 (Compact) or −440 (Dual Audio First), under the minimum score of 0. At 1080p a Hindi-only dub is accepted (2500 in Compact, 500 in Dual Audio First). If a 720p dub should be a last resort in `Dual Audio First`, its `Lang · Hindi only` score needs to be about −50 or the minimum score lowered.
+2. ~~**A bigger HEVC file can still count as an upgrade.**~~ HEVC is now +250 (Compact movies) or +150, and the tie-breakers together stay under the 400 step. The original finding: section 5.3 says an HEVC file bigger than the current one never does (+140 or less). With `Eff · HEVC` +400 and an upgrade step of 400, HEVC alone equals the step. A bigger HEVC release in the same size band as the current x264 file (both within 6 GB, or both between 6 and 10 GB) is therefore an upgrade; it is held back only when it leaves the compact band (+400 − 200). Setting the step to 401 or HEVC to +350 would fix this, but the latter also stops the x264 → HEVC episode upgrades that section 5.3 wants in Sonarr.
 
 **Verification done.**
-- Corpus test (`apps/mediaserver/tests/test_profile_pack.py`): all 39 Appendix H titles (plus variants for #24 and #25 with and without the original language parsed) give the expected formats. Regexes run for real in Python's `re`; what the apps parse (resolution, source, languages, size, release type) is recorded per title. TRaSH's three variable-width look-behinds (BR-DISK, Sonarr Extras and Upscaled) are rewritten into equivalents for Python. *Goldfinger* #1 is the top pick in both profiles (5160 and 4260), packs outrank single episodes, and the section 5.3 space-reclaim numbers (3050 → 3650) hold.
+- Corpus test (`apps/mediaserver/tests/test_profile_pack.py`): all 39 Appendix H titles (plus variants for #24 and #25 with and without the original language parsed) give the expected formats. Regexes run for real in Python's `re`; what the apps parse (resolution, source, languages, size, release type) is recorded per title. TRaSH's three variable-width look-behinds (BR-DISK, Sonarr Extras and Upscaled) are rewritten into equivalents for Python. *Goldfinger* #1 is the top pick in both profiles (5010 in Compact and 4210 in Family since revision 4), packs outrank single episodes, and the section 5.3 space-reclaim numbers (3050 → 3500) hold.
 - `apply` then `check` against in-memory fakes reports no drift, `migrate` keeps profile ID 9, and an offline replay against the sanitised live snapshot (all apps' real objects) planned and applied cleanly with no drift afterwards.
-- **Live `profiles migrate --dry-run`** (2026-11-28, with the owner's OK; run before the release-profile cleanup above was added, so that deletion was not in its plan): run from a throwaway copy of `scripts/` and `profiles/` in `/tmp` on the server (removed afterwards), `--language Hindi --skip qbittorrent`, GET requests only. Exit 0, **60 planned changes**: 46 custom formats to create (24 Radarr, 22 Sonarr); `1080p Compact` updated in place in both apps (upgrade-until 10000 → 4500, increment 1 → 400, Radarr language Original → Any, one merged `HD` group including 720p, all pack scores); `Dual Audio First` created in both; the default delay profile's bypass in both; Sonarr's recycle bin; Prowlarr's `Live seeders` app profile; and 6 legacy formats deleted (`Hindi Audio` and `x265 (HD)` in both apps, `Season Complete` and `Multi Episode` in Sonarr). Already in place on the server at that time, so not planned: the size limits, Radarr's subtitle whitelist and recycle bin, Prowlarr Full Sync and minimum seeders, and removal of both `1080p Balanced` profiles (see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). qBittorrent was not checked (its password is in the root-only env file).
+- **Live `profiles migrate --dry-run`** (2026-11-28, with the owner's OK; run before the release-profile cleanup above was added, so that deletion was not in its plan): run from a throwaway copy of `scripts/` and `profiles/` in `/tmp` on the server (removed afterwards), `--language Hindi --skip qbittorrent`, GET requests only. Exit 0, **60 planned changes**: 46 custom formats to create (24 Radarr, 22 Sonarr); `1080p Compact` updated in place in both apps (upgrade-until 10000 → 4500, increment 1 → 400, Radarr language Original → Any, one merged `HD` group including 720p, all pack scores); `Dual Audio First` created in both; the default delay profile's bypass in both; Sonarr's recycle bin; Prowlarr's `Live seeders` app profile; and 6 legacy formats deleted (`Hindi Audio` and `x265 (HD)` in both apps, `Season Complete` and `Multi Episode` in Sonarr). Already in place on the server at that time, so not planned: the size limits, Radarr's subtitle whitelist and recycle bin, Prowlarr Full Sync and minimum seeders, and removal of both `1080p Balanced` profiles (see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). qBittorrent was not checked (its password is in the root-only env file). Revision 4 changes this plan: `1080p Family` instead of `Dual Audio First`, Radarr Compact upgrade-until 4700 instead of 4500, and Compact keeps the four 1080p qualities Phase 0 set. Run the dry run again before applying.
 - **Still to do on the live server after merge** (the owner approved an agent doing these):
   1. Recyclarr's cron line: already commented out in Phase 0; delete the line once the pack is live.
   2. Deploy through git: `/opt/homelab-blueprint` to `develop`, then restart `control-hub.service`.
@@ -225,10 +238,10 @@ All seven causes were confirmed on the live server.
 
 ### What the plan does
 
-1. **Two profiles.**
-   - **`1080p Compact`** (default): efficient 1080p first. HEVC preferred, file sizes kept in a compact band, oversized files penalised, and dual audio preferred *among* sensible 1080p releases.
-   - **`Dual Audio First`**: dual audio beats resolution, so a 720p dual-audio release beats a 1080p English one, then upgrades to 1080p dual audio.
-2. **Both profiles fix the ranking.** One merged HD quality group with explicit scores, so language and efficiency can matter more than an untagged "1080p" (RC1, RC4).
+1. **Two profiles** (revision 4).
+   - **`1080p Compact`** (default): the best 1080p, and 1080p only. HEVC preferred, file sizes kept in a compact band, oversized files penalised, and dual audio preferred among 1080p releases; English-only is fine.
+   - **`1080p Family`**: Hindi is required and English is a bonus, for family members who only understand Hindi. 1080p dual audio, then 720p dual audio, then 1080p and 720p Hindi-only; English-only releases are rejected.
+2. **Both profiles fix the ranking.** One merged HD quality group with explicit scores, so language and efficiency can matter more than an untagged "1080p" (RC1, RC4). Small tie-breakers such as HEVC never trigger an upgrade on their own.
 3. **A repo-owned profile pack replaces Recyclarr.**
    - The installer applies it, and the Control Hub re-applies it and shows any drift.
    - TRaSH formats are vendored with a weekly upstream check.
@@ -254,7 +267,7 @@ All seven causes were confirmed on the live server.
 11. **Control Hub:**
     - Switch on the media views (keys are missing).
     - A unified queue with health, and the Download Doctor card.
-    - Profile drift checks with a "re-apply" button, and a per-title "prefer dual audio" switch.
+    - Profile drift checks with a "re-apply" button, and a per-title `1080p Family` switch.
     - **"Now playing on the TVs"** from SMB, plus space-reclaim and indexer insights.
 
 **Expected result:**
@@ -461,16 +474,17 @@ Sonarr grabbed `Slow Horses S01E03/E05/E06` individually, from 2022 uploads. It 
 
 ### 5.2 Two profiles
 
-Both profiles exist in Radarr and Sonarr. `Dual Audio First` is only created when a second language is chosen.
+Both profiles exist in Radarr and Sonarr. `1080p Family` is only created when a second language is chosen. Revision 4 ([record](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) replaced the earlier `Dual Audio First` profile with `1080p Family` and made Compact 1080p-only.
 
-| Setting | `1080p Compact` (default) | `Dual Audio First` |
+| Setting | `1080p Compact` (default) | `1080p Family` |
 | :--- | :--- | :--- |
-| Purpose | Best quality per GB at 1080p. Dual audio preferred among 1080p releases of sensible size | Getting the second language is what matters. A 720p dual-audio release beats a 1080p one without it, then upgrades to 1080p dual |
-| Qualities | One group `HD`: Bluray-1080p, WEBDL-1080p, WEBRip-1080p, HDTV-1080p, Bluray-720p, WEBDL-720p, WEBRip-720p | Same group |
-| How 720p behaves | Fallback only. Any 1080p outranks any 720p (`Res · 1080p` +3000) | A 720p dual-audio release outranks a 1080p release without the language (dual +3000, `Res · 1080p` +1000) |
+| Purpose | The best 1080p. Dual audio preferred among 1080p releases; English-only is fine | Hindi is required and English is a bonus: the owner understands both, the parents only Hindi |
+| Qualities | One group `HD`: Bluray-1080p, WEBDL-1080p, WEBRip-1080p, HDTV-1080p | The same plus Bluray-720p, WEBDL-720p, WEBRip-720p |
+| Order | Dual audio first, then the most efficient 1080p release | 1080p Hindi + English, then 720p Hindi + English, then 1080p Hindi only, then 720p Hindi only. English-only: rejected |
+| No suitable release | A title with no healthy 1080p release goes to "needs attention" ([section 8.5](#85-escalation-sweeps-and-blocklist-hygiene)); the owner can switch it to `1080p Family` | The title stays missing and the weekly sweep keeps searching; switch it to `1080p Compact` to get English meanwhile |
 | Upgrade until quality | `HD` | `HD` |
-| Upgrade until score | 4500 (1080p with dual audio) | 4000 (1080p with dual audio) |
-| Minimum score | 0 | 0 |
+| Upgrade until score | 4700 in Radarr (1080p dual audio in the compact band), 4500 in Sonarr (1080p dual audio) | 4000 (1080p dual audio) |
+| Minimum score | 0 | **1400**: a 720p Hindi-only release (about 1,500) passes; the best English-only release (1,217 for a film, 1,347 for a season pack) fails |
 | Minimum score increment to upgrade | 400 | 400 |
 | Radarr profile language | Any | Any |
 
@@ -478,10 +492,10 @@ Both profiles exist in Radarr and Sonarr. `Dual Audio First` is only created whe
 
 | Where | How |
 | :--- | :--- |
-| Default for everything | `1080p Compact`: Seerr's default and the installer default |
-| Per request | In Seerr, users with the "Advanced Requests" permission pick `Dual Audio First` when requesting |
-| Per title, later | Control Hub "Prefer dual audio" switch (section 9.3). It moves the title to `Dual Audio First` and searches. Radarr's mass editor does the same in bulk |
-| Defaults for others | A household where most people need the second language can make `Dual Audio First` the default in the Setup Wizard ([section 5.10](#510-any-second-language-and-a-setup-wizard-step)) |
+| Default for everything | `1080p Compact`: Seerr's default and the installer default. Hindi-language films stay here too, because their original audio is Hindi |
+| Per request | In Seerr, users with the "Advanced Requests" permission pick `1080p Family` when requesting |
+| Per title, later | Control Hub `1080p Family` switch (section 9.3). It moves the title to `1080p Family` and searches. Radarr's mass editor does the same in bulk |
+| Defaults for others | A household where most people need the second language can make `1080p Family` the default in the Setup Wizard ([section 5.10](#510-any-second-language-and-a-setup-wizard-step)) |
 
 Housekeeping:
 - **Delete `1080p Balanced` and `1080p Balanced (Hindi)`** after moving their three titles. Their minimum score is unreachable.
@@ -491,18 +505,18 @@ Housekeeping:
 
 Specifications are in [Appendix B](#appendix-b-custom-format-specifications). Language formats are generated from the chosen language: `Hindi` here, `{Lang}` in the pack.
 
-| Custom format | `1080p Compact` | `Dual Audio First` | What it matches |
+| Custom format | `1080p Compact` | `1080p Family` | What it matches |
 | :--- | ---: | ---: | :--- |
-| Res · 1080p | **+3000** | +1000 | Resolution 1080 |
+| Res · 1080p | **+3000** | +1000 | Resolution 1080 (every release Compact accepts has it) |
 | Lang · Hindi + Original (named) | +1500 | **+3000** | A Hindi token, and the parsed languages include the original |
 | Lang · Hindi + Dual/Multi tag | +1500 | **+3000** | A Hindi token plus `Dual Audio`, `Dual` or `Multi`, when the original isn't named |
-| Lang · Hindi only (original missing) | −500 | −500 | A Hindi dub without the original track: an acceptable last resort |
+| Lang · Hindi only (original missing) | −500 | **+1500** | A Hindi dub without the original track: a last resort in Compact, accepted in Family |
 | Lang · Not Original or Hindi | −10000 | −10000 | Third-language-only releases, such as German-only or Italian-only |
-| Eff · HEVC (TRaSH "x265 (HD)") | **+400** | +200 | Efficient codec for 720p and 1080p |
+| Eff · HEVC (TRaSH "x265 (HD)") | **+250** (TV +150) | +150 | Efficient codec for 720p and 1080p; a tie-breaker |
 | Size · Compact band (movies, ≤ 6 GB) | +200 | 0 | Keeps the last mile of the size preference in Compact |
 | Size · Oversized (movies, > 10 GB) | **−2000** | −500 | Compact never picks a bulky file just for dual audio |
-| Src · Bluray / WEB-DL / WEBRip | +60 / +50 / +40 | +60 / +50 / +40 | Gentle source preference inside the merged group |
-| Season Pack (TRaSH, Sonarr) | +300 | +300 | Complete-season releases |
+| Src · Bluray / WEB-DL / WEBRip | +60 / +50 / +40 (TV +40 / +30 / +20) | same | Gentle source preference inside the merged group |
+| Season Pack (TRaSH, Sonarr) | +150 | +150 | Complete-season releases |
 | Repack/Proper, Repack2, Repack3 (TRaSH) | +5 / +6 / +7 | +5 / +6 / +7 | Fixed releases |
 | Compat · AV1 (TRaSH "AV1") | −10000 | −10000 | Many TV chips can't decode AV1 in hardware. Wizard switch to allow it |
 | Compat · DV without HDR10 fallback (TRaSH) | −10000 | −10000 | Wrong colours on players or TVs without Dolby Vision |
@@ -512,32 +526,34 @@ Specifications are in [Appendix B](#appendix-b-custom-format-specifications). La
 | Junk · Commentary editions | −10000 | −10000 | `RiffTrax` joke-commentary releases (*Casino Royale (2006) 1080p Rifftrax* was imported on 2026-11-26) |
 | BR-DISK, 3D, Extras, Upscaled (TRaSH) | −10000 | −10000 | Formats nobody wants here |
 
+**Tie-breakers never upgrade on their own** (revision 4). Only language, resolution, leaving the oversized range or moving into the compact band can reach the 400 upgrade step. HEVC, source, season pack and repack together add at most 317 (Compact movies), 217 (Family movies) or 347 (TV), and the tests enforce it.
+
 **Remove** the old `Hindi Audio` (+50,000) format and Sonarr's regex-based `Season Complete` and `Multi Episode` formats.
 
 **Worked example: *Goldfinger* (1964) in each profile.**
 
-| Release | Seeders | `1080p Compact` score | `Dual Audio First` score |
+| Release | Seeders | `1080p Compact` score | `1080p Family` score |
 | :--- | ---: | ---: | ---: |
-| `… 1080p BDRip HEVC [Hindi English] DDP 5.1`, 5.7 GB | 8 | 3000 + 1500 + 400 + 200 + 60 = **5160 (#1)** | 1000 + 3000 + 200 + 60 = **4260 (#1)** |
-| `… 1080p NF WEB-DL DDP5 1 Atmos H 264`, 5.2 GB | 23 | 3000 + 200 + 50 = 3250 | 1000 + 50 = 1050 |
-| `… 720p BluRay x264 Dual Audio [English + Hindi]`, 1.0 GB | 0 | Filtered out by minimum seeders | Would score 3000 + 60 = 3060 |
-| `… 1080p H264 AC3 … nickarad` (untagged), dead | — | 3000 + 200 = 3200 | 1000 |
+| `… 1080p BDRip HEVC [Hindi English] DDP 5.1`, 5.7 GB | 8 | 3000 + 1500 + 250 + 200 + 60 = **5010 (#1)** | 1000 + 3000 + 150 + 60 = **4210 (#1)** |
+| `… 1080p NF WEB-DL DDP5 1 Atmos H 264`, 5.2 GB | 23 | 3000 + 200 + 50 = 3250 | 1000 + 50 = 1050: rejected (under 1400) |
+| `… 720p BluRay x264 Dual Audio [English + Hindi]`, 1.0 GB | 0 | Not wanted (720p) | Filtered out by minimum seeders; would score 3000 + 60 = 3060 |
+| `… 1080p H264 AC3 … nickarad` (untagged), dead | — | 3000 + 200 = 3200 | 1000: rejected |
 | `007 James Bond Goldfinger … -Ozlem` | 104 | Rejected | Rejected |
 
 Two more patterns:
-- **When no 1080p dual-audio release exists:** Compact takes the efficient 1080p English release. Dual Audio First takes a seeded 720p dual-audio one.
+- **When no 1080p dual-audio release exists:** Compact takes the efficient 1080p English release. Family takes a seeded 720p dual-audio release, then a 1080p or 720p Hindi-only one, and otherwise waits.
 - **Both profiles** upgrade automatically when a 1080p dual-audio release appears.
 
 **Space reclaim by design (Compact).** Scores are also evaluated for files already on disk:
 - A 9.7 GB x264 film scores 3050.
-- A 4.3 GB HEVC release of it scores 3650. That is +600, over the 400 increment, so it counts as an upgrade.
-- An 11 GB file (−2000) is upgraded as soon as any compact release exists.
-- An HEVC file that is *bigger* than the current one never counts as an upgrade (+140 or less).
-- An x264 episode becomes upgradeable to any HEVC release (+400), and to an HEVC season pack (+700).
+- A 4.3 GB HEVC release of it scores 3500. HEVC moving into the band is +450, over the 400 increment, so it counts as an upgrade, and the new file is always the smaller one.
+- An 11 GB file (−2000) is upgraded as soon as any sensible release exists.
+- An HEVC file that is *bigger* than the current one never counts as an upgrade: +250 at most in the same band, +50 when it leaves the band.
+- TV episodes are never upgraded for the codec: x264 to HEVC is +150, or +300 as a season pack.
 
 These are ordinary upgrades: the app searches, grabs and imports, and only then moves the old file to the recycle bin.
 
-One case scores can't express: TV episodes that are **already HEVC but bloated** (16 of *Succession*'s 39). Sonarr's size condition can't measure a season pack per episode, so the compact replacement job handles those ([section 8.6](#86-compact-replacement-keep-hunting-for-smaller-versions)).
+TV is left to the compact replacement job entirely. Sonarr's size condition can't measure a season pack per episode, and codec alone no longer counts, so oversized episodes, x264 or HEVC (all 39 of *Succession*'s), are replaced there ([section 8.6](#86-compact-replacement-keep-hunting-for-smaller-versions)).
 
 To keep a particular big file, tag it `keep` or move it to a profile you control.
 
@@ -569,7 +585,7 @@ Why these numbers:
 - The maximum still fits **two audio tracks** (0.3–0.9 GB extra per film) and blocks remux-sized files.
 - The minimum stops sub-1.5 Mbit/s "1080p".
 - "Preferred" nudges the last tie-break towards compact files.
-- Compact's extra pressure on size comes from the HEVC, band and oversized formats. These limits are shared with `Dual Audio First`.
+- Compact's extra pressure on size comes from the HEVC, band and oversized formats. These limits are shared with `1080p Family`, the only profile that uses the 720p rows.
 
 ### 5.5 Radarr and Sonarr settings
 
@@ -699,7 +715,7 @@ Every token set ships with corpus tests, including known false positives such as
 | Question | Choices (default first) |
 | :--- | :--- |
 | Second audio language | None · Hindi · Tamil · … |
-| Default profile for new titles | `1080p Compact` · `Dual Audio First` (only when a second language is set) |
+| Default profile for new titles | `1080p Compact` · `1080p Family` (only when a second language is set) |
 | What can your TVs and players decode? | HEVC ✔ · AV1 ☐ · Dolby Vision ☐ |
 | Seeding | Seed while it helps · Don't seed after downloading |
 | Stuck downloads | Replace automatically (watch-only for the first 7 days) · Off |
@@ -714,16 +730,16 @@ The answers go to the installer config. `wire_arr.py profiles apply` runs at the
 | :--- | :--- | :--- |
 | Detect | Title tokens (`Hindi`/`Hin`, `Eng`, `Dual Audio`, `Multi`) plus parsed languages | Section 5.3 |
 | Don't lose it to quirks | `ESub` whitelisted; profile language `Any`; dual tag counts even when English isn't named | Section 5.5 |
-| Rank | **Compact:** 1080p first, then dual audio among sensible-size 1080p. **Dual Audio First:** dual audio first, at 720p or 1080p | Section 5.2 |
+| Rank | **Compact:** 1080p only, dual audio preferred, then efficiency. **Family:** Hindi required; dual audio first (1080p, then 720p), then Hindi only | Section 5.2 |
 | Grab when perfect | Delay profile bypass at score 4000 | Section 5.5 |
-| Upgrade later | English 1080p to dual 1080p is +1500 (Compact) or +3000 (Dual First), well over the 400 increment. **Needs a search:** the apps only notice older uploads when asked, so a weekly cutoff-unmet sweep runs (10 titles a day, oldest-searched first) | Section 8.5 |
+| Upgrade later | English 1080p to dual 1080p is +1500 in Compact. In Family, Hindi-only to dual is +1500 and 720p to 1080p is +1000. All are well over the 400 increment. **Needs a search:** the apps only notice older uploads when asked, so a weekly cutoff-unmet sweep runs (10 titles a day, oldest-searched first) | Section 8.5 |
 | Verify after import | Check real audio tracks from media info (`hin`, `eng`, `und`). Flag files with neither the original nor Hindi, and files tagged Hindi that carry no Hindi track. Offer "replace" | Section 9.4 |
 | Play | Nova's **preferred audio language** on each TV (Hindi on one, English on another), so dual files open in the right language. Subtitles: Bazarr keeps English always and Hindi only for Hindi audio (already set) | Section 7 |
 
 Three notes:
-- **No language in the title.** For releases without a language in the title, the apps assume the original language. A mislabelled file can therefore only be caught after import, which is why the media-info check exists. Example: *Quantum of Solace* is German-only.
+- **No language in the title.** For releases without a language in the title, the apps assume the original language. A mislabelled file can therefore only be caught after import, which is why the media-info check exists. Example: *Quantum of Solace* is German-only. The same rule means `1080p Family` sees no Hindi in an untagged release of a Hindi film and rejects it, so Hindi films stay on Compact (Phase 1 finding in [section 0](#phase-1-implementation-notes)).
 - **`und` tracks.** Treat `und` ("undetermined") audio as unknown, not wrong. Many Hindi encodes don't tag their tracks.
-- **South Indian films.** `Hindi + Tamil` (or `Multi Audio`) releases count as dual audio. A Hindi-only dub of a Tamil film scores −500, so the Tamil original wins unless a dual release exists.
+- **South Indian films.** `Hindi + Tamil` (or `Multi Audio`) releases count as dual audio. A Hindi-only dub of a Tamil film scores −500 in Compact, so the Tamil original wins there unless a dual release exists. Family accepts the dub (+1500), because Hindi is what it needs.
 
 ---
 
@@ -824,7 +840,7 @@ The Doctor checks every 10 minutes. Patience is measured in **awake** time (the 
 
 ### 8.5 Escalation, sweeps and blocklist hygiene
 
-- **Per-item cap.** Three replacements of the same movie or episode within 7 days marks it **"needs attention"**. Auto-replacement stops and an alert is sent. Usually no healthy release exists on your indexers yet. The dashboard offers an interactive-search link, "try again in 7 days", and "switch to `Dual Audio First`", which also accepts 720p.
+- **Per-item cap.** Three replacements of the same movie or episode within 7 days marks it **"needs attention"**. Auto-replacement stops and an alert is sent. Usually no healthy release exists on your indexers yet. The dashboard offers an interactive-search link, "try again in 7 days", and "switch to `1080p Family`", which also accepts 720p when it has Hindi.
 - **Cutoff-unmet sweep** (weekly, at most 10 titles a day, skipping anything searched in the last 14 days). This drives dual-audio upgrades and Compact's space reclaim. Oversized titles are searched first and more often ([section 8.6](#86-compact-replacement-keep-hunting-for-smaller-versions)).
 - **Blocklist pruning.** A monthly job deletes blocklist entries older than 60 days for titles that are still missing. Swarms do revive, and a permanent blocklist would hide them.
 - **Space-reclaim report** (weekly, report only; deletions are confirmed in the dashboard):
@@ -846,8 +862,8 @@ Goal (owner's request): for oversized titles on `1080p Compact`, keep looking fo
 
 | Path | When | Who does the work |
 | :--- | :--- | :--- |
-| Native upgrade | Films (size formats see per-file sizes for releases and files alike); TV episodes that are not yet HEVC | Radarr/Sonarr: the compact release scores at least 400 more, so the sweep's search grabs it and the app imports it as an upgrade. The old file is removed only after the new file imports |
-| Compact replacement job | TV episodes that are already HEVC but bloated (scores can't tell, because Sonarr's size condition can't measure season packs per episode) | The Download Doctor, as below |
+| Native upgrade | Films only (size formats see per-file sizes for releases and files alike) | Radarr: an HEVC release moving into the compact band scores +450, so the sweep's search grabs it and the app imports it as an upgrade. The old file is removed only after the new file imports |
+| Compact replacement job | All oversized TV episodes, x264 or HEVC. Since revision 4 codec alone never upgrades, and Sonarr's size condition can't measure season packs per episode | The Download Doctor, as below |
 
 **The compact replacement job** (part of the Download Doctor, every 6 hours, one title in flight at a time):
 
@@ -872,8 +888,7 @@ Goal (owner's request): for oversized titles on `1080p Compact`, keep looking fo
 - Watch-only for the first 7 days, like the rest of the Doctor.
 
 **Succession, walked through:**
-- The 23 x264 episodes go the native way: a compact HEVC season pack scores +700 over them.
-- The 16 bloated HEVC episodes go through the job, season by season.
+- All 39 episodes go through the job, season by season: the 23 x264 ones and the 16 bloated HEVC ones alike. A compact HEVC season pack is only +300 over x264, under the 400 step.
 - With healthy releases available, the four seasons finish in about a week. The dashboard shows *"Succession: S1 replaced (−22 GB), S2 downloading, S3–S4 queued"*.
 - Expected result: about 137 GB down to about 45 GB.
 
@@ -951,7 +966,7 @@ Also show a **"Recently replaced"** list with the outcome: did the replacement i
   - Redownload Failed on; recycle bin set;
   - no orphan profiles or blackhole cruft.
 - **Wizard choices editable here:** language, default profile, codec support, seeding and auto-replace.
-- **Per-title "Prefer dual audio" switch**, shown in the queue, wanted and library lists. It moves a title between `1080p Compact` and `Dual Audio First` and starts a search.
+- **Per-title `1080p Family` switch**, shown in the queue, wanted and library lists. It moves a title between `1080p Compact` and `1080p Family` and starts a search.
 
 These checks would have caught RC1, RC3, the unreachable profiles and the dead Ozlem block.
 
@@ -1052,7 +1067,7 @@ Do these in order. Nothing here needs code, and each step can be undone.
 2. **Stop Recyclarr.** Remove (or comment out) its line in the server user's crontab, or the 06:30 sync reverts steps 3–4. It won't be needed again once the pack ships.
 3. **Merge the 1080p qualities** in `1080p Compact` (Radarr and Sonarr) into one group at the top: Bluray, WEBDL, WEBRip and HDTV-1080p.
    - Keep the existing `Hindi Audio` format and Radarr's profile language `Original` for now. Switching to `Any` waits for the Phase 1 language formats, otherwise Hindi-only dubs of English films would win.
-   - `Dual Audio First` arrives with the pack in Phase 1.
+   - The second profile (`1080p Family` since revision 4) arrives with the pack in Phase 1.
 4. **Set the size limits** from section 5.4 (both apps).
 5. **Radarr:** fill in Whitelisted Hardcoded Subs (section 5.5).
 6. **Prowlarr:** Full Sync for both apps; app profile minimum seeders 4; priorities from section 5.6.
@@ -1199,7 +1214,7 @@ Every change ships with its documentation, following [AGENTS.md](AGENTS.md) §3:
 
 | # | Question | Answer (2026-11-28) |
 | ---: | :--- | :--- |
-| 1 | Should a 720p dual-audio release beat a 1080p English one? | **Only in a separate `Dual Audio First` profile.** `1080p Compact` stays best quality per GB |
+| 1 | Should a 720p dual-audio release beat a 1080p English one? | **Only in the separate `1080p Family` profile**, which since revision 4 requires Hindi and rejects English-only releases. `1080p Compact` is 1080p only |
 | 2 | 4K? | No: 1080p (disk) |
 | 3 | Do the players handle HEVC? | **Yes: SMB with Nova Video Player** on Android TVs |
 | 4 | Seeding | **Seed while it helps** (ratio 1.0 / 24 h / 60 idle minutes), with the evening upload limit |
@@ -1207,6 +1222,8 @@ Every change ships with its documentation, following [AGENTS.md](AGENTS.md) §3:
 | 6 | Build or adopt the cleaner? | **Native Download Doctor**, plus the repo-owned profile pack instead of Recyclarr |
 | 7 | Library metadata for Nova | **Nova reads and writes NFO files.** Radarr/Sonarr own them; Nova's export off |
 | 8 | Oversized titles such as *Succession* | **Keep hunting for compact versions;** delete old files only after a verified import (section 8.6) |
+| 14 | Who is the second profile for? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **`1080p Family`: Hindi required, English a bonus.** The owner understands both, the parents only Hindi. 1080p dual > 720p dual > 1080p Hindi only > 720p Hindi only; English-only rejected (minimum score 1400) |
+| 15 | May HEVC or other small extras trigger an upgrade? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **No.** Only language, resolution, leaving the oversized range or moving into the compact band; the extras together stay under the 400 step. TV size savings go through the compact replacement job |
 
 Still open, with the default the plan uses:
 
@@ -1214,7 +1231,7 @@ Still open, with the default the plan uses:
 | ---: | :--- | :--- |
 | 9 | VPN for torrent traffic? | None. If wanted, use a VPN with port forwarding, or connectability (and thin swarms) get worse |
 | 10 | Do any TVs decode AV1 in hardware, or have Dolby Vision? | Assume no: AV1 and DV without fallback are blocked; the wizard can allow them |
-| 11 | Make `Dual Audio First` the default for some Seerr users (for example, parents' accounts)? | No: `1080p Compact` for everyone, with per-request choice for users with Advanced Requests |
+| 11 | Make `1080p Family` the default for some Seerr users (for example, parents' accounts)? | No: `1080p Compact` for everyone, with per-request choice for users with Advanced Requests |
 | 12 | More storage? | Not needed for now if the Compact sweep and compact replacement reclaim about 140 GB |
 | 13 | Compact replacement thresholds | Films above 55 MB/min, TV above 30 MB/min, replacement at least 35% smaller |
 
@@ -1224,7 +1241,8 @@ Still open, with the default the plan uses:
 
 | Risk | Mitigation |
 | :--- | :--- |
-| Minimum seeders 4 hides rare Hindi titles | Two Prowlarr profiles (strict and live); "needs attention" list; per-title switch to `Dual Audio First` (which also accepts 720p) |
+| Minimum seeders 4 hides rare Hindi titles | Two Prowlarr profiles (strict and live); "needs attention" list; per-title switch to `1080p Family` (which also accepts 720p, with Hindi) |
+| `1080p Family` misses Hindi audio that the release name doesn't mention | Hindi films stay on Compact; the fix proposed in the Phase 1 finding ([section 0](#phase-1-implementation-notes)) |
 | Regex false positives (`Line` in titles, `Hin`, short language tokens) | Adjacency rules in the regexes, a corpus test, Radarr's custom format test tool, and monitoring rejection reasons |
 | Compact's space-reclaim upgrades swap a source-quality file for a re-encode | Only when the re-encode is in the compact band and scores at least 400 more; `keep` tag; recycle bin |
 | Compact replacement swaps in a worse encode | Only when at least 35% smaller per minute **and** above the size floor; same or higher resolution; language no worse; verified after import; restore from the recycle bin; `keep` tag and "never compact this title" |
@@ -1383,9 +1401,9 @@ apps/mediaserver/profiles/
 │   └── sonarr/season-pack.json
 ├── profiles/
 │   ├── radarr-1080p-compact.json
-│   ├── radarr-dual-audio-first.json
+│   ├── radarr-1080p-family.json
 │   ├── sonarr-1080p-compact.json
-│   └── sonarr-dual-audio-first.json
+│   └── sonarr-1080p-family.json
 └── quality_definitions/
     ├── radarr.json
     └── sonarr.json
@@ -1395,11 +1413,11 @@ Profile file shape. Qualities are listed **highest first**; the tests enforce it
 
 ```json
 {
-  "name": "Dual Audio First",
+  "name": "1080p Family",
   "requires_language": true,
   "language": "Any",
   "upgrade": {"allowed": true, "until_quality": "HD", "until_score": 4000},
-  "min_format_score": 0,
+  "min_format_score": 1400,
   "min_upgrade_format_score": 400,
   "qualities": [
     {"group": "HD", "qualities": ["Bluray-1080p", "WEBDL-1080p", "WEBRip-1080p", "HDTV-1080p", "Bluray-720p", "WEBDL-720p", "WEBRip-720p"]}
@@ -1408,9 +1426,9 @@ Profile file shape. Qualities are listed **highest first**; the tests enforce it
     "Lang · {LANG} + Original (named)": 3000,
     "Lang · {LANG} + Dual/Multi tag": 3000,
     "Res · 1080p": 1000,
-    "Lang · {LANG} only (original missing)": -500,
+    "Lang · {LANG} only (original missing)": 1500,
     "Lang · Not Original or {LANG}": -10000,
-    "Eff · HEVC": 200,
+    "Eff · HEVC": 150,
     "Size · Oversized": -500
   }
 }
@@ -1793,10 +1811,10 @@ Real titles seen on 2026-11-28 (plus marked synthetic ones). The Phase 1 corpus 
 | ---: | :--- | :--- | :--- |
 | 1 | `Goldfinger (1964) DS4K 1080p BDRip HEVC [Hindi English] DDP 5.1 – PeruGuy` | Radarr search | Dual (named), Res · 1080p, Eff · HEVC, Src · Bluray. **Top pick in both profiles** |
 | 2 | `Goldfinger 1964 BDRip 1080p Dual Audio [ Hindi 2.0 Eng 5.1] Tariq Qureshi.mkv` | Radarr search | Dual (named; "Eng" parses as English), Res · 1080p, Src · Bluray |
-| 3 | `James Bond   Goldfinger (1964) 720p BluRay x264 Dual Audio [English + Hindi]   Bond93   TBI` | Radarr search | Dual (named), Src · Bluray (720p) |
+| 3 | `James Bond   Goldfinger (1964) 720p BluRay x264 Dual Audio [English + Hindi]   Bond93   TBI` | Radarr search | Dual (named), Src · Bluray. 720p, so only `1080p Family` takes it |
 | 4 | `Goldfinger (1964) \| m-HD \| 720p \| Hindi \| Eng \| BHATTI87` | Radarr search | Dual (named). Parses as HDTV-720p, which is outside the profile group |
 | 5 | `James Bond Goldfinger (1964) BRRip x264 AC3 [Dual Audio] [Hindi-` | Radarr search (title cut off by the indexer) | Dual (tag; original not parsed). 480p, so rejected by quality |
-| 6 | `James Bond   Goldfinger (1964) 720p BluRay Hindi DD 2.0   Esub ~AbhiSona~` | Radarr search | Lang · Hindi only (−500), Src · Bluray. **Must not** be rejected as hardcoded subs once `ESub` is whitelisted |
+| 6 | `James Bond   Goldfinger (1964) 720p BluRay Hindi DD 2.0   Esub ~AbhiSona~` | Radarr search | Lang · Hindi only, Src · Bluray. 720p, so only `1080p Family` takes it (1560). **Must not** be rejected as hardcoded subs once `ESub` is whitelisted |
 | 7 | `James Bond 007-GoldFinger(1964)HDTVrip[Dual audio][Eng Hindi]Cur` | Radarr search | Dual (named). Quality unknown, so rejected |
 | 8 | `Goldfinger (James Bond 3) (1964) [MicroHD 1080p][DUAL]` | Radarr search | No language match: `DUAL` without a Hindi token is not Hindi |
 | 9 | `007 James Bond Goldfinger 1964 1080p BluRay x264 AC3 -Ozlem` | Radarr search | Junk · Banned uploaders, so rejected |
@@ -1810,13 +1828,13 @@ Real titles seen on 2026-11-28 (plus marked synthetic ones). The Phase 1 corpus 
 | 17 | `Goldfinger (1964)-JAMES BOND-Sean Connery-1080p-H264-AC 3 (DolbyDigital-5.1) & nickarad` | The dead torrent in the queue | No source, so HDTV-1080p (untagged): Res · 1080p only. Ranks below tagged releases |
 | 18 | `Goldfinger.1964.1080p.BluRay.REMUX-DDB` | Radarr search | Remux, not in profile |
 | 19 | `Casino Royale (2006) 1080p Rifftrax 6ch 2ch v2` | Radarr history (imported) | Junk · Commentary editions, so rejected |
-| 20 | `Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS` | Radarr history (Hindi original) | Src · WEBRip, no language match (untagged; language falls back to Hindi = original) |
+| 20 | `Drishyam the Conclusion (2026) 1080p WEBRip 5.1 x264 -YTS` | Radarr history (Hindi original) | Src · WEBRip, no language match (untagged; language falls back to Hindi = original). Rejected in `1080p Family` (Phase 1 finding) |
 | 21 | `Drishyam 2 (2022) Hindi 1080p WEB-DL DD5.1 ESub` | synthetic (Hindi original) | Dual (named: Hindi is the original), Src · WEB-DL |
 | 22 | `Oppenheimer (2023) 1080p BluRay [Hindi DD5.1 + English DD5.1] x264 ESubs` | synthetic | Dual (named), Src · Bluray |
 | 23 | `Movie.2023.1080p.AMZN.WEB-DL.DDP5.1.Hindi.English.x264-GRP` | synthetic | Dual (named), Src · WEB-DL |
 | 24 | `Kantara (2022) Dual Audio [Hindi + Kannada] 1080p WEB-DL` | synthetic (Kannada original) | Dual (named if Kannada parses, otherwise tag) |
 | 25 | `Pushpa 2 (2024) Multi Audio [Hindi Tamil Telugu Malayalam Kannada] 1080p WEB-DL` | synthetic (Telugu original) | Dual (named or tag) |
-| 26 | `Vikram (2022) Hindi Dubbed 1080p WEB-DL` | synthetic (Tamil original) | Lang · Hindi only (−500) |
+| 26 | `Vikram (2022) Hindi Dubbed 1080p WEB-DL` | synthetic (Tamil original) | Lang · Hindi only (−500 in Compact, +1500 in Family) |
 | 27 | `Movie (2023) Hindi LiNE 1080p HQ HDTC x264` | synthetic | Junk · Line/cam audio and Junk · Cam, so rejected |
 | 28 | `Movie 2024 Hindi (Cleaned) 720p PreDVDRip` | synthetic | Junk · Line/cam audio and Junk · Cam, so rejected |
 | 29 | `The Thin Red Line (1998) Hindi Dual Audio 1080p BluRay` | synthetic guard | Dual. **Not** Junk · Line |
