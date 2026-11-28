@@ -236,10 +236,20 @@ def migrate_single_env(
             "message": f"[DRY-RUN] Would inject {len(missing_keys)} missing key(s) into {env_path.name}.",
         }
 
-    # Atomic write via temporary file
+    # Atomic write via a temporary file that is private from the start and gets the
+    # original's mode and owner before it replaces it: env files hold secrets
+    # (mediaserver.env is 0600 root:root, control-hub.env 0640 root:homelab).
     temp_path = env_path.with_suffix(".tmp")
-    with open(temp_path, "w", encoding="utf-8") as f:
+    original = env_path.stat()
+    fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(new_content)
+    os.chmod(temp_path, original.st_mode & 0o7777)
+    if hasattr(os, "chown"):
+        try:
+            os.chown(temp_path, original.st_uid, original.st_gid)
+        except PermissionError:
+            pass  # not root: the file stays ours, with the original's mode
     temp_path.replace(env_path)
 
     return {
