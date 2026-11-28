@@ -221,6 +221,44 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
   - Jellyfin and Bazarr settings, through `wire_arr.py` or documented manual steps.
 - **Remove:** the stale files on the server listed in [Appendix F](#appendix-f-live-baseline-2026-11-28), after the owner confirms.
 
+### Phase 2 implementation notes
+
+**Split into two PRs.**
+- **2a, this one:** the `stuck`, `sweep` and `prune` jobs, the schedule, state files, installer step, ADR-0005 and `docs/DOWNLOAD_DOCTOR.md`.
+- **2b, next:** the compact replacement job (section 8.6) and the weekly space report. It depends on Appendix K items 3–5 (how Sonarr sizes season packs, grabbing a release the app calls "not an upgrade", and a manual import over existing files). Those need one owner-approved test on the live server first. Splitting means stuck-download replacement doesn't wait for them.
+
+**Code layout.**
+- `apps/mediaserver/scripts/download_doctor.py`: class `Doctor` with `run_stuck()`, `run_sweep()` and `run_prune()`.
+- It reuses `ArrClient` and the API-key reader from `auto_import.py`, and `QBit` (cookie login) and `read_env_file` from `wire_arr.py`, all in the same module folder.
+- `host/cron/mediaserver-download-doctor`: `stuck` every 10 minutes, `sweep` daily at 07:15 and `prune` at 07:45 on the 1st, serialised with `flock`. The installer creates `<state>/download-doctor/` (0755: `status.json` holds no secrets) and records both in the install manifest.
+
+**Behaviour choices.**
+- **Circuit breaker.** It counts torrents that turned bad *in the same check* (healthy in the previous one), not every torrent that is bad. Section 8.4 says "look bad at once", and Appendix I expects the Doctor to act on the 20 long-dead torrents within its rate limits while qBittorrent is connected. A network blip flips many torrents in one check; a backlog of dead ones does not.
+- **Watch-only.** Each decision is logged once per torrent and reason, not every 10 minutes. The "needs attention" cap counts real replacements only.
+- **Sweep** runs daily: 10 titles a day, each at most every 14 days, is the plan's weekly sweep spread over the week. It reads each file's custom-format score against its profile's upgrade-until score instead of trusting the apps' Cutoff Unmet list (Appendix K item 18). It is also watch-only for the first 7 days.
+- **Off switch.** `MEDIA_STUCK_DOWNLOADS=off` switches off every job, not only replacement. No new env keys: the watch-only period starts with the first run and is stored in `state.json`.
+- **qBittorrent login** uses the cookie session from `wire_arr.py`; the 5.2+ API key (Appendix K item 6) is not needed yet.
+- The Control Hub card, alert rules and the status-file path in `control-hub.env` stay in Phase 3, as planned.
+
+**Verification.**
+- 20 tests in `apps/mediaserver/tests/test_download_doctor.py` (section 8.8 and Appendix I):
+  - metadata stuck → replaced after 2 awake hours;
+  - 99.8% done with availability 0.998 → replaced at 12 hours;
+  - 99% with a full copy → re-announced once, replaced at 24 hours, not 12;
+  - no strikes after a wake-up or with thin DHT; new bytes reset the count;
+  - seeding, manual, other-category, `keep` and private torrents untouched;
+  - a season pack → one bulk delete;
+  - client error → no blocklist; queued → alert only; permanent import block → replaced;
+  - watch-only and off change nothing;
+  - the circuit breaker trips when torrents turn bad at once;
+  - the 20-torrent backlog goes 3 per run and 15 per day;
+  - "needs attention" after 3 replacements in 7 days;
+  - the sweep puts oversized titles first, caps 10 a day and groups episodes into season searches;
+  - prune touches only old entries for missing titles.
+- **Live trial** (read-only, 2026-11-29: a copy in `/tmp` with `--dry-run` and a scratch state folder, removed afterwards):
+  - all 3 torrents in qBittorrent were recognised as managed and classified correctly: *Goldfinger* (4%, availability below 1) and *Spectre* dead, *Thunderball* stuck on metadata;
+  - the sweep found 89 candidates, oversized first (*Supergirl*, *Jaws*, then the *Succession* seasons).
+
 ---
 
 ## 1. Summary
@@ -1939,7 +1977,7 @@ Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleare
 | 4 | `POST /release` grabbing a release rejected as "not an upgrade" | One test episode, Doctor in dry-run mode first |
 | 5 | `ManualImport` over an existing file sends the old file to the recycle bin and imports the new one | One test episode, recycle bin enabled |
 | 6 | qBittorrent 5.2+ API key: where it's created and the request header | qBittorrent WebUI options and release notes |
-| 7 | Field name for private torrents in `torrents/info` | Inspect a known private torrent, or the qBittorrent source |
+| 7 | ~~Field name for private torrents in `torrents/info`~~ **Cleared** in Phase 2: `private` (qBittorrent 5.3.0, live) | Inspect a known private torrent, or the qBittorrent source |
 | 8 | Nova setting names (preferred audio and subtitle language, NFO export) and which NFO name it reads (`movie.nfo` or `<file>.nfo`) | On a TV. Match Radarr's `useMovieNfo` |
 | 9 | Which Seerr permission lets users pick a quality profile per request | Seerr user permissions ("Advanced Requests") |
 | 10 | Jellyfin's real-time monitoring default when the library options don't set it | Jellyfin dashboard → Libraries |
@@ -1950,6 +1988,7 @@ Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleare
 | 15 | A sudoers line for `smbstatus --json` (sudoers matches arguments exactly) | `sudo -n /usr/bin/smbstatus --json` as the `homelab` user |
 | 16 | ~~`max_ratio_act` 0 means "stop torrent" on 5.3~~ **Cleared** in Phase 0: yes | qBittorrent WebUI shows the action next to the seeding limits |
 | 17 | Decluttarr key names | Only if Appendix E is used: its `config_example.yaml` |
+| 18 | ~~Whether the apps' Cutoff Unmet list includes files below the custom-format cutoff~~ **Cleared** in Phase 2: **no** in Radarr 7.0.3 (7 listed against 53 files below 4700), so the sweep reads file scores itself | `GET /api/v3/wanted/cutoff` against `GET /api/v3/moviefile` scores |
 
 **K.1 TRaSH IDs** (upstream commit `1b0f1de51f85f7fcd6abdbf60f788d3f3cf9edfd`, 2026-11-28; files vendored byte-for-byte under `apps/mediaserver/profiles/trash/`):
 

@@ -417,8 +417,26 @@ class Deployment:
             if autoimport_cron.exists():
                 install_cron(autoimport_cron, "mediaserver-autoimport", self.manifest, variables=self.template_vars())
                 self.log("Installed Radarr/Sonarr title-verified auto-import cron job.")
+            self._install_download_doctor(module_dir)
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
+
+    def _install_download_doctor(self, module_dir: Path) -> None:
+        """Stuck downloads every 10 minutes, a daily cutoff sweep and a monthly blocklist prune
+        (docs/DOWNLOAD_DOCTOR.md). Watch-only for its first 7 days; MEDIA_STUCK_DOWNLOADS=off stops it."""
+        cron = module_dir / "host" / "cron" / "mediaserver-download-doctor"
+        if not cron.exists():
+            return
+        doctor_dir = self.state_dir / "download-doctor"
+        try:
+            doctor_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(doctor_dir, 0o755)  # status.json is read by the Control Hub; it holds no secrets
+            self.manifest.add_dir(doctor_dir)
+        except OSError as e:
+            self.warn(f"could not create {doctor_dir}: {e}; Download Doctor not installed")
+            return
+        install_cron(cron, "mediaserver-download-doctor", self.manifest, variables=self.template_vars())
+        self.log("Installed the Download Doctor: stuck downloads every 10 minutes, watch-only for its first 7 days.")
 
     def _default_profile_name(self) -> str:
         slug = str(self.config.get("media_default_profile") or "compact")

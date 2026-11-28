@@ -105,6 +105,8 @@ Find the most efficient entry point based on your current task:
   * *Why it matters:* Optimization handbook for budget mini-PCs (Haswell Gen 4, Skylake, N100) to achieve 100% Direct Play and avoid transcoding bottlenecks.
 * **[Release Profiles and Dual Audio](MEDIA_RELEASE_PROFILES.md)**
   * *Why it matters:* How Radarr and Sonarr rank releases, the `1080p Compact` and `1080p Family` profiles, changing the second language, moving from Recyclarr, a "why isn't it downloading?" checklist, and the seeding policy.
+* **[Download Doctor](DOWNLOAD_DOCTOR.md)**
+  * *Why it matters:* Stuck downloads (metadata stuck, dead swarms, stalled forever) are replaced through Radarr/Sonarr so the next-best release is grabbed; sleep-aware strikes, safety rails, a watch-only first week, a daily upgrade sweep and monthly blocklist pruning.
 * **[Playing over SMB with Nova Video Player](SMB_PLAYBACK_WITH_NOVA.md)**
   * *Why it matters:* Watching the library on Android TVs from the Samba share: NFO metadata owned by Radarr/Sonarr, preferred audio and subtitle language, which codecs to allow, resume files and naming.
 * **[Power Management & RTC Wake](POWER_MANAGEMENT_RTCWAKE.md)**
@@ -167,6 +169,7 @@ Key architectural choices are recorded with their problem context and trade-offs
 * **[ADR-0002: Zero-Dependency Standard-Library-Only Setup Wizard](adr/0002-zero-dependency-setup-wizard.md)**
 * **[ADR-0003: ACPI S3 Suspend-to-RAM with RTC Wake vs Continuous Idle](adr/0003-acpi-s3-sleep-guard-power-automation.md)**
 * **[ADR-0004: Repo-Owned Release Profiles Replace Recyclarr](adr/0004-repo-owned-release-profiles.md)**
+* **[ADR-0005: A Native Download Doctor Replaces Stuck Downloads Through the Apps](adr/0005-download-doctor.md)**
 
 ---
 

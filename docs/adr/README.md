@@ -29,6 +29,7 @@ ADRs prevent **architecture amnesia**—ensuring future maintainers, operators, 
 | **[ADR-0002](0002-zero-dependency-setup-wizard.md)** | Zero-Dependency Standard-Library-Only Setup Wizard | **Accepted** | 2026-10-18 | Bootstrap web wizard and config engine use pure Python 3 stdlib with zero pip or third-party dependencies before server is provisioned. |
 | **[ADR-0003](0003-acpi-s3-sleep-guard-power-automation.md)** | ACPI S3 Suspend-to-RAM with RTC Wake vs Continuous Idle | **Accepted** | 2026-10-20 | Implements night-time ACPI S3 suspend (~1.2W) with hardware CMOS RTC wakeup and active SMB/download safety guards. |
 | **[ADR-0004](0004-repo-owned-release-profiles.md)** | Repo-Owned Release Profiles Replace Recyclarr | **Accepted** | 2026-11-28 | Radarr/Sonarr profiles are data in the mediaserver module: one merged HD quality group plus custom-format scores, any second language, applied by the installer, drift-checked, with vendored TRaSH formats synced weekly by pull request. |
+| **[ADR-0005](0005-download-doctor.md)** | A Native Download Doctor Replaces Stuck Downloads Through the Apps | **Accepted** | 2026-11-29 | A scheduled, standard-library job replaces dead downloads through the Radarr/Sonarr queue (remove, blocklist, search again) with sleep-aware strikes, a circuit breaker, rate limits, a per-title cap and a watch-only first week; it also runs a daily upgrade sweep and a monthly blocklist prune. |
 
 ---
 
