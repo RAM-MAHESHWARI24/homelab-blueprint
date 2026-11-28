@@ -126,6 +126,10 @@ if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     JF_URL="${JELLYFIN_URL:-$(read_env_key JELLYFIN_URL)}"
     JF_URL="${JF_URL:-http://127.0.0.1:8096}"
     JF_KEY="${JELLYFIN_API_KEY:-$(read_env_key JELLYFIN_API_KEY)}"
+    JF_KEY_FILE="${JELLYFIN_KEY_FILE:-/etc/homelab/jellyfin.key}"
+    if [ -z "$JF_KEY" ] && [ -r "$JF_KEY_FILE" ]; then
+        JF_KEY="$(tr -d '[:space:]' < "$JF_KEY_FILE")"
+    fi
     if [ -n "$JF_KEY" ]; then
         JF_PLAYING=$(curl -fsS --max-time 2 -H "X-Emby-Token: $JF_KEY" "${JF_URL%/}/Sessions" 2>/dev/null \
             | jq -r '[.[] | select(.NowPlayingItem != null and ((.PlayState.IsPaused // false) == false))] | length' 2>/dev/null || echo "0")

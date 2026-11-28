@@ -12,6 +12,20 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 
+def _api_key(env_name: str, file_name: str) -> str:
+    """An API key from the environment, else from its key file in /etc/homelab (0640
+    root:homelab, written by `wire_arr.py hub-keys`; <APP>_KEY_FILE overrides the path)."""
+    value = os.getenv(env_name, "").strip()
+    if value:
+        return value
+    etc = Path(os.getenv("HOMELAB_ETC_DIR", "/etc/homelab"))
+    path = Path(os.getenv(env_name.replace("_API_KEY", "_KEY_FILE"), str(etc / file_name)))
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _load_env_file(path: Path) -> None:
     """Loads KEY=VALUE lines into the environment without overriding existing values."""
     try:
@@ -96,7 +110,7 @@ TV_UPDATER_CRON_FILE = os.getenv("TV_UPDATER_CRON_FILE", "/etc/cron.d/tv-autoupd
 
 # Optional Jellyfin API settings (enables verified NowPlaying playback detection)
 JELLYFIN_URL = os.getenv("JELLYFIN_URL", "http://127.0.0.1:8096")
-JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY", "")
+JELLYFIN_API_KEY = _api_key("JELLYFIN_API_KEY", "jellyfin.key")
 
 SPEEDTEST_CACHE_FILE = os.getenv("SPEEDTEST_CACHE_FILE", str(HUB_CACHE_DIR / "speedtest_cache.json"))
 STORAGE_SIZES_CACHE_FILE = os.getenv("STORAGE_SIZES_CACHE_FILE", str(HUB_CACHE_DIR / "storage_sizes_cache.json"))
@@ -149,11 +163,11 @@ PROWLARR_KEY_FILE = os.getenv("PROWLARR_KEY_FILE", str(Path(os.getenv("HOMELAB_E
 
 # Optional *Arr & Seerr integrations (Phase 3A)
 RADARR_URL = os.getenv("RADARR_URL", "http://127.0.0.1:7878")
-RADARR_API_KEY = os.getenv("RADARR_API_KEY", "")
+RADARR_API_KEY = _api_key("RADARR_API_KEY", "radarr.key")
 SONARR_URL = os.getenv("SONARR_URL", "http://127.0.0.1:8989")
-SONARR_API_KEY = os.getenv("SONARR_API_KEY", "")
+SONARR_API_KEY = _api_key("SONARR_API_KEY", "sonarr.key")
 SEERR_URL = os.getenv("SEERR_URL", "http://127.0.0.1:5055")
-SEERR_API_KEY = os.getenv("SEERR_API_KEY", "")
+SEERR_API_KEY = _api_key("SEERR_API_KEY", "seerr.key")
 
 
 def get_host_timezone() -> str:

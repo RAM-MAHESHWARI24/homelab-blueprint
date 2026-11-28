@@ -444,6 +444,18 @@ class Jellyfin:
         self.token = data.get("AccessToken", "") if st == 200 else ""
         return step("Jellyfin: admin login", bool(self.token), f"HTTP {st}")
 
+    def api_key(self, app: str) -> str:
+        """A Jellyfin API key named `app`, created once and reused (needs login() first)."""
+        for attempt in range(2):
+            st, body, _ = http(f"{self.base}/Auth/Keys", headers=self._h())
+            items = (jloads(body, {}) or {}).get("Items") or [] if st == 200 else []
+            for item in items:
+                if item.get("AppName") == app and item.get("AccessToken"):
+                    return str(item["AccessToken"])
+            if attempt == 0:
+                http(f"{self.base}/Auth/Keys?app={urllib.parse.quote(app)}", "POST", headers=self._h())
+        return ""
+
     def ensure_library(self, name: str, collection_type: str, path: str) -> bool:
         st, body, _ = http(f"{self.base}/Library/VirtualFolders", headers=self._h())
         existing = jloads(body, [])
@@ -546,6 +558,49 @@ def prowlarr_add_indexer(prowlarr: Arr, name: str, values: Optional[Dict[str, An
     if st in (200, 201):
         return True, "added"
     return False, f"HTTP {st}: {str(resp)[:200]}"
+
+
+def seerr_api_key(config_dir: Path) -> str:
+    """Seerr's own API key from its settings.json (`seerr/`, or `jellyseerr/` on older installs)."""
+    for name in ("seerr", "jellyseerr"):
+        try:
+            data = json.loads((config_dir / name / "settings.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        key = str(((data or {}).get("main") or {}).get("apiKey") or "").strip()
+        if key:
+            return key
+    return ""
+
+
+HUB_KEY_APP = "homelab-control-hub"
+
+
+def cmd_hub_keys(args) -> int:
+    """API keys for the Control Hub's media views and the Sleep Guard, written beside
+    prowlarr.key as 0640 root:<group> files (radarr.key, sonarr.key, seerr.key, jellyfin.key).
+    Values are never printed. Radarr and Sonarr are required; Seerr and Jellyfin are optional."""
+    config_dir, out = Path(args.config_dir), Path(args.out_dir)
+    keys = {app: read_api_key(config_dir, app, retries=args.retries) for app in ("radarr", "sonarr")}
+    keys["seerr"] = seerr_api_key(config_dir)
+    keys["jellyfin"] = ""
+    if args.admin_pass:
+        jf = Jellyfin(args.host)
+        if jf.login(args.admin_user, args.admin_pass):
+            keys["jellyfin"] = jf.api_key(HUB_KEY_APP)
+            step("Jellyfin: API key for the Control Hub", bool(keys["jellyfin"]), HUB_KEY_APP)
+    else:
+        step("Jellyfin: API key for the Control Hub", True, "skipped (no --admin-pass)", required=False)
+    ok = True
+    for name, key in keys.items():
+        if not key:
+            step(f"{name}.key", name not in ("radarr", "sonarr"), "no key found", required=name in ("radarr", "sonarr"))
+            ok = ok and name not in ("radarr", "sonarr")
+            continue
+        written = write_key_file(out / f"{name}.key", key, args.key_group)
+        step(f"{name}.key", written, str(out / f"{name}.key"))
+        ok = ok and written
+    return 0 if ok else 1
 
 
 def write_key_file(path: Path, key: str, group: str = "") -> bool:
@@ -1206,6 +1261,16 @@ def main() -> int:
     seerr.add_argument("--retries", type=int, default=20)
     seerr.add_argument("--json", action="store_true")
 
+    hk = sub.add_parser("hub-keys", help="Write the media apps' API keys for the Control Hub (0640 root:<group> files)")
+    hk.add_argument("--config-dir", required=True, help="Host directory holding <app>/config.xml and seerr/settings.json")
+    hk.add_argument("--host", default="127.0.0.1")
+    hk.add_argument("--admin-user", default=os.getenv("MEDIA_ADMIN_USER", "admin"), help="Jellyfin admin (creates its API key)")
+    hk.add_argument("--admin-pass", default=os.getenv("MEDIA_ADMIN_PASS", ""))
+    hk.add_argument("--out-dir", default=os.getenv("HOMELAB_ETC_DIR", "/etc/homelab"))
+    hk.add_argument("--key-group", default="", help="Group owner of the key files (e.g. homelab)")
+    hk.add_argument("--retries", type=int, default=3, help="config.xml read retries (3s apart)")
+    hk.add_argument("--json", action="store_true")
+
     ix = sub.add_parser("indexers", help="List Prowlarr's indexer definitions or add some by name")
     ix.add_argument("action", choices=["list", "add"])
     ix.add_argument("names", nargs="*", help="Indexer names to add (as shown by `indexers list`)")
@@ -1220,6 +1285,12 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "indexers":
         return cmd_indexers(args)
+    if args.command == "hub-keys":
+        rc = cmd_hub_keys(args)
+        report["success"] = rc == 0
+        if args.json:
+            print(json.dumps(report, indent=2))
+        return rc
     if args.command in ("profiles", "seerr"):
         if args.command == "seerr" and not args.admin_pass:
             print("error: --admin-pass (or MEDIA_ADMIN_PASS) is required", file=sys.stderr)

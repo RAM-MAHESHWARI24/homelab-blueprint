@@ -8,6 +8,7 @@ block devices, or idle/streaming claims.
 
 from __future__ import annotations
 
+import html
 import os
 import platform
 import shutil
@@ -439,6 +440,7 @@ telemetry_state = {
         "collective_up_mbs": 0.0,
         "collective_total_mbs": 0.0,
         "active_count": 0,
+        "stalled_count": 0,
         "paused_count": 0,
         "all_paused": False,
         "total_count": 0,
@@ -705,17 +707,29 @@ def _poll_qbittorrent():
                     t_state_l = t_state.lower()
                     t_prog = t.get("progress", 0)
 
+                    # Count by health: a stalled or metadata-stuck torrent is not "active".
                     if "paused" in t_state_l or "stopped" in t_state_l:
                         paused_count += 1
-                    elif "dl" in t_state_l or "download" in t_state_l or t_dl > 0:
+                        health = "paused"
+                    elif t_prog >= 1 or t_state_l.endswith("up"):
+                        health = "seeding"
+                    elif t_dl > 0:
                         active_dl_count += 1
+                        health = "moving"
+                    elif t_state_l == "queueddl":
+                        health = "queued"
+                    elif "checking" in t_state_l:
+                        health = "checking"
+                    else:
+                        health = "stalled"  # stalledDL, metaDL, or downloading at 0 B/s
 
                     size_b = t.get("size", 0)
                     comp_b = t.get("completed", 0)
                     torrent_items.append({
-                        "name": t.get("name", "Unknown"),
+                        "name": html.unescape(t.get("name", "Unknown")),
                         "hash": t.get("hash", ""),
                         "state": t_state,
+                        "health": health,
                         "category": t.get("category", "General"),
                         "priority": int(t.get("priority") or 0),
                         "progress": round(t_prog * 100, 1),
@@ -965,6 +979,7 @@ def telemetry_worker():
                     "collective_up_mbs": round(up_mbs, 2),
                     "collective_total_mbs": round(total_wan_mbs, 2),
                     "active_count": active_dl_count,
+                    "stalled_count": sum(1 for i in torrent_items if i.get("health") == "stalled"),
                     "paused_count": paused_count,
                     "all_paused": all_paused,
                     "total_count": active_torrents_count,

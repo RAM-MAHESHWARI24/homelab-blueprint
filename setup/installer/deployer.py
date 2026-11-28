@@ -412,6 +412,7 @@ class Deployment:
             self.log("No indexers were added: pick them from Prowlarr's list in the Control Hub (nothing is pre-selected).")
             if profiles_on:
                 self._apply_release_profiles()
+            self._install_hub_keys()
         if self.linux:
             autoimport_cron = module_dir / "host" / "cron" / "mediaserver-autoimport"
             if autoimport_cron.exists():
@@ -420,6 +421,20 @@ class Deployment:
             self._install_download_doctor(module_dir)
         if prowlarr_key_file.exists():
             self.manifest.add_file(prowlarr_key_file)
+
+    def _install_hub_keys(self) -> None:
+        """Radarr, Sonarr, Seerr and Jellyfin API keys for the Control Hub's media views and the
+        Sleep Guard's Jellyfin check, as 0640 root:homelab files beside prowlarr.key."""
+        args = ["--host", "127.0.0.1", "--admin-user", str(self.config.get("media_admin_user") or "admin"),
+                "--admin-pass", str(self.config.get("media_admin_pass") or ""),
+                "--out-dir", str(self.etc_dir), "--key-group", SERVICE_USER]
+        ok = self._wire_script("hub-keys", args, qbit_login=False)
+        for name in ("radarr", "sonarr", "seerr", "jellyfin"):
+            key_file = self.etc_dir / f"{name}.key"
+            if key_file.exists():
+                self.manifest.add_file(key_file)
+        if ok:
+            self.log("Control Hub media views connected (Radarr, Sonarr, Seerr and Jellyfin keys).")
 
     def _install_download_doctor(self, module_dir: Path) -> None:
         """Stuck downloads every 10 minutes, a daily cutoff sweep and a monthly blocklist prune
