@@ -1959,3 +1959,62 @@ Notes: TRaSH's "DV (w/o HDR fallback)" only matches WEB-DL and WEBRip sources (B
 The pack keeps language names and resolves ids at runtime; source values are stored per app (`custom_formats/src-*.json`).
 
 **K.13 Licence:** TRaSH Guides is MIT (`Copyright (c) 2021 TRaSH`), confirmed from `LICENSE` at the commit above; a copy is kept as `apps/mediaserver/profiles/trash/LICENSE`.
+
+---
+
+## Revision 4: owner decisions on profiles and scoring (2026-11-28)
+
+These decisions **supersede** the earlier text in sections 5.2, 5.3, 8.6 and 14 and Appendices B and C. Whoever implements or reviews Phase 1 (PR #89) applies them there.
+
+**1. `1080p Compact` = the best 1080p.**
+- 1080p only: the 720p qualities are removed from its group.
+- Dual audio (Hindi + English) is preferred among 1080p releases; English-only is fine.
+- A title with no healthy 1080p release goes to "needs attention", and the owner can switch it to `1080p Family`.
+
+**2. `1080p Family` replaces "Dual Audio First". Hindi is required, English is a bonus.**
+- Why: the owner understands both languages, but the parents only understand Hindi.
+- Order:
+
+  | Rank | Release |
+  | ---: | :--- |
+  | 1 | 1080p Hindi + English |
+  | 2 | 720p Hindi + English |
+  | 3 | 1080p Hindi only |
+  | 4 | 720p Hindi only |
+  | — | English-only: **rejected** |
+
+- Scores:
+
+  | Format | Score |
+  | :--- | ---: |
+  | Dual audio (named or tag) | +3000 |
+  | Hindi only | **+1500** |
+  | Res · 1080p | +1000 |
+  | HEVC | +150 |
+  | Size · Oversized | −500 |
+
+- Profile settings:
+  - **Minimum score 1400.** A 720p Hindi-only release (about 1,500) passes; the best English-only release (about 1,217) fails.
+  - Upgrade until 4000; minimum upgrade step 400.
+- If no Hindi release exists yet, the title stays missing and the weekly sweep keeps searching. To get English meanwhile, switch the title to `1080p Compact`.
+
+**3. HEVC and the other tie-breakers can never trigger an upgrade on their own.**
+
+Only language, resolution, leaving the oversized range, or moving into the compact size band may cause an upgrade. The small extras (HEVC, source, season pack, repack) together must stay below the 400 upgrade step.
+
+| Format | Compact (movies) | Family (movies) | TV (both profiles) |
+| :--- | ---: | ---: | ---: |
+| HEVC | +250 | +150 | +150 |
+| Size · Compact band (≤ 6 GB) | +200 | 0 | — |
+| Season Pack | — | — | +150 |
+| Source | +60 / +50 / +40 | +60 / +50 / +40 | +40 / +30 / +20 |
+| Repack | +5 to +7 | +5 to +7 | +5 to +7 |
+| Largest sum of extras | 317 | 217 | 347 |
+
+- **Movies (Compact):** HEVC moving into the band adds +450, so it upgrades, and the new file is always smaller. A bigger HEVC file in the same band never upgrades.
+- **TV:** all size savings, including x264 → HEVC (for example *Succession*), go only through the compact replacement job (section 8.6, at least 35% smaller). Codec alone never triggers an upgrade.
+
+**Tests to add:**
+- a profile invariant: the tie-breaker sum is below `min_upgrade_format_score` in every profile;
+- Family's order above, with English-only rejected;
+- Compact rejects 720p.
