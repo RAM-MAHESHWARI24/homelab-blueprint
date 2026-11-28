@@ -116,6 +116,7 @@ Teardown reads the install manifest and removes only what the installer created.
 - [Static IP changes and rollback](docs/NETPLAN_STATIC_IP_QUIRKS.md)
 - [Storage and hardlinks](docs/STORAGE_AND_HARDLINKS.md)
 - [Release profiles and dual audio](docs/MEDIA_RELEASE_PROFILES.md)
+- [Download Doctor: stuck downloads and upgrade sweeps](docs/DOWNLOAD_DOCTOR.md)
 - [Playing over SMB with Nova Video Player](docs/SMB_PLAYBACK_WITH_NOVA.md)
 - [Releasing and the module repositories](docs/RELEASING.md)
 - [Test report](docs/V2_TEST_REPORT.md)

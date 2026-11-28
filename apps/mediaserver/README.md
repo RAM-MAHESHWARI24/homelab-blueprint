@@ -72,6 +72,18 @@ python3 scripts/auto_import.py --config-dir ./config --once --dry-run
 
 ---
 
+## 🩺 Download Doctor (`scripts/download_doctor.py`)
+
+Radarr and Sonarr wait forever for a torrent that will never finish. The Doctor checks every 10 minutes ([`host/cron/mediaserver-download-doctor`](host/cron/mediaserver-download-doctor)) and replaces downloads stuck on metadata, dead swarms and endless stalls **through the app's queue** (remove, blocklist, search again), so the app grabs its next-best release. Patience counts awake time only; seeding, private, `keep`-tagged and hand-added torrents are never touched; a circuit breaker, rate limits and a per-title cap keep it safe, and the first 7 days are watch-only. A daily sweep asks the apps to search 10 titles below their profile's upgrade line (oversized first), and a monthly job prunes old blocklist entries.
+
+```bash
+python3 scripts/download_doctor.py --job stuck,sweep --config-dir ./config --env-file .env --state-dir /tmp/doctor-test --dry-run --json
+```
+
+`MEDIA_STUCK_DOWNLOADS=off` switches it off. The full guide: [Download Doctor](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/blob/main/docs/DOWNLOAD_DOCTOR.md).
+
+---
+
 ## 🚀 Quickstart
 
 ### 1. Requirements
