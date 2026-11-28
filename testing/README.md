@@ -21,7 +21,7 @@
    * [Module 4: Docker Stacks & Pipeline Orchestration](#module-4-docker-stacks--pipeline-orchestration)
    * [Module 5: Host Daemons, Cron, & Power Management](#module-5-host-daemons-cron--power-management)
    * [Module 6: Security, Secrets & Sanitization](#module-6-security-secrets--sanitization)
-   * [Module 7: Full-Lifecycle Media Ingestion, Recyclarr Sync, Hardlinks & Subtitles](#module-7-full-lifecycle-media-ingestion-recyclarr-sync-hardlinks--subtitles)
+   * [Module 7: Full-Lifecycle Media Ingestion, Release Profiles, Hardlinks & Subtitles](#module-7-full-lifecycle-media-ingestion-release-profiles-hardlinks--subtitles)
    * [Module 8: Photo Cloud (Immich/Noodle), 4-Face Recognition & XMP Roundtrip](#module-8-photo-cloud-immichnoodle-4-face-recognition--xmp-roundtrip)
    * [Module 9: Simulated Cloud Backup, Database Dumps & Rclone Mirror](#module-9-simulated-cloud-backup-database-dumps--rclone-mirror)
 6. [GitHub Actions CI/CD Pipeline Strategy](#6-github-actions-cicd-pipeline-strategy)
@@ -267,10 +267,10 @@ multipass delete homelab-low-spec --purge
 
 ---
 
-### Module 7: Full-Lifecycle Media Ingestion, Recyclarr Sync, Hardlinks & Subtitles
+### Module 7: Full-Lifecycle Media Ingestion, Release Profiles, Hardlinks & Subtitles
 
-* **Target Source:** [`apps/mediaserver/`](../apps/mediaserver), [`apps/mediaserver/recyclarr/`](../apps/mediaserver/recyclarr), [`apps/mediaserver/config/seerr/tmdb-interceptor.js`](../apps/mediaserver/config/seerr/tmdb-interceptor.js)
-* **Goal:** Conclusively verify that requesting media via Seerr routes through Prowlarr, triggers qBittorrent download, completes **instant 0-I/O atomic hardlinks** with standard renaming in Radarr/Sonarr, matches Recyclarr custom format scoring, and automatically downloads subtitles via Bazarr.
+* **Target Source:** [`apps/mediaserver/`](../apps/mediaserver), [`apps/mediaserver/profiles/`](../apps/mediaserver/profiles), [`apps/mediaserver/config/seerr/tmdb-interceptor.js`](../apps/mediaserver/config/seerr/tmdb-interceptor.js)
+* **Goal:** Conclusively verify that requesting media via Seerr routes through Prowlarr, triggers qBittorrent download, completes **instant 0-I/O atomic hardlinks** with standard renaming in Radarr/Sonarr, ranks releases with the repo-owned profile pack, and automatically downloads subtitles via Bazarr.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -283,9 +283,9 @@ multipass delete homelab-low-spec --purge
 │ 2. Prowlarr Indexer Query (Port 9696)                                                  │
 │    • Queries Torrent indexers; Byparr (Port 8191) clears Cloudflare challenge.         │
 │                                  │                                                     │
-│ 3. Recyclarr Profile Scoring Filter                                                    │
-│    • Evaluates release metadata against TRaSH guides and custom format scores.         │
-│    • Hindi dual-audio (+50000 bonus), 1080p WebDL, Haswell Direct-Play codecs.        │
+│ 3. Release Profile Pack Scoring (wire_arr.py profiles apply)                           │
+│    • One merged HD group; custom-format scores decide (language, HEVC, size).         │
+│    • Dual audio, 1080p, efficient codecs; junk and incompatible formats blocked.      │
 │                                  │                                                     │
 │ 4. qBittorrent Ingestion (Port 8080)                                                   │
 │    • Downloads .torrent to single-mount path /data/torrents/{movies,tv}.               │
@@ -304,7 +304,7 @@ multipass delete homelab-low-spec --purge
 | Test ID | Test Scenario | Execution Command / Procedure | Expected Result | Pass Criteria |
 | :--- | :--- | :--- | :--- | :--- |
 | **`TC-MEDIA-E2E-01`** | Prowlarr & Byparr Indexer Validation | Trigger Prowlarr API `POST /api/v1/indexer/testall`. Route via Byparr proxy on port 8191. | Byparr solves Cloudflare challenge tokens; Prowlarr indexers report active status. | All configured indexers return `isValid: true`; zero HTTP 403 blocks. |
-| **`TC-MEDIA-E2E-02`** | Recyclarr Profile & Format Sync | Run `recyclarr sync --config apps/mediaserver/recyclarr/mediaserver-profiles.example.yml`. | Syncs custom formats, release profiles, and quality definitions into Radarr & Sonarr databases. | Radarr API returns Custom Format `Hindi-Audio` with score `+50000`; Sonarr has `1080p Compact`. |
+| **`TC-MEDIA-E2E-02`** | Release Profile Pack | Run `python3 apps/mediaserver/scripts/wire_arr.py profiles apply --config-dir <appdata> --language Hindi`, then `profiles check`. | Creates the pack's custom formats, `1080p Compact` and `Dual Audio First`, and size limits in Radarr & Sonarr. | `profiles check` exits 0 (no drift); `1080p Compact` has one merged `HD` group at the top. |
 | **`TC-MEDIA-E2E-03`** | Seerr Request & TMDB Interceptor | Submit movie request (*Big Buck Bunny* / TMDB 10378) & TV request (*Cosmos Laundromat*) via Seerr. | Seerr queries TMDB metadata via `tmdb-interceptor.js`. Dispatches request to Radarr/Sonarr. | HTTP 201 Created; Radarr/Sonarr add media to library monitoring. |
 | **`TC-MEDIA-E2E-04`** | qBittorrent Download Lifecycle | Monitor qBittorrent API `GET /api/v2/torrents/info` for active grab. | qBittorrent downloads payload into `/data/torrents/movies/` and `/data/torrents/tv/`. | Torrent reaches state `uploading` / `completed`; correct category tags assigned. |
 | **`TC-MEDIA-E2E-05`** | Atomic Hardlink & Rename Proof | Compare source download with imported library file via `stat -c "%i %h" <src> <dst>`. | **Exact identical inode number** (`stat.st_ino`); link count `st_nlink >= 2`. File renamed to standard format. | Inodes match; 0 disk bytes copied; instant completion (<10ms). |
@@ -513,7 +513,7 @@ Use this checklist during manual releases or automated pipeline reviews:
 
 ### E2E Media Ingestion & Hardlinks
 - [ ] **TC-MEDIA-E2E-01:** Prowlarr indexers tested and Byparr FlareSolverr proxy verified active.
-- [ ] **TC-MEDIA-E2E-02:** Recyclarr synced profiles (Hindi +50000 audio bonus & 1080p Compact in Radarr/Sonarr).
+- [ ] **TC-MEDIA-E2E-02:** Profile pack applied; `profiles check` reports no drift in Radarr/Sonarr.
 - [ ] **TC-MEDIA-E2E-03:** Seerr requested movie & TV series; TMDB interceptor logged 0 drops.
 - [ ] **TC-MEDIA-E2E-04:** qBittorrent downloaded files into `/data/torrents/{movies,tv}`.
 - [ ] **TC-MEDIA-E2E-05:** Radarr/Sonarr completed atomic hardlink (`stat.st_ino` equal, `st_nlink >= 2`, 0 bytes disk I/O).

@@ -61,6 +61,7 @@ Designed for 60-second onboarding. Asks only for the essentials:
 * **Family Photos Path** (e.g. `/mnt/hdd/Memories`).
 * **Master Password** (with 1-click high-entropy CSPRNG generator).
 * **Safe Netplan Static IP Toggle** (auto-detects current LAN IP and gateway).
+* **Second audio language** for dual-audio downloads (the rest of the release preferences use their defaults).
 
 ![Express Mode Initial View](../docs/assets/setup-wizard/express_mode_stage1_initial.png)
 ![Express Mode Verified](../docs/assets/setup-wizard/express_mode_stage2_verified.png)
@@ -70,6 +71,7 @@ Full granular control across all 5 monorepo subsystems:
 * **Network & Host Architecture:** Static IP, Subnet mask, Gateway, DNS, Timezone, Active NIC.
 * **Storage & Paths:** SSD config paths, HDD root mount, download categories (`torrents/movies`, `torrents/tv`).
 * **Modular Stack Toggles:** Opt-in cards for the media stack, photo cloud, ML schedule, photo backup, TV auto-updater, Sleep Guard, Samba, Tailscale and the media extras (Byparr, TMDB bypass, DNS override).
+* **Release preferences:** how Radarr and Sonarr pick downloads (see [below](#release-preferences)).
 * **Smart Defaults:** Every optional field displays a default badge and a 1-click **"Keep Default"** reset action.
 * **Security & Secrets:** 1-Click **"⚡ Auto-Generate All"** for database credentials and *arr API keys.
 
@@ -84,6 +86,22 @@ For users working with AI coding assistants (ChatGPT, Claude, Cursor, Antigravit
 
 ![AI Copilot Mode](../docs/assets/setup-wizard/ai_copilot_mode.png)
 
+### Release preferences
+
+A step in Power User Mode, next to the media extras. The answers are saved in the installer config (`/etc/homelab/config.json`), rendered into `/etc/homelab/mediaserver.env` as `MEDIA_*` keys, and applied at the end of the media module by `apps/mediaserver/scripts/wire_arr.py profiles apply`. Seerr is registered afterwards, with the default profile below as its default.
+
+| Question | Config key | Env key | Choices (default first) |
+| :--- | :--- | :--- | :--- |
+| Second audio language | `media_second_language` | `MEDIA_SECOND_LANGUAGE` | None, or a language from `apps/mediaserver/profiles/languages.json` (Hindi, Tamil, Telugu, Spanish, ...) |
+| Default profile for new titles | `media_default_profile` | `MEDIA_DEFAULT_PROFILE` | `compact` (`1080p Compact`), `dual-audio-first` (needs a language) |
+| What can your TVs and players decode? | `media_codecs` | `MEDIA_CODECS` | `["hevc"]`; add `av1`, `dv` |
+| Seeding | `media_seeding` | `MEDIA_SEEDING` | `while-it-helps`, `off` |
+| Stuck downloads | `media_stuck_downloads` | `MEDIA_STUCK_DOWNLOADS` | `replace` (watch-only for the first 7 days), `off` |
+| Manage release profiles | `media_profiles` | `MEDIA_PROFILES` | `true`; `false` leaves profiles to you or Recyclarr |
+| (headless only) Public tracker list | `media_public_trackers` | `MEDIA_PUBLIC_TRACKERS` | `true`; `false` for private trackers |
+
+`/api/deploy` refuses invalid answers with HTTP 400 (for example `dual-audio-first` without a language). On an upgrade, a config without these keys keeps the existing `mediaserver.env` values, and a missing `MEDIA_PROFILES` means off, so an existing server's profiles are not overwritten until its owner opts in. What the profiles do: [release profiles guide](../docs/MEDIA_RELEASE_PROFILES.md).
+
 ---
 
 ## 🔌 REST API Endpoints
@@ -95,10 +113,11 @@ The wizard server exposes lightweight JSON endpoints on port `8000`:
 | `GET` | `/api/health` | Healthcheck and server state |
 | `GET` | `/api/probe` | Live hardware auto-detection (CPU, RAM, NICs, IP, Disks) |
 | `GET` | `/api/ai/context` | Generates token-optimized AI copilot diagnostic prompt |
+| `GET` | `/api/release/languages` | Second audio languages the release profile pack supports |
 | `POST` | `/api/verify/hardlink` | Runs live `os.link` probe to test atomic hardlink support |
 | `POST` | `/api/secrets/generate` | Generates cryptographically secure passwords and API keys |
 | `POST` | `/api/netplan/preview` | Returns generated Netplan YAML configuration |
-| `POST` | `/api/deploy` | Executes configuration deployment pipeline (supports `dry_run: true`) |
+| `POST` | `/api/deploy` | Executes configuration deployment pipeline (supports `dry_run: true`); HTTP 400 for invalid release preferences |
 
 ---
 

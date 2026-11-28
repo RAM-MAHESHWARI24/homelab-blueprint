@@ -11,7 +11,8 @@ This runbook moves a server that runs an older, hand-made setup onto the v2 inst
 | Dashboard | `serverff-control-hub.service`, user `server_ff`, sudo `NOPASSWD: ALL` | `control-hub.service`, user `homelab`, exact-argument sudoers |
 | Photos | Compose project in `/opt/immich` | `apps/noodle-gallery`, env in `/etc/homelab/noodle-gallery.env` |
 | TV updater | Cron as `server_ff` | `/etc/cron.d/tv-autoupdater` as `homelab` |
-| Recyclarr, webhook listener | `server_ff` crontab | Unchanged unless you move them |
+| Recyclarr | `server_ff` crontab | Replaced by the release profile pack: remove the line, then run `profiles migrate` ([guide](MEDIA_RELEASE_PROFILES.md#moving-from-recyclarr)) |
+| Webhook listener | `server_ff` crontab | Unchanged unless you move it |
 | Config | `.env` files in the checkout | `/etc/homelab/` |
 | App data | Various | `/srv/homelab/appdata/` |
 
@@ -91,7 +92,7 @@ sudo systemctl disable --now serverff-control-hub.service
 sudo crontab -l -u server_ff > /root/pre-v2/server_ff.crontab
 ```
 
-Remove the TV updater line from the `server_ff` crontab. Keep the Recyclarr and webhook lines if you still want them.
+Remove the TV updater line from the `server_ff` crontab. Remove the Recyclarr line too, or it re-applies its profiles every morning and fights the profile pack; keep it only if you set `MEDIA_PROFILES=off` and stay with Recyclarr. Keep the webhook line if you still want it.
 
 Stop any old Arr containers that publish the same ports (8080, 9696, 7878, 8989, 6767, 8096, 5055).
 

@@ -4,6 +4,22 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+- **Release profile pack (`apps/mediaserver/profiles/`)** replaces Recyclarr. `wire_arr.py profiles apply|check|migrate` creates two profiles in Radarr and Sonarr: `1080p Compact` (best quality per GB) and `Dual Audio First` (for a second audio language). Both put every acceptable 720p/1080p quality in one `HD` group, so untagged "1080p" uploads no longer outrank BluRay and WEB releases, and let custom-format scores decide: 1080p, the second language, HEVC, a compact size band and the source. Junk and theatre recordings, banned uploaders, commentary editions, AV1 and Dolby Vision without HDR10 are rejected. The pack also sets size limits, Radarr's soft-subtitle whitelist (`ESub`), the recycle bin, a delay-profile bypass for near-perfect releases, Prowlarr Full Sync and minimum seeders 4, and qBittorrent's "seed while it helps" limits, queue limits, evening upload limit, public tracker list and excluded file names. Only objects with the pack's name prefixes are changed. TRaSH Guides formats are vendored with their upstream commit and licence, and a weekly workflow (`trash-sync.yml`) opens a pull request when they change. A corpus test checks every regex against real release titles. See [ADR-0004](docs/adr/0004-repo-owned-release-profiles.md) and the [release profiles guide](docs/MEDIA_RELEASE_PROFILES.md).
+- **Setup Wizard "Release preferences" step:** second audio language, default profile, what the players decode, seeding, stuck-download handling, and a switch to leave profiles to another tool. Answers go to `config.json` and `mediaserver.env` (`MEDIA_*`); `/api/deploy` rejects invalid ones with HTTP 400. Express mode asks for the language only.
+- Guide: [playing over SMB with Nova Video Player](docs/SMB_PLAYBACK_WITH_NOVA.md) (NFO metadata owned by Radarr/Sonarr, audio and subtitle language, codecs, resume files).
+
+### Changed
+- `wire_arr.py wire` moves Prowlarr's existing app links to Full Sync, so indexer priorities reach Radarr and Sonarr, and wires the download clients to the apps' default categories `radarr` and `tv-sonarr` (an existing `movies`/`tv` pair is left alone).
+- Seerr is registered after the profiles are applied, with the chosen default profile.
+- The schema migrator adds `MEDIA_PROFILES=off` to an existing install's `mediaserver.env`: an upgraded server keeps its current profiles until its owner runs `profiles migrate`.
+
+### Removed
+- The Recyclarr example (`apps/mediaserver/recyclarr/`) and its README section. It ranked `HDTV-1080p` highest and its daily sync reverted fixes; the guide keeps a short "using Recyclarr instead" note.
+- The `Ozlem` restriction in `wire_arr.py`: `/api/v3/restriction` no longer exists in Radarr 7 or Sonarr 4, so it did nothing. The pack's `Junk · Banned uploaders` format replaces it.
+- `scripts/setup_sonarr_season_preference.py` (used `requests` and title-regex season formats); TRaSH's Season Pack format in the pack replaces it.
+- `RECYCLARR_LOG_FILE` from the Control Hub env template (the Schedules card still shows Recyclarr when it is installed).
+
 ## [2.2.0] - 2026-11-28
 
 ### Added
