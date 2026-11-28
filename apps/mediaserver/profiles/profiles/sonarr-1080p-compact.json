@@ -1,0 +1,51 @@
+{
+  "name": "1080p Compact",
+  "description": "Best quality per GB at 1080p. Dual audio preferred among 1080p releases of sensible size.",
+  "requires_language": false,
+  "upgrade": {
+    "allowed": true,
+    "until_quality": "HD",
+    "until_score": 4500,
+    "until_score_without_language": 3400
+  },
+  "min_format_score": 0,
+  "min_upgrade_format_score": 400,
+  "qualities": [
+    {
+      "group": "HD",
+      "qualities": [
+        "Bluray-1080p",
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "HDTV-1080p",
+        "Bluray-720p",
+        "WEBDL-720p",
+        "WEBRip-720p"
+      ]
+    }
+  ],
+  "scores": {
+    "Res · 1080p": 3000,
+    "Lang · {LANG} + Original (named)": 1500,
+    "Lang · {LANG} + Dual/Multi tag": 1500,
+    "Lang · {LANG} only (original missing)": -500,
+    "Lang · Not Original or {LANG}": -10000,
+    "Eff · HEVC": 400,
+    "Src · Bluray": 60,
+    "Src · WEB-DL": 50,
+    "Src · WEBRip": 40,
+    "Fix · Repack/Proper": 5,
+    "Fix · Repack2": 6,
+    "Fix · Repack3": 7,
+    "TV · Season Pack": 300,
+    "Junk · Line/cam audio": -10000,
+    "Junk · Cam / PreDVD / S-Print": -10000,
+    "Junk · Banned uploaders": -10000,
+    "Junk · Commentary editions": -10000,
+    "Junk · BR-DISK": -10000,
+    "Junk · Extras": -10000,
+    "Junk · Upscaled": -10000,
+    "Compat · AV1": -10000,
+    "Compat · DV w/o HDR fallback": -10000
+  }
+}

@@ -11,6 +11,7 @@
 #    until every container is healthy.
 # 4. Wires the apps together with scripts/wire_arr.py: download clients, root
 #    folders, Prowlarr app sync, Jellyfin libraries and Seerr.
+# 5. Applies the release profiles in profiles/ (choices: MEDIA_* in .env).
 #
 # Indexers are not added: pick them in Prowlarr (http://<host>:9696). Which
 # indexers you use, and whether they are legal where you live, is up to you.
@@ -27,7 +28,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --data-dir) DATA_DIR_ARG="$2"; shift 2 ;;
         --byparr) BYPARR="--byparr"; shift ;;
-        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -88,8 +89,22 @@ python3 scripts/wire_arr.py seed --config-dir "$CONFIG_DIR" --qbit-user "$QB_USE
 echo "Starting the stack (first start pulls several GB of images) ..."
 docker compose --env-file .env up -d --wait --wait-timeout 900
 
-python3 scripts/wire_arr.py wire --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
-    --qbit-user "$QB_USER" --qbit-pass "$QB_PASS" --admin-pass "$ADMIN_PASS" $BYPARR
+# Release profiles (profiles/): on for a new .env. An older .env without the key keeps
+# whatever manages profiles today; set MEDIA_PROFILES=on and run profiles migrate to switch.
+PROFILES="$(env_get MEDIA_PROFILES)"
+if [ "$PROFILES" = "on" ]; then
+    python3 scripts/wire_arr.py wire --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
+        --qbit-user "$QB_USER" --qbit-pass "$QB_PASS" --admin-pass "$ADMIN_PASS" --skip-seerr $BYPARR
+    python3 scripts/wire_arr.py profiles apply --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
+        --env-file .env --data-dir "$DATA_DIR" --puid "$PUID" --pgid "$PGID"
+    DEFAULT_PROFILE="1080p Compact"
+    [ "$(env_get MEDIA_DEFAULT_PROFILE)" = "dual-audio-first" ] && DEFAULT_PROFILE="Dual Audio First"
+    python3 scripts/wire_arr.py seerr --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
+        --admin-pass "$ADMIN_PASS" --profile "$DEFAULT_PROFILE"
+else
+    python3 scripts/wire_arr.py wire --config-dir "$CONFIG_DIR" --host 127.0.0.1 \
+        --qbit-user "$QB_USER" --qbit-pass "$QB_PASS" --admin-pass "$ADMIN_PASS" $BYPARR
+fi
 
 cat <<EOF
 

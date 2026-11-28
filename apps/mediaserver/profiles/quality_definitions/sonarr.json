@@ -1,0 +1,46 @@
+{
+  "units": "MB per minute (1 MB/min is about 0.13 Mbit/s)",
+  "note": "Global in each app: shared by every profile. Qualities not listed here are left as they are.",
+  "qualities": {
+    "Bluray-1080p": {
+      "min": 6,
+      "preferred": 22,
+      "max": 45
+    },
+    "WEBDL-1080p": {
+      "min": 5,
+      "preferred": 18,
+      "max": 40
+    },
+    "WEBRip-1080p": {
+      "min": 5,
+      "preferred": 15,
+      "max": 35
+    },
+    "HDTV-1080p": {
+      "min": 4,
+      "preferred": 15,
+      "max": 35
+    },
+    "Bluray-720p": {
+      "min": 3,
+      "preferred": 10,
+      "max": 22
+    },
+    "WEBDL-720p": {
+      "min": 3,
+      "preferred": 10,
+      "max": 22
+    },
+    "WEBRip-720p": {
+      "min": 3,
+      "preferred": 10,
+      "max": 22
+    },
+    "HDTV-720p": {
+      "min": 3,
+      "preferred": 10,
+      "max": 22
+    }
+  }
+}

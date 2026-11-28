@@ -1,0 +1,23 @@
+{
+  "name": "Src · WEB-DL",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "WEB-DL",
+      "implementation": "SourceSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": {
+          "radarr": 7,
+          "sonarr": 3
+        }
+      }
+    }
+  ]
+}

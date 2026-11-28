@@ -1,0 +1,21 @@
+{
+  "name": "Size · Oversized",
+  "comment": "Movies above 10 GB.",
+  "apps": [
+    "radarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Above 10 GB",
+      "implementation": "SizeSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "min": 10,
+        "max": 1000
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "Src · Bluray",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Bluray",
+      "implementation": "SourceSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": {
+          "radarr": 9,
+          "sonarr": 6
+        }
+      }
+    }
+  ]
+}

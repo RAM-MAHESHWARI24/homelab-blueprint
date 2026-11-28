@@ -10,13 +10,22 @@ without touching any web UI. Standard library only; idempotent (safe to re-run).
     # after the containers are healthy: wire everything together
     python3 scripts/wire_arr.py wire --config-dir /srv/homelab/appdata/mediaserver \
         --qbit-user admin --qbit-pass '<password>' --admin-pass '<jellyfin/seerr admin password>' \
-        [--host 127.0.0.1] [--byparr] [--json]
+        [--host 127.0.0.1] [--byparr] [--skip-seerr] [--json]
+
+    # release profiles from apps/mediaserver/profiles/ (see the release profiles guide)
+    python3 scripts/wire_arr.py profiles apply   --config-dir ... [--env-file .env] [--language Hindi]
+    python3 scripts/wire_arr.py profiles check   --config-dir ... --json     # exit 1 when out of sync
+    python3 scripts/wire_arr.py profiles migrate --config-dir ... --dry-run  # one-off cleanup of older setups
+
+    # register Radarr/Sonarr in Seerr with the default profile (after `profiles apply`)
+    python3 scripts/wire_arr.py seerr --config-dir ... --admin-pass '<password>' --profile "1080p Compact"
 
 What `wire` does:
   * reads each app's API key from <config-dir>/<app>/config.xml (generated on first start)
-  * qBittorrent: categories movies/tv with save paths under /data/torrents
+  * qBittorrent: categories radarr/tv-sonarr with save paths under /data/torrents
   * Radarr/Sonarr: root folders /data/media/{movies,tv}; qBittorrent as download client
-  * Prowlarr: Radarr and Sonarr as applications (full sync); Byparr as indexer proxy (optional)
+  * Prowlarr: Radarr and Sonarr as applications (Full Sync, also enforced on existing links);
+    Byparr as indexer proxy (optional)
   * Jellyfin: completes the startup wizard, creates the admin user, adds Movies and Shows libraries
   * Seerr: initialises against Jellyfin and registers Radarr/Sonarr (best effort)
 
@@ -39,6 +48,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import profile_pack as pp  # noqa: E402  (same folder; standard library only)
 
 PORTS = {"radarr": 7878, "sonarr": 8989, "prowlarr": 9696, "qbittorrent": 8080, "jellyfin": 8096, "seerr": 5055}
 # Container-to-container addresses (compose default network, service names)
@@ -188,20 +200,33 @@ class QBit:
                 time.sleep(3)
         return False, f"HTTP {st} {body.strip()[:160]!r} (user={self.user})"
 
-    def ensure_categories(self) -> bool:
-        req = urllib.request.Request(self.base + "/api/v2/torrents/categories")
-        try:
-            with self.opener.open(req, timeout=15) as r:
-                existing = json.loads(r.read().decode() or "{}")
-        except Exception:
-            existing = {}
+    # The categories Radarr and Sonarr use by default; the download clients are wired to these.
+    CATEGORIES = (("radarr", "/data/torrents/movies"), ("tv-sonarr", "/data/torrents/tv"))
+
+    def categories(self) -> Dict[str, Any]:
+        st, body = self._get("/api/v2/torrents/categories")
+        data = jloads(body, {}) if st == 200 else {}
+        return data if isinstance(data, dict) else {}
+
+    def ensure_categories(self, wanted=None) -> bool:
+        """Creates missing categories. Existing ones (and an older movies/tv pair) are left alone."""
+        existing = self.categories()
         ok = True
-        for name, path in (("movies", "/data/torrents/movies"), ("tv", "/data/torrents/tv")):
+        for name, path in (wanted or self.CATEGORIES):
             if name in existing:
                 continue
             st, _ = self._form("/api/v2/torrents/createCategory", {"category": name, "savePath": path})
             ok = ok and st in (200, 409)
         return ok
+
+    def preferences(self) -> Dict[str, Any]:
+        st, body = self._get("/api/v2/app/preferences")
+        data = jloads(body, None) if st == 200 else None
+        return data if isinstance(data, dict) else {}
+
+    def set_preferences(self, prefs: Dict[str, Any]) -> Tuple[bool, str]:
+        st, body = self._form("/api/v2/app/setPreferences", {"json": json.dumps(prefs)})
+        return st == 200, ("" if st == 200 else f"setPreferences HTTP {st}: {body[:120]}")
 
     DEFAULT_EXCLUDED_PATTERNS = ("*.exe", "*.bat", "*.cmd", "*.scr", "*.lnk", "*.pif", "*.com", "*.vbs")
 
@@ -250,6 +275,10 @@ class Arr:
 
     def put(self, path: str, data):
         st, body, _ = http(f"{self.base}/{path}", method="PUT", data=data, headers=self.headers, timeout=60)
+        return st, jloads(body, body)
+
+    def delete(self, path: str):
+        st, body, _ = http(f"{self.base}/{path}", method="DELETE", headers=self.headers, timeout=60)
         return st, jloads(body, body)
 
     def ensure(self, collection: str, match_key: str, match_value, build) -> Tuple[bool, str]:
@@ -304,30 +333,31 @@ def wire_arr(app: Arr, root_folder: str, category_key: str, category: str, qbit_
 
     ok, detail = app.ensure("downloadclient", "name", "qBittorrent", build)
     step(f"{app.name}: qBittorrent download client", ok, detail)
-
-    # Best-effort: block known filename-mangling P2P uploaders that break automatic import.
-    ensure_restriction_term(app, "Ozlem")
+    # Uploaders with mangled names (Ozlem) are blocked by the profile pack's
+    # "Junk · Banned uploaders" format: Radarr 7 and Sonarr 4 removed /restriction.
 
 
 DEFAULT_DEPRIORITIZED_INDEXERS = {"the pirate bay": 45}
 
 
-def ensure_restriction_term(app: Arr, term: str) -> None:
-    st, existing = app.get("restriction")
-    if st != 200 or not isinstance(existing, list):
-        return
-    needle = term.lower()
-    for item in existing:
-        ignored = item.get("ignored") or []
-        if isinstance(ignored, str):
-            ignored_list = [x.strip().lower() for x in ignored.split(",") if x.strip()]
-        else:
-            ignored_list = [str(x).strip().lower() for x in ignored]
-        if needle in ignored_list:
-            step(f"{app.name}: restriction '{term}'", True, "already configured", required=False)
-            return
-    pst, _ = app.post("restriction", {"ignored": [term], "required": [], "tags": []})
-    step(f"{app.name}: restriction '{term}'", pst in (200, 201), f"HTTP {pst}", required=False)
+def ensure_prowlarr_full_sync(prowlarr: Arr, dry_run: bool = False) -> List[str]:
+    """Moves Prowlarr's app links to Full Sync so indexer priorities and minimum seeders
+    reach Radarr and Sonarr ("Add and Remove Only" stops at adding). Returns what changed."""
+    st, apps = prowlarr.get("applications")
+    if st != 200 or not isinstance(apps, list):
+        return [f"GET applications -> HTTP {st}"]
+    changed = []
+    for item in apps:
+        if item.get("syncLevel") == "fullSync" or not item.get("id"):
+            continue
+        changed.append(f"{item.get('name')}: sync level {item.get('syncLevel')} -> fullSync")
+        if dry_run:
+            continue
+        updated = dict(item)
+        updated["syncLevel"] = "fullSync"
+        pst, _ = prowlarr.put(f"applications/{item['id']}", updated)
+        step(f"Prowlarr: {item.get('name')} sync level Full Sync", pst in (200, 202), f"HTTP {pst}", required=False)
+    return changed
 
 
 def deprioritize_unmoderated_indexers(prowlarr: Arr) -> None:
@@ -363,6 +393,7 @@ def wire_prowlarr(prowlarr: Arr, radarr_key: str, sonarr_key: str, byparr: bool)
 
         ok, detail = prowlarr.ensure("applications", "name", name, build)
         step(f"Prowlarr: application {name}", ok, detail)
+    ensure_prowlarr_full_sync(prowlarr)
 
     if byparr:
         def build_proxy(schemas):
@@ -425,7 +456,7 @@ class Jellyfin:
 
 
 # ----------------------------------------------------------------------------- seerr
-def wire_seerr(host: str, admin_user: str, admin_pass: str, radarr_key: str, sonarr_key: str) -> None:
+def wire_seerr(host: str, admin_user: str, admin_pass: str, radarr_key: str, sonarr_key: str, profile_name: str = "") -> None:
     base = f"http://{host}:{PORTS['seerr']}"
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
 
@@ -468,7 +499,8 @@ def wire_seerr(host: str, admin_user: str, admin_pass: str, radarr_key: str, son
         st, test = call(f"{path}/test", "POST", {"hostname": name, "port": port, "apiKey": key, "useSsl": False, "baseUrl": ""})
         profiles = test.get("profiles", []) if isinstance(test, dict) else []
         root_folders = test.get("rootFolders", []) if isinstance(test, dict) else []
-        profile = next((p for p in profiles if p.get("name") in ("HD-1080p", "Any")), profiles[0] if profiles else None)
+        preferred = [n for n in (profile_name, "1080p Compact", "HD-1080p", "Any") if n]
+        profile = next((p for n in preferred for p in profiles if p.get("name") == n), profiles[0] if profiles else None)
         root = next((r for r in root_folders if r.get("path") == root_hint), root_folders[0] if root_folders else None)
         if not profile or not root:
             step(f"Seerr: register {name}", False, f"test endpoint returned no profiles/root folders (HTTP {st})", required=False)
@@ -584,6 +616,466 @@ def cmd_indexers(args) -> int:
     return rc
 
 
+# ---------------------------------------------------------------- profile pack
+PACK_ENV_DEFAULTS = {
+    "MEDIA_PROFILES": "on",
+    "MEDIA_SECOND_LANGUAGE": "",
+    "MEDIA_DEFAULT_PROFILE": "compact",
+    "MEDIA_CODECS": "hevc",
+    "MEDIA_SEEDING": "while-it-helps",
+    "MEDIA_PUBLIC_TRACKERS": "on",
+}
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    """KEY=VALUE lines (docker compose env-file syntax); comments and blanks ignored."""
+    out: Dict[str, str] = {}
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        out[k.strip()] = v.strip().strip("'\"")
+    return out
+
+
+def _on(value: Any) -> bool:
+    return str(value).strip().lower() in ("1", "on", "true", "yes")
+
+
+def resolve_pack_settings(args, pack: Dict[str, Any]) -> Dict[str, Any]:
+    """Command-line flags win over the env file, which wins over the defaults."""
+    env = dict(PACK_ENV_DEFAULTS)
+    if getattr(args, "env_file", ""):
+        env.update({k: v for k, v in read_env_file(args.env_file).items() if v != "" or k == "MEDIA_SECOND_LANGUAGE"})
+
+    def pick(flag: str, key: str) -> str:
+        value = getattr(args, flag, None)
+        return str(value) if value not in (None, "") else env.get(key, PACK_ENV_DEFAULTS.get(key, ""))
+
+    language = pp.find_language(pack, pick("language", "MEDIA_SECOND_LANGUAGE"))
+    default_profile = pick("default_profile", "MEDIA_DEFAULT_PROFILE").strip().lower()
+    slugs = pack["meta"]["profile_slugs"]
+    if default_profile not in slugs:
+        raise ValueError(f"unknown default profile '{default_profile}' (choose from {', '.join(slugs)})")
+    if default_profile == "dual-audio-first" and language is None:
+        raise ValueError("the Dual Audio First profile needs a second language")
+    seeding = pick("seeding", "MEDIA_SEEDING").strip().lower()
+    if seeding not in pp.SEEDING_CHOICES:
+        raise ValueError(f"unknown seeding choice '{seeding}' (choose from {', '.join(pp.SEEDING_CHOICES)})")
+    trackers = not getattr(args, "no_public_trackers", False) and _on(env.get("MEDIA_PUBLIC_TRACKERS", "on"))
+    return {
+        "enabled": _on(env.get("MEDIA_PROFILES", "on")),
+        "language": language,
+        "language_name": language["name"] if language else "",
+        "default_profile": default_profile,
+        "default_profile_name": slugs[default_profile],
+        "codecs": pp.parse_codecs(pick("codecs", "MEDIA_CODECS")),
+        "seeding": seeding,
+        "public_trackers": trackers,
+        "qbit_user": getattr(args, "qbit_user", "") or env.get("QBITTORRENT_USER", "") or "admin",
+        "qbit_pass": getattr(args, "qbit_pass", "") or env.get("QBITTORRENT_PASS", ""),
+    }
+
+
+class Action:
+    """One change the pack wants. `run` performs it and returns (ok, detail)."""
+
+    def __init__(self, app: str, what: str, detail: Optional[List[str]] = None, run=None, required: bool = True):
+        self.app, self.what, self.detail, self.run, self.required = app, what, detail or [], run, required
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"app": self.app, "change": self.what, "detail": self.detail}
+
+
+class PackRunner:
+    """Plans and applies the profile pack against live apps. Only objects with the pack's
+    prefixes and its own profiles are created or changed; everything else is left alone."""
+
+    def __init__(self, pack: Dict[str, Any], settings: Dict[str, Any], arrs: Dict[str, "Arr"],
+                 prowlarr: Optional["Arr"] = None, qbit: Optional[QBit] = None, data_dir: str = "",
+                 puid: int = 1000, pgid: int = 1000):
+        self.pack, self.s, self.arrs, self.prowlarr, self.qbit = pack, settings, arrs, prowlarr, qbit
+        self.data_dir, self.puid, self.pgid = data_dir, puid, pgid
+        self.notes: List[str] = []
+        self.errors: List[str] = []
+
+    # ------------------------------------------------------------ helpers
+    def _get_list(self, arr: "Arr", path: str) -> Optional[List[Dict[str, Any]]]:
+        st, data = arr.get(path)
+        if st != 200 or not isinstance(data, list):
+            self.errors.append(f"{arr.name}: GET {path} -> HTTP {st}")
+            return None
+        return data
+
+    def _get_obj(self, arr: "Arr", path: str) -> Optional[Dict[str, Any]]:
+        st, data = arr.get(path)
+        if st != 200 or not isinstance(data, dict):
+            self.errors.append(f"{arr.name}: GET {path} -> HTTP {st}")
+            return None
+        return data
+
+    @staticmethod
+    def _ok(st: int, resp: Any) -> Tuple[bool, str]:
+        if st in (200, 201, 202, 204):
+            return True, f"HTTP {st}"
+        return False, f"HTTP {st}: {str(resp)[:200]}"
+
+    # --------------------------------------------------------------- plan
+    def plan(self) -> List[Action]:
+        actions: List[Action] = []
+        for app, arr in self.arrs.items():
+            actions += self._plan_formats(app, arr)
+        for app, arr in self.arrs.items():
+            actions += self._plan_quality_definitions(app, arr)
+        for app, arr in self.arrs.items():
+            actions += self._plan_profiles(app, arr)
+        for app, arr in self.arrs.items():
+            actions += self._plan_app_settings(app, arr)
+        if self.prowlarr is not None:
+            actions += self._plan_prowlarr()
+        if self.qbit is not None:
+            actions += self._plan_qbit()
+        return actions
+
+    def _desired_formats(self, app: str, arr: "Arr") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        langs = self._get_list(arr, "language") or []
+        desired = []
+        for fmt in pp.render_formats(self.pack, app, self.s["language"]):
+            api, notes = pp.to_api_format(fmt, langs)
+            self.notes += [f"{app}: {n}" for n in notes]
+            desired.append(api)
+        return desired, langs
+
+    def _plan_formats(self, app: str, arr: "Arr") -> List[Action]:
+        live = self._get_list(arr, "customformat")
+        if live is None:
+            return []
+        desired, _ = self._desired_formats(app, arr)
+        by_name = {f.get("name"): f for f in live}
+        actions = []
+        for api in desired:
+            cur = by_name.get(api["name"])
+            if cur is None:
+                actions.append(Action(app, f"create format {api['name']}", run=lambda a=arr, p=api: self._ok(*a.post("customformat", p))))
+                continue
+            diffs = pp.diff_format(cur, api)
+            if diffs:
+                payload = dict(api, id=cur["id"])
+                actions.append(Action(app, f"update format {api['name']}", diffs,
+                                      run=lambda a=arr, p=payload: self._ok(*a.put(f"customformat/{p['id']}", p))))
+        return actions
+
+    def _plan_quality_definitions(self, app: str, arr: "Arr") -> List[Action]:
+        live = self._get_list(arr, "qualitydefinition")
+        if live is None:
+            return []
+        updated, notes = pp.quality_definition_changes(self.pack, app, live)
+        if not updated:
+            return []
+        return [Action(app, "update size limits", notes, run=lambda a=arr, u=updated: self._ok(*a.put("qualitydefinition/update", u)))]
+
+    def _plan_profiles(self, app: str, arr: "Arr") -> List[Action]:
+        live_profiles = self._get_list(arr, "qualityprofile")
+        live_formats = self._get_list(arr, "customformat")
+        defs = self._get_list(arr, "qualitydefinition")
+        if live_profiles is None or live_formats is None or defs is None:
+            return []
+        actions = []
+        for desired in pp.render_profiles(self.pack, app, self.s["language"], self.s["codecs"]):
+            existing = next((p for p in live_profiles if p.get("name") == desired["name"]), None)
+            payload = pp.build_profile_payload(desired, app, defs, live_formats, existing)
+            if existing is None:
+                diffs = ["new profile"]
+            else:
+                diffs = pp.diff_profile(existing, payload, self.pack, desired["scores"])
+                self.notes += [f"{app}: {desired['name']}: {d[6:]}" for d in diffs if d.startswith("note: ")]
+                diffs = [d for d in diffs if not d.startswith("note: ")]
+                missing = [n for n in desired["scores"] if n not in {f["name"] for f in live_formats}]
+                diffs += [f"score {n}: (format not created yet) -> {desired['scores'][n]}" for n in missing
+                          if not any(d.startswith(f"score {n}:") for d in diffs)]
+            if diffs:
+                verb = "create" if existing is None else "update"
+                actions.append(Action(app, f"{verb} profile {desired['name']}", diffs,
+                                      run=lambda a=arr, d=desired, ap=app: self._apply_profile(ap, a, d)))
+        return actions
+
+    def _apply_profile(self, app: str, arr: "Arr", desired: Dict[str, Any]) -> Tuple[bool, str]:
+        live_profiles = self._get_list(arr, "qualityprofile")
+        live_formats = self._get_list(arr, "customformat")
+        defs = self._get_list(arr, "qualitydefinition")
+        if live_profiles is None or live_formats is None or defs is None:
+            return False, "could not read the app's profiles, formats or qualities"
+        existing = next((p for p in live_profiles if p.get("name") == desired["name"]), None)
+        payload = pp.build_profile_payload(desired, app, defs, live_formats, existing)
+        if existing is None:
+            return self._ok(*arr.post("qualityprofile", payload))
+        return self._ok(*arr.put(f"qualityprofile/{existing['id']}", payload))
+
+    def _plan_app_settings(self, app: str, arr: "Arr") -> List[Action]:
+        cfg = self.pack["settings"].get(app, {})
+        actions = []
+        indexer_cfg = cfg.get("config/indexer", {})
+        if "whitelistedHardcodedSubs" in indexer_cfg:
+            cur = self._get_obj(arr, "config/indexer")
+            if cur is not None:
+                want = pp.merge_csv(cur.get("whitelistedHardcodedSubs") or "", indexer_cfg["whitelistedHardcodedSubs"]["merge_csv"])
+                if want != (cur.get("whitelistedHardcodedSubs") or ""):
+                    payload = dict(cur, whitelistedHardcodedSubs=want)
+                    actions.append(Action(app, "whitelist soft-subtitle tags (ESub, MSub, EngSub)",
+                                          [f"whitelisted hardcoded subs: '{cur.get('whitelistedHardcodedSubs') or ''}' -> '{want}'"],
+                                          run=lambda a=arr, p=payload: self._ok(*a.put("config/indexer", p)), required=False))
+        mm = cfg.get("config/mediamanagement", {}).get("recycleBin")
+        if mm:
+            cur = self._get_obj(arr, "config/mediamanagement")
+            if cur is not None and not (cur.get("recycleBin") or "").strip():
+                payload = dict(cur, recycleBin=mm["if_empty"], **mm.get("also", {}))
+                actions.append(Action(app, f"recycle bin {mm['if_empty']}",
+                                      ["upgrades and deletions go to the recycle bin (same filesystem, instant move)"],
+                                      run=lambda a=arr, p=payload: self._set_recycle_bin(a, p), required=False))
+        delay = cfg.get("delayprofile")
+        if delay:
+            profiles = self._get_list(arr, "delayprofile") or []
+            default = next((d for d in profiles if d.get("id") == 1), profiles[-1] if profiles else None)
+            if default is not None:
+                want = {k: v["set"] for k, v in delay.items()}
+                diffs = [f"{k}: {default.get(k)} -> {v}" for k, v in want.items() if default.get(k) != v]
+                if diffs:
+                    payload = dict(default, **want)
+                    actions.append(Action(app, "delay profile: grab a near-perfect release at once", diffs,
+                                          run=lambda a=arr, p=payload: self._ok(*a.put(f"delayprofile/{p['id']}", p)), required=False))
+        return actions
+
+    def _set_recycle_bin(self, arr: "Arr", payload: Dict[str, Any]) -> Tuple[bool, str]:
+        if self.data_dir:
+            # The apps see the data root as /data; create the folder on the host side first.
+            rel = Path(payload["recycleBin"]).relative_to("/data")
+            host_path = Path(self.data_dir) / rel
+            try:
+                host_path.mkdir(parents=True, exist_ok=True)
+                if hasattr(os, "chown") and os.name != "nt":
+                    try:
+                        os.chown(host_path, self.puid, self.pgid)
+                    except PermissionError:
+                        pass
+            except OSError as exc:
+                return False, f"could not create {host_path}: {exc}"
+        ok, detail = self._ok(*arr.put("config/mediamanagement", payload))
+        if not ok and not self.data_dir:
+            detail += " (create the folder under your data root, or pass --data-dir)"
+        return ok, detail
+
+    def _plan_prowlarr(self) -> List[Action]:
+        p = self.prowlarr
+        cfg = self.pack["settings"]["prowlarr"]
+        actions = []
+        changes = ensure_prowlarr_full_sync(p, dry_run=True)
+        if changes and not changes[0].startswith("GET "):
+            actions.append(Action("prowlarr", "app links: Full Sync", changes,
+                                  run=lambda: (ensure_prowlarr_full_sync(p) is not None, "done"), required=False))
+        elif changes:
+            self.errors.append(f"prowlarr: {changes[0]}")
+        profiles = self._get_list(p, "appprofile")
+        if profiles:
+            default = next((x for x in profiles if x.get("id") == 1), profiles[0])
+            want = int(cfg["default_app_profile_min_seeders"])
+            if int(default.get("minimumSeeders") or 0) < want:
+                payload = dict(default, minimumSeeders=want)
+                actions.append(Action("prowlarr", f"app profile {default.get('name')}: minimum seeders {want}",
+                                      [f"minimum seeders: {default.get('minimumSeeders')} -> {want} (1-3 seeders rank like 0)"],
+                                      run=lambda pl=payload: self._ok(*p.put(f"appprofile/{pl['id']}", pl)), required=False))
+            live = cfg["live_app_profile"]
+            if not any(x.get("name") == live["name"] for x in profiles):
+                payload = {k: v for k, v in default.items() if k != "id"}
+                payload.update(name=live["name"], minimumSeeders=live["minimumSeeders"])
+                actions.append(Action("prowlarr", f"app profile {live['name']} (minimum seeders {live['minimumSeeders']})",
+                                      ["for indexers with live, accurate seeder counts; assign it per indexer"],
+                                      run=lambda pl=payload: self._ok(*p.post("appprofile", pl)), required=False))
+        return actions
+
+    def _qbit_wanted(self, prefs: Dict[str, Any]) -> Dict[str, Any]:
+        cfg = self.pack["settings"]["qbittorrent"]
+        want: Dict[str, Any] = {}
+        want.update(cfg["seeding"][self.s["seeding"]])
+        want.update(cfg["queue"])
+        want.update(cfg["evening_upload_limit"])
+        want.update(cfg["other"])
+        if self.s["public_trackers"] and "add_trackers_from_url_enabled" in prefs:
+            want.update(cfg["trackers_from_url"])
+        if "excluded_file_names" in prefs:
+            want["excluded_file_names_enabled"] = True
+            want["excluded_file_names"] = pp.merge_lines(prefs.get("excluded_file_names") or "", cfg["excluded_file_names"])
+        # Only keys this qBittorrent version knows about.
+        return {k: v for k, v in want.items() if k in prefs}
+
+    @staticmethod
+    def _same(a: Any, b: Any) -> bool:
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool) and not isinstance(b, bool):
+            return abs(float(a) - float(b)) < 1e-6
+        return a == b
+
+    def _plan_qbit(self) -> List[Action]:
+        q = self.qbit
+        ok, detail = q.login(attempts=1)
+        if not ok:
+            self.errors.append(f"qbittorrent: login failed ({detail})")
+            return []
+        prefs = q.preferences()
+        if not prefs:
+            self.errors.append("qbittorrent: could not read preferences")
+            return []
+        want = self._qbit_wanted(prefs)
+        changed = {k: v for k, v in want.items() if not self._same(prefs.get(k), v)}
+        actions = []
+        if changed:
+            detail = [f"{k}: {str(prefs.get(k))[:60]!s} -> {str(v)[:60]}" for k, v in sorted(changed.items())]
+            label = "seed while it helps" if self.s["seeding"] == "while-it-helps" else "no seeding after download"
+            actions.append(Action("qbittorrent", f"preferences ({label}, queue limits, evening upload limit)", detail,
+                                  run=lambda c=changed: q.set_preferences(c), required=False))
+        cats = q.categories()
+        missing = [(n, path) for n, path in self.pack["settings"]["qbittorrent"]["categories"].items() if n not in cats]
+        if missing:
+            actions.append(Action("qbittorrent", "categories " + ", ".join(n for n, _ in missing), [],
+                                  run=lambda m=missing: (q.ensure_categories(m), "created"), required=False))
+        return actions
+
+    # ------------------------------------------------------------ migrate
+    def legacy_plan(self) -> List[Action]:
+        legacy = self.pack["meta"]["legacy"]
+        target = legacy["move_titles_to"]
+        actions: List[Action] = []
+        for app, arr in self.arrs.items():
+            profiles = self._get_list(arr, "qualityprofile") or []
+            old = [p for p in profiles if p.get("name") in legacy["profiles"]]
+            if old:
+                coll, key, editor = ("movie", "movieIds", "movie/editor") if app == "radarr" else ("series", "seriesIds", "series/editor")
+                titles = self._get_list(arr, coll) or []
+                for prof in old:
+                    users = [t for t in titles if t.get("qualityProfileId") == prof["id"]]
+                    if users:
+                        names = [str(t.get("title")) for t in users]
+                        actions.append(Action(app, f"move {len(users)} title(s) from {prof['name']} to {target}", names[:20],
+                                              run=lambda a=arr, ids=[t["id"] for t in users], k=key, e=editor: self._move_titles(a, ids, k, e, target)))
+                    actions.append(Action(app, f"delete profile {prof['name']}", [f"id {prof['id']}"],
+                                          run=lambda a=arr, pid=prof["id"]: self._ok(*a.delete(f"qualityprofile/{pid}"))))
+            formats = self._get_list(arr, "customformat") or []
+            for fmt in formats:
+                if fmt.get("name") in legacy["custom_formats"]:
+                    actions.append(Action(app, f"delete legacy format {fmt['name']}", [f"id {fmt['id']}"],
+                                          run=lambda a=arr, fid=fmt["id"]: self._ok(*a.delete(f"customformat/{fid}"))))
+        return actions
+
+    def _move_titles(self, arr: "Arr", ids: List[int], key: str, editor: str, target: str) -> Tuple[bool, str]:
+        profiles = self._get_list(arr, "qualityprofile") or []
+        dest = next((p for p in profiles if p.get("name") == target), None)
+        if dest is None:
+            return False, f"profile {target} not found"
+        return self._ok(*arr.put(editor, {key: ids, "qualityProfileId": dest["id"]}))
+
+    # ------------------------------------------------------------ execute
+    def execute(self, actions: List[Action]) -> int:
+        failed = 0
+        for a in actions:
+            ok, detail = a.run() if a.run else (True, "")
+            step(f"{a.app}: {a.what}", ok, detail, required=a.required)
+            failed += 0 if (ok or not a.required) else 1
+        return failed
+
+
+def _pack_clients(args, settings: Dict[str, Any]) -> Tuple[Dict[str, "Arr"], Optional["Arr"], Optional[QBit]]:
+    config_dir = Path(args.config_dir)
+    arrs: Dict[str, Arr] = {}
+    prowlarr = None
+    for app, version in (("radarr", "v3"), ("sonarr", "v3"), ("prowlarr", "v1")):
+        if app in (getattr(args, "skip", None) or []):
+            continue
+        key = read_api_key(config_dir, app, retries=args.retries)
+        if not key:
+            step(f"{app}: API key", False, f"{config_dir / app / 'config.xml'} missing or without <ApiKey>", required=app != "prowlarr")
+            continue
+        if app == "prowlarr":
+            prowlarr = Arr(app, args.host, key, version)
+        else:
+            arrs[app] = Arr(app, args.host, key, version)
+    qbit = None
+    if "qbittorrent" not in (getattr(args, "skip", None) or []):
+        if settings["qbit_pass"]:
+            qbit = QBit(args.host, settings["qbit_user"], settings["qbit_pass"])
+        else:
+            step("qbittorrent: settings", True, "skipped (no password: --qbit-pass or QBITTORRENT_PASS in --env-file)", required=False)
+    return arrs, prowlarr, qbit
+
+
+def cmd_profiles(args) -> int:
+    try:
+        pack = pp.load_pack(Path(args.pack_dir) if args.pack_dir else pp.PACK_DIR)
+        settings = resolve_pack_settings(args, pack)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    summary = {k: settings[k] for k in ("enabled", "language_name", "default_profile_name", "codecs", "seeding", "public_trackers")}
+    report["settings"] = summary
+    if not settings["enabled"] and args.action != "check":
+        step("profile pack", True, "switched off (MEDIA_PROFILES=off); nothing changed", required=False)
+        return 0
+    for app in ("radarr", "sonarr"):
+        if app not in (args.skip or []):
+            if not wait_http(f"http://{args.host}:{PORTS[app]}/ping", retries=args.retries):
+                step(f"{app}: reachable", False, f"http://{args.host}:{PORTS[app]}")
+    if report["errors"]:
+        return 2
+    arrs, prowlarr, qbit = _pack_clients(args, settings)
+    if report["errors"]:
+        return 2
+    runner = PackRunner(pack, settings, arrs, prowlarr, qbit, data_dir=args.data_dir, puid=args.puid, pgid=args.pgid)
+    actions = runner.plan()
+    if args.action == "migrate":
+        actions += runner.legacy_plan()
+    report["changes"] = [a.as_dict() for a in actions]
+    report["notes"] = runner.notes
+    report["errors"] += runner.errors
+
+    dry = args.action == "check" or getattr(args, "dry_run", False)
+    if dry:
+        if not args.json:
+            title = "Drift (live differs from the pack)" if args.action == "check" else "Planned changes (dry run, nothing changed)"
+            print(f"{title}: {len(actions)}" + ("" if settings["enabled"] else "  [pack switched off]"))
+            for a in actions:
+                print(f"  - {a.app}: {a.what}")
+                for d in a.detail:
+                    print(f"      {d}")
+            for n in runner.notes:
+                print(f"  note: {n}")
+            for e in runner.errors:
+                print(f"  error: {e}")
+        report["in_sync"] = not actions
+        if runner.errors:
+            return 2
+        return 0 if (args.action == "migrate" or not actions) else 1
+
+    if not actions:
+        step("profile pack", True, f"already in sync ({settings['language_name'] or 'no second language'})", required=False)
+    failed = runner.execute(actions)
+    for n in runner.notes:
+        print(f"note: {n}")
+    return 0 if not failed and not runner.errors else 1
+
+
+def cmd_seerr(args) -> int:
+    config_dir = Path(args.config_dir)
+    keys = {app: read_api_key(config_dir, app, retries=args.retries) for app in ("radarr", "sonarr")}
+    for app, key in keys.items():
+        step(f"{app}: API key from config.xml", bool(key), "" if key else "missing")
+    if report["errors"]:
+        return 1
+    wire_seerr(args.host, args.admin_user, args.admin_pass, keys["radarr"], keys["sonarr"], args.profile)
+    return 0 if not report["errors"] else 1
+
+
 # ------------------------------------------------------------------------------ main
 def cmd_seed(args) -> int:
     seed_qbittorrent(Path(args.config_dir), args.qbit_user, args.qbit_pass, args.puid, args.pgid)
@@ -610,15 +1102,15 @@ def cmd_wire(args) -> int:
     qb = QBit(host, args.qbit_user, args.qbit_pass)
     qb_ok, qb_detail = qb.login()
     if step("qBittorrent: login", qb_ok, qb_detail):
-        step("qBittorrent: categories movies/tv", qb.ensure_categories())
+        step("qBittorrent: categories radarr/tv-sonarr", qb.ensure_categories())
         ex_ok, ex_detail = qb.ensure_excluded_files()
         step("qBittorrent: excluded payload extensions", ex_ok, ex_detail, required=False)
 
     radarr = Arr("radarr", host, keys["radarr"], "v3")
     sonarr = Arr("sonarr", host, keys["sonarr"], "v3")
     prowlarr = Arr("prowlarr", host, keys["prowlarr"], "v1")
-    wire_arr(radarr, "/data/media/movies", "movieCategory", "movies", args.qbit_user, args.qbit_pass)
-    wire_arr(sonarr, "/data/media/tv", "tvCategory", "tv", args.qbit_user, args.qbit_pass)
+    wire_arr(radarr, "/data/media/movies", "movieCategory", "radarr", args.qbit_user, args.qbit_pass)
+    wire_arr(sonarr, "/data/media/tv", "tvCategory", "tv-sonarr", args.qbit_user, args.qbit_pass)
     wire_prowlarr(prowlarr, keys["radarr"], keys["sonarr"], args.byparr)
 
     if args.admin_pass:
@@ -665,6 +1157,36 @@ def main() -> int:
     wire.add_argument("--key-file", default="", help="Also write Prowlarr's API key here (0640) for the Control Hub indexer picker")
     wire.add_argument("--key-group", default="", help="Group owner of --key-file (e.g. homelab)")
 
+    prof = sub.add_parser("profiles", help="Apply, check or migrate the repo-owned release profiles")
+    prof.add_argument("action", choices=["apply", "check", "migrate"])
+    prof.add_argument("--config-dir", required=True, help="Host directory holding <app>/config.xml")
+    prof.add_argument("--host", default="127.0.0.1")
+    prof.add_argument("--env-file", default="", help="Read MEDIA_* choices and qBittorrent login from this env file")
+    prof.add_argument("--language", default=None, help="Second audio language (e.g. Hindi), or 'none'")
+    prof.add_argument("--default-profile", default=None, choices=["compact", "dual-audio-first"])
+    prof.add_argument("--codecs", default=None, help="What the players decode: comma list of hevc,av1,dv")
+    prof.add_argument("--seeding", default=None, choices=list(pp.SEEDING_CHOICES))
+    prof.add_argument("--no-public-trackers", action="store_true", help="Do not append the public tracker list (private trackers)")
+    prof.add_argument("--qbit-user", default="")
+    prof.add_argument("--qbit-pass", default=os.getenv("QBITTORRENT_PASS", ""))
+    prof.add_argument("--data-dir", default="", help="Host path mounted as /data (creates the recycle bin folder)")
+    prof.add_argument("--puid", type=int, default=1000)
+    prof.add_argument("--pgid", type=int, default=1000)
+    prof.add_argument("--skip", action="append", choices=["radarr", "sonarr", "prowlarr", "qbittorrent"], help="Leave one app out")
+    prof.add_argument("--pack-dir", default="", help=argparse.SUPPRESS)
+    prof.add_argument("--retries", type=int, default=20, help="Reachability retries (3s apart)")
+    prof.add_argument("--dry-run", action="store_true", help="migrate: print the plan only")
+    prof.add_argument("--json", action="store_true")
+
+    seerr = sub.add_parser("seerr", help="Initialise Seerr and register Radarr/Sonarr with a default profile")
+    seerr.add_argument("--config-dir", required=True)
+    seerr.add_argument("--host", default="127.0.0.1")
+    seerr.add_argument("--admin-user", default="admin")
+    seerr.add_argument("--admin-pass", default=os.getenv("MEDIA_ADMIN_PASS", ""))
+    seerr.add_argument("--profile", default="1080p Compact", help="Default quality profile for requests")
+    seerr.add_argument("--retries", type=int, default=20)
+    seerr.add_argument("--json", action="store_true")
+
     ix = sub.add_parser("indexers", help="List Prowlarr's indexer definitions or add some by name")
     ix.add_argument("action", choices=["list", "add"])
     ix.add_argument("names", nargs="*", help="Indexer names to add (as shown by `indexers list`)")
@@ -679,6 +1201,15 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "indexers":
         return cmd_indexers(args)
+    if args.command in ("profiles", "seerr"):
+        if args.command == "seerr" and not args.admin_pass:
+            print("error: --admin-pass (or MEDIA_ADMIN_PASS) is required", file=sys.stderr)
+            return 2
+        rc = cmd_profiles(args) if args.command == "profiles" else cmd_seerr(args)
+        report["success"] = rc == 0
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        return rc
     if not args.qbit_pass:
         print("error: --qbit-pass (or QBITTORRENT_PASS) is required", file=sys.stderr)
         return 2

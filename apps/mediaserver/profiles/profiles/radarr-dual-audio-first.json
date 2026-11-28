@@ -1,0 +1,53 @@
+{
+  "name": "Dual Audio First",
+  "description": "The second language matters most: a 720p dual-audio release beats a 1080p release without it, then upgrades to 1080p dual audio.",
+  "requires_language": true,
+  "language": "Any",
+  "upgrade": {
+    "allowed": true,
+    "until_quality": "HD",
+    "until_score": 4000
+  },
+  "min_format_score": 0,
+  "min_upgrade_format_score": 400,
+  "qualities": [
+    {
+      "group": "HD",
+      "qualities": [
+        "Bluray-1080p",
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "HDTV-1080p",
+        "Bluray-720p",
+        "WEBDL-720p",
+        "WEBRip-720p"
+      ]
+    }
+  ],
+  "scores": {
+    "Res · 1080p": 1000,
+    "Lang · {LANG} + Original (named)": 3000,
+    "Lang · {LANG} + Dual/Multi tag": 3000,
+    "Lang · {LANG} only (original missing)": -500,
+    "Lang · Not Original or {LANG}": -10000,
+    "Eff · HEVC": 200,
+    "Size · Compact band": 0,
+    "Size · Oversized": -500,
+    "Src · Bluray": 60,
+    "Src · WEB-DL": 50,
+    "Src · WEBRip": 40,
+    "Fix · Repack/Proper": 5,
+    "Fix · Repack2": 6,
+    "Fix · Repack3": 7,
+    "Junk · Line/cam audio": -10000,
+    "Junk · Cam / PreDVD / S-Print": -10000,
+    "Junk · Banned uploaders": -10000,
+    "Junk · Commentary editions": -10000,
+    "Junk · BR-DISK": -10000,
+    "Junk · Extras": -10000,
+    "Junk · Upscaled": -10000,
+    "Compat · AV1": -10000,
+    "Compat · DV w/o HDR fallback": -10000,
+    "Junk · 3D": -10000
+  }
+}

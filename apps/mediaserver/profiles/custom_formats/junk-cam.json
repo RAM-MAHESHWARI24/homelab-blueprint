@@ -1,0 +1,21 @@
+{
+  "name": "Junk · Cam / PreDVD / S-Print",
+  "comment": "Mislabelled theatre recordings that would otherwise parse as HDTV-1080p.",
+  "apps": [
+    "radarr",
+    "sonarr"
+  ],
+  "when": "always",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Cam, PreDVD, S-Print",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": true,
+      "fields": {
+        "value": "\\b(?:pre[ ._-]?dvd(?:rip)?|hq[ ._-]?(?:cam|ts|tc|s[ ._-]?print)|s[ ._-]?print|hd[ ._-]?(?:cam|ts|tc)|cam[ ._-]?rip|hdts|hdtc|telesync|telecine)\\b"
+      }
+    }
+  ]
+}
