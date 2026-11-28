@@ -196,6 +196,17 @@ paths:
                   upload_rate_mbps: { type: number, example: 0.5 }
                   active_torrents: { type: integer, example: 3 }
                   paused: { type: boolean, example: false }
+                  active_count: { type: integer, description: "Torrents actually downloading (speed above 0)", example: 1 }
+                  stalled_count: { type: integer, description: "Stalled or stuck fetching metadata; not counted as active", example: 2 }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, description: "HTML-decoded torrent name" }
+                        hash: { type: string }
+                        state: { type: string, example: stalledDL }
+                        health: { type: string, enum: [moving, stalled, queued, checking, seeding, paused] }
 
   /api/torrents/toggle-all:
     post:
@@ -209,11 +220,28 @@ paths:
   /api/torrents/{torrent_hash}/action:
     post:
       summary: Per-torrent queue action
-      description: Pause, resume, delete (optional delete_files), or change priority for one torrent.
+      description: >-
+        Pause, resume, delete, or change priority for one torrent. A delete of a download that
+        Radarr or Sonarr owns goes through that app's queue (remove from client, blocklist,
+        search again; one bulk call for a season pack). Other torrents are deleted in qBittorrent.
       tags: [Media Ingest]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [pause, stop, resume, start, delete, top_prio, bottom_prio, increase_prio, decrease_prio] }
+                delete_files: { type: boolean, description: "qBittorrent deletes only (manual torrents)" }
+                blocklist: { type: boolean, default: true, description: "App-owned deletes: blocklist the release" }
+                search: { type: boolean, default: true, description: "App-owned deletes: search again" }
+                force_client: { type: boolean, default: false, description: "Delete in qBittorrent even when Radarr/Sonarr could not be asked" }
       responses:
         '200':
-          description: "{success, hash, action}"
+          description: "{success, hash, action}; app-owned deletes add {via: radarr|sonarr, blocklisted, search_again}"
+        '502':
+          description: "Radarr/Sonarr could not be asked whether they own the download (nothing was deleted), or qBittorrent failed"
 
   /api/torrents/limits:
     get:

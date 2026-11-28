@@ -46,6 +46,10 @@ Control Hub is organized into modular Python backend widgets (`widgets/`) and ma
 ### 3. 📥 qBittorrent Ingest Monitor (`widgets/current_downloads.py`)
 * Live download speeds, remaining ETA, and completion percentages.
 * 1-Click download queue pause and resume.
+* Each download carries a health value (`moving`, `stalled`, `queued`, `checking`, `seeding`, `paused`); stalled and metadata-stuck torrents are counted as stalled, not active. Names are shown decoded (`&amp;` becomes `&`).
+* **Delete goes through the app that owns the download.** For a torrent Radarr or Sonarr is waiting for, the hub removes it through that app's queue (remove from client, blocklist, search again), so the app picks another release instead of waiting forever or grabbing the same one. Only torrents no app owns are deleted in qBittorrent directly. If an app can't be reached, the delete is refused rather than guessed.
+
+**Media keys.** The media views (calendar, wanted list, Seerr requests, recently added) and the Sleep Guard's Jellyfin check need the apps' API keys. The installer writes them as `radarr.key`, `sonarr.key`, `seerr.key` and `jellyfin.key` in `/etc/homelab` (0640 root:homelab) with `apps/mediaserver/scripts/wire_arr.py hub-keys`, and the hub reads them at start; a `RADARR_API_KEY` (or `SONARR_`, `SEERR_`, `JELLYFIN_`) in the environment wins over the file. After running `hub-keys` by hand, restart `control-hub.service`.
 
 ### 4. 📸 Immich & Noodle Backup Monitor (`widgets/backup_sync.py`)
 * Reads only `status.json` from the backup script (no `sudo rclone`): last good run and its age, next run, Drive usage, the last 7 runs, and what retention kept and will delete next.
@@ -146,7 +150,7 @@ Accessible via the header button **🤖 AI Copilot** (`btn-open-ai-copilot`), th
 | `POST` | `/api/storage/cleanup` | Execute one safe cleanup (`torrents_seeded`, `qbit_logs`, `docker_prune`, or `old_dumps`) |
 | `GET` | `/api/downloads/active` | Active qBittorrent downloads, speeds, status, priority, and ETAs |
 | `POST` | `/api/torrents/toggle-all` | Pause/Stop or Resume/Start all torrents (qBittorrent 4.x & 5.x compatible) |
-| `POST` | `/api/torrents/<hash>/action` | Per-torrent `pause`, `resume`, `delete` (with optional `delete_files`), or priority change |
+| `POST` | `/api/torrents/<hash>/action` | Per-torrent `pause`, `resume`, `delete`, or priority change. `delete` of an app-owned download goes through Radarr/Sonarr (`blocklist`, `search`, default true); otherwise qBittorrent with optional `delete_files` |
 | `GET` / `POST` | `/api/torrents/limits` | Read or update global DL/UL speed caps, alt-speed mode toggle, and evening schedule |
 | `GET` | `/api/backup/status` | Photo & media cloud backup status, quota, and restore test telemetry |
 | `GET` | `/api/photos/overview` | Per-user photo storage, ML schedule & job queue, Face-to-XMP export telemetry, and folder health |
