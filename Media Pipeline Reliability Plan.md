@@ -1,6 +1,6 @@
 # Media Pipeline Reliability Plan
 
-> **Status:** Phase 1 implemented in the repo (see the [phase status](#phase-status) table and the [Phase 1 implementation notes](#phase-1-implementation-notes)). Nothing has been changed on the live server.
+> **Status:** Phase 0 was applied on the live server on 2026-11-28 ([record](#phase-0-record-applied-2026-11-28)). Phase 1 is implemented in the repo ([implementation notes](#phase-1-implementation-notes)); the live server is migrated to it after merge. Later phases are not implemented yet.
 > **Revision 2 (2026-11-28):** updated with the owner's decisions (summarised just below), including NFO metadata for Nova and automatic compact replacement of oversized titles.
 > **Revision 3 (2026-11-28):** made self-contained for implementation in a new session: [section 0](#0-implementation-handoff-start-here) (handoff) and appendices F–K (live baseline, API cheat-sheet, test corpus, fixtures, safe observation, verification list).
 > **Scope:** Prowlarr, Radarr, Sonarr, qBittorrent, Bazarr, Jellyfin, the Control Hub and the Setup Wizard. It also covers replacing Recyclarr.
@@ -58,8 +58,8 @@ Update this table when a phase lands.
 
 | Phase | Scope | Status | Branch / PR |
 | :--- | :--- | :--- | :--- |
-| 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Not started. The owner does it in the app UIs, or an agent does it only with explicit approval | — |
-| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review. Live server not migrated yet: the owner runs `profiles migrate` after merge ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
+| 0 | Manual fixes on the live server ([section 11](#11-rollout-plan)) | Done 2026-11-28 (steps 1–9, 11–12 applied by an agent with approval; see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). The owner still does steps 10 and 11 on the TVs (Nova). 2-hour check pending | `docs/phase0-live-fixes` |
+| 1 | Profile pack replacing Recyclarr, plus the Setup Wizard step | Implemented, in review. After merge an agent (owner-approved) deploys it and runs `profiles migrate` on the live server ([notes](#phase-1-implementation-notes)) | `feat/mediaserver-profile-pack`, [PR #89](https://github.com/RAM-MAHESHWARI24/homelab-blueprint/pull/89) |
 | 2 | Download Doctor: stuck downloads, compact replacement, sweeps | Not started | — |
 | 3 | Control Hub (six PRs) | Not started | — |
 | 4 | Housekeeping | Not started | — |
@@ -153,7 +153,9 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 - Short language tokens (`tel`, `mal`, `kan`) count only within 1–4 separator characters of another language marker, written without look-behind so the same regex runs in .NET and Python.
 - Prowlarr: rather than separate "Public – strict" and "Public – live" profiles, the default app profile gets minimum seeders 4, and a `Live seeders` app profile (minimum 2) is created for the owner to assign per indexer.
 - `apply` sets the recycle bin only when none is set, and creates `<data-dir>/media/.recycle` on the host when `--data-dir` is passed. It also sets the default delay profile's "bypass if score ≥ 4000" (sections 5.5 and 6). It does not touch metadata (Kodi NFO), naming, minimum availability or the blackhole clients: those stay Phase 0 steps and Phase 4.
-- qBittorrent `alt_up_limit` is written in bytes per second (1 MiB/s = 1048576). Evidence: the live value 10240 is qBittorrent's default of 10 KiB/s. Appendix K item 14 is still open for a WebUI confirmation.
+- qBittorrent `alt_up_limit` is written in bytes per second (1 MiB/s = 1048576), which Phase 0 confirmed (Appendix K item 14).
+- `migrate` also deletes the interim Radarr release profile **"Phase 0 bans (until profile pack)"** (Phase 0 step 12), because `Junk · Banned uploaders` and `Junk · Commentary editions` replace it. Release profiles with any other name are left alone.
+- `migrate` copes with what Phase 0 already did: profile 9's merged group (ID 1002) is replaced by the pack's `HD` group in the same profile, the deleted `1080p Balanced` profiles are simply not found, and the commented-out Recyclarr cron line needs nothing.
 - A new key, `MEDIA_PUBLIC_TRACKERS` (headless config `media_public_trackers`), turns the tracker list off for private trackers.
 - Express mode in the wizard asks for the second language too; the other release preferences use their defaults there.
 - **Upgrades:** the schema migrator adds `MEDIA_PROFILES=off` to an existing `mediaserver.env`, and the installer keeps an existing install's `MEDIA_*` values when its config has no `media_*` keys. An upgraded server therefore keeps its current profiles until its owner opts in, which avoids two owners (Recyclarr and the pack) on servers other than this one.
@@ -165,8 +167,12 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
 **Verification done.**
 - Corpus test (`apps/mediaserver/tests/test_profile_pack.py`): all 39 Appendix H titles (plus variants for #24 and #25 with and without the original language parsed) give the expected formats. Regexes run for real in Python's `re`; what the apps parse (resolution, source, languages, size, release type) is recorded per title. TRaSH's three variable-width look-behinds (BR-DISK, Sonarr Extras and Upscaled) are rewritten into equivalents for Python. *Goldfinger* #1 is the top pick in both profiles (5160 and 4260), packs outrank single episodes, and the section 5.3 space-reclaim numbers (3050 → 3650) hold.
 - `apply` then `check` against in-memory fakes reports no drift, `migrate` keeps profile ID 9, and an offline replay against the sanitised live snapshot (all apps' real objects) planned and applied cleanly with no drift afterwards.
-- **Live `profiles migrate --dry-run`** (2026-11-28, with the owner's OK): run from a throwaway copy of `scripts/` and `profiles/` in `/tmp` on the server (removed afterwards), `--language Hindi --skip qbittorrent`, GET requests only. Exit 0, **60 planned changes**: 46 custom formats to create (24 Radarr, 22 Sonarr); `1080p Compact` updated in place in both apps (upgrade-until 10000 → 4500, increment 1 → 400, Radarr language Original → Any, one merged `HD` group including 720p, all pack scores); `Dual Audio First` created in both; the default delay profile's bypass in both; Sonarr's recycle bin; Prowlarr's `Live seeders` app profile; and 6 legacy formats deleted (`Hindi Audio` and `x265 (HD)` in both apps, `Season Complete` and `Multi Episode` in Sonarr). Already in place on the server at that time, so not planned: the size limits, Radarr's subtitle whitelist and recycle bin, Prowlarr Full Sync and minimum seeders, and removal of both `1080p Balanced` profiles (Phase 0 work done after the morning snapshot). qBittorrent was not checked (its password is in the root-only env file).
-- **Still to do on the live server** (owner, after merge): remove the Recyclarr crontab line, deploy the branch through git, set `MEDIA_PROFILES=on` and `MEDIA_SECOND_LANGUAGE=Hindi` in `/etc/homelab/mediaserver.env`, run `profiles migrate` with `--env-file` (so qBittorrent is included), then `profiles check`, then the Phase 0 step 13 checks and a *Slow Horses* season search.
+- **Live `profiles migrate --dry-run`** (2026-11-28, with the owner's OK; run before the release-profile cleanup above was added, so that deletion was not in its plan): run from a throwaway copy of `scripts/` and `profiles/` in `/tmp` on the server (removed afterwards), `--language Hindi --skip qbittorrent`, GET requests only. Exit 0, **60 planned changes**: 46 custom formats to create (24 Radarr, 22 Sonarr); `1080p Compact` updated in place in both apps (upgrade-until 10000 → 4500, increment 1 → 400, Radarr language Original → Any, one merged `HD` group including 720p, all pack scores); `Dual Audio First` created in both; the default delay profile's bypass in both; Sonarr's recycle bin; Prowlarr's `Live seeders` app profile; and 6 legacy formats deleted (`Hindi Audio` and `x265 (HD)` in both apps, `Season Complete` and `Multi Episode` in Sonarr). Already in place on the server at that time, so not planned: the size limits, Radarr's subtitle whitelist and recycle bin, Prowlarr Full Sync and minimum seeders, and removal of both `1080p Balanced` profiles (see the [Phase 0 record](#phase-0-record-applied-2026-11-28)). qBittorrent was not checked (its password is in the root-only env file).
+- **Still to do on the live server after merge** (the owner approved an agent doing these):
+  1. Recyclarr's cron line: already commented out in Phase 0; delete the line once the pack is live.
+  2. Deploy through git: `/opt/homelab-blueprint` to `develop`, then restart `control-hub.service`.
+  3. Run the schema migrator, then set `MEDIA_PROFILES=on` and `MEDIA_SECOND_LANGUAGE=Hindi` in `/etc/homelab/mediaserver.env`.
+  4. `profiles migrate --dry-run --env-file /etc/homelab/mediaserver.env`, review, then `profiles migrate`, then `profiles check` (expect no drift), the Phase 0 step 13 checks in both profiles and a *Slow Horses* season search.
 
 **Phase 2**
 
@@ -1061,6 +1067,49 @@ Do these in order. Nothing here needs code, and each step can be undone.
     - The re-searches grab tagged, seeded releases.
     - Nothing new sits at 0 B/s after 2 h.
 
+#### Phase 0 record (applied 2026-11-28)
+
+Applied by an agent through the APIs with the owner's approval. [Appendix F](#appendix-f-live-baseline-2026-11-28) stays the **pre-Phase-0** baseline.
+
+**Backups (step 1):**
+- A media settings archive (Control Hub "Back up now"), and manual Radarr, Sonarr and Prowlarr backups (`Backups/manual/` in each app's appdata).
+- An exact JSON snapshot of every object Phase 0 touched, in `~/phase0-backup-20261128/` on the server (mode `0700`; it contains keys, so it stays there).
+
+**What changed, by step:**
+
+| Step | Result |
+| :--- | :--- |
+| 2 | Recyclarr's crontab line is commented out (marked `# phase0 2026-11-28 disabled`). Its binary, config and log are untouched |
+| 3 | Profile 9 in both apps (ID kept): the four 1080p qualities form one allowed group, `HD 1080p` (group ID 1002), at the top; `cutoff` = 1002. Scores, `Hindi Audio` and Radarr's `Original` language unchanged |
+| 4 | Section 5.4 sizes in both apps. Sonarr's "4–5" row: WEBRip-1080p 5, HDTV-1080p 4. Radarr HDTV-720p (not in 5.4) left at 0/8/20 |
+| 5 | Radarr whitelist `ESub,ESubs,MSub,MSubs,EngSub,EngSubs`; Allow Hardcoded Subs stays off |
+| 6 | Prowlarr: both apps on Full Sync; profile "Standard" minimum seeders 4; priorities EZTV 10, LimeTorrents 15, YTS 20, 1337x 25, The Pirate Bay 40. Synced to both apps; the indexer set didn't change |
+| 7 | *The Dark Knight*, *Bhay* and *Khauf* moved to profile 9; profiles 7 and 8 deleted in both apps. Radarr also needed *The Dark Knight Collection* (unmonitored) moved from 8 to 9 first: "QualityProfile [8] is in use" |
+| 8 | qBittorrent: ratio 1.0 / 1440 min / 60 idle min, then stop; scheduler 18:00–00:00 daily, alternative limits upload 1 MiB/s and download unlimited; queue 8 / 20 / 5 uploads, slow torrents not counted (4 KiB/s, 300 s); trackers from the ngosang `trackers_best.txt` URL; re-announce on address change. Excluded file names and the API key were left for Phase 1 |
+| 9 | All 20 stuck items removed through the app queues with blocklist and redownload (Radarr 17, Sonarr 3). The one try for *Live and Let Die* and *A View To A Kill* (the tracker list added to each, forced re-announce): 6 working trackers, still 0 seeds in the swarm, so both were removed too. Every re-search grabbed a tagged release: Bluray or WEB-DL, almost all HEVC, 4 with Hindi + English (*Goldfinger*, *From Russia with Love*, *Thunderball*, *Spectre*) |
+| 10 | Owner, on each TV (Nova preferred audio and subtitle language) |
+| 11 | Radarr Kodi (XBMC) / Emby metadata enabled with its existing fields (`useMovieNfo` off, so `<file>.nfo`). Turning off Nova's NFO export on each TV is for the owner |
+| 12 | **The release profile was created before step 9**, not after: without it the re-searches would pick the Ozlem *Goldfinger* (104 seeders, untagged). Radarr release profile 1, "Phase 0 bans (until profile pack)", ignores `rifftrax` and `Ozlem`. Radarr's recycle bin was turned on (`/data/media/.recycle`, 7 days; section 5.5) before deleting, so both files can be restored until 2026-12-05. *Casino Royale* now has `… Uncut 1080p BluRay DD+ 5.1 x265-edge2020` and *Quantum of Solace* `… REPACK 1080p BluRay HDR10 DDP 5 1 x265-edge2020` downloading |
+| 13 | Results in the next table |
+
+**Step 13 checks:**
+
+| Check | Result |
+| :--- | :--- |
+| *Goldfinger* interactive search | Pass. `Goldfinger (1964) DS4K 1080p BDRip HEVC [Hindi English] DDP 5.1 — PeruGuy` ranked first (score 50,250, 8 seeders). The 5.17 GB Netflix WEB-DL is no longer rejected for size, and Ozlem is rejected by the ignored term |
+| Re-searches grab tagged, seeded releases | Pass. All 22 replacements are tagged; 8 of them were downloading at 0.3–4.3 MiB/s within minutes. The rest waited in the new 8-download queue |
+| Nothing new at 0 B/s after 2 h | PENDING |
+
+**Appendix K items cleared:**
+- **2:** the whitelist works. ESub, ESubs and MSubs titles (*Drishyam 2*, *3 Idiots*) no longer get "Hardcode subs found", and `Drishyam 2 (2022) - Hindi - 1080p HDRip - x264 - AAC - 2.9GB - ESub` is approved. Hyphenated `E-SuB`/`M-SuB` were never matched by the parser. `NLSub` (Dutch, really burned in) is still rejected, as intended. Exact versus substring matching is untested, because the list names every variant seen.
+- **14:** the API uses bytes/s. Setting `alt_up_limit` to 1048576 stores `AlternativeGlobalUPSpeedLimit=1024` (KiB) in `qBittorrent.conf`, so the Control Hub's assumption is right.
+- **16:** `qBittorrent.conf` has no `ShareLimitAction` override, so the default (Stop) applies, and the API reports it as `max_ratio_act` 0.
+
+**For Phase 1 (`profiles migrate`):**
+- Profile 9 already holds the merged group 1002, and profiles 7 and 8 no longer exist; migrate must handle both.
+- Remove Radarr release profile 1 once the `Junk ·` formats are in.
+- Recyclarr's cron line is already commented out.
+
 ### Phase 1: profile pack and wizard step (PR `feat(mediaserver): repo-owned release profiles replace Recyclarr`)
 
 - `apps/mediaserver/profiles/` data (formats, both profiles, sizes, language table, vendored TRaSH formats with attribution).
@@ -1853,12 +1902,12 @@ curl -s -H "X-Api-Key: $KEY" "http://127.0.0.1:7878/api/v3/release?movieId=<id>"
 
 ### Appendix K: Verify before relying on it
 
-Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleared on 2026-11-28 for Phase 1; results are below the table.
+Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleared on 2026-11-28 for Phase 1 (results below the table); items 2, 14 and 16 were also confirmed live in the [Phase 0 record](#phase-0-record-applied-2026-11-28).
 
 | # | Item | How to check |
 | ---: | :--- | :--- |
 | 1 | ~~TRaSH IDs for the vendored formats.~~ **Cleared** (K.1) | TRaSH repository `docs/json/{radarr,sonarr}/cf/*.json` |
-| 2 | ~~How "Whitelisted Hardcoded Subs" matches (exact or substring, case)~~ **Cleared from source** (K.2); the live search check is still worth doing after migration | Set the list, re-run the *Goldfinger* interactive search: corpus #6 must lose "Hardcode subs found" |
+| 2 | ~~How "Whitelisted Hardcoded Subs" matches (exact or substring, case)~~ **Cleared** from the source (K.2) and live in Phase 0 | Set the list, re-run the *Goldfinger* interactive search: corpus #6 must lose "Hardcode subs found" |
 | 3 | Whether Sonarr passes a season pack's total or per-episode size to the Size condition | Sonarr source: callers of `ParseCustomFormat(RemoteEpisode, size)` |
 | 4 | `POST /release` grabbing a release rejected as "not an upgrade" | One test episode, Doctor in dry-run mode first |
 | 5 | `ManualImport` over an existing file sends the old file to the recycle bin and imports the new one | One test episode, recycle bin enabled |
@@ -1870,9 +1919,9 @@ Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleare
 | 11 | ~~Radarr's audio-languages naming token~~ **Cleared** (K.11) | Naming UI preview |
 | 12 | ~~Source and Release Type enum values~~ **Cleared** (K.12) | `GET /api/v3/customformat/schema` |
 | 13 | ~~TRaSH Guides licence (MIT)~~ **Cleared** (K.13) | `LICENSE` in the official repository, before vendoring |
-| 14 | Units of qBittorrent's `alt_dl_limit`/`alt_up_limit` (the Control Hub assumes bytes/s) | Set a known value in the WebUI and read it back through the API |
+| 14 | ~~Units of qBittorrent's `alt_dl_limit`/`alt_up_limit` (the Control Hub assumes bytes/s)~~ **Cleared** in Phase 0: bytes/s | Set a known value in the WebUI and read it back through the API |
 | 15 | A sudoers line for `smbstatus --json` (sudoers matches arguments exactly) | `sudo -n /usr/bin/smbstatus --json` as the `homelab` user |
-| 16 | `max_ratio_act` 0 means "stop torrent" on 5.3 | qBittorrent WebUI shows the action next to the seeding limits |
+| 16 | ~~`max_ratio_act` 0 means "stop torrent" on 5.3~~ **Cleared** in Phase 0: yes | qBittorrent WebUI shows the action next to the seeding limits |
 | 17 | Decluttarr key names | Only if Appendix E is used: its `config_example.yaml` |
 
 **K.1 TRaSH IDs** (upstream commit `1b0f1de51f85f7fcd6abdbf60f788d3f3cf9edfd`, 2026-11-28; files vendored byte-for-byte under `apps/mediaserver/profiles/trash/`):
@@ -1893,7 +1942,7 @@ Check each of these before building on it. Items 1, 2, 11, 12 and 13 were cleare
 
 Notes: TRaSH's "DV (w/o HDR fallback)" only matches WEB-DL and WEBRip sources (BluRay DV always carries HDR10), and excludes titles with `HDR` and the `Flights` group. "Season Pack" is a Release Type condition (value 3), not a title regex. BR-DISK, Sonarr Extras and Sonarr Upscaled use variable-width look-behinds that .NET accepts and Python's `re` does not.
 
-**K.2 Whitelisted Hardcoded Subs** (Radarr `HardcodeSubsSpecification.cs`, develop): the setting is split on `,` with **no trimming**, and a release passes when the parsed hard-sub tag contains any entry, **case-insensitively** (`hardcodeSubs.ToLower().Contains(t.ToLower())`). So `ESub` alone also covers `Esub` and `ESubs`, an entry with a leading space never matches, and a short entry such as `sub` would whitelist everything. The pack writes `ESub,ESubs,MSub,MSubs,EngSub,EngSubs` without spaces; the corpus test checks that `KORSUB` stays blocked. The live interactive-search check needs a write and was not done.
+**K.2 Whitelisted Hardcoded Subs** (Radarr `HardcodeSubsSpecification.cs`, develop): the setting is split on `,` with **no trimming**, and a release passes when the parsed hard-sub tag contains any entry, **case-insensitively** (`hardcodeSubs.ToLower().Contains(t.ToLower())`). So `ESub` alone also covers `Esub` and `ESubs`, an entry with a leading space never matches, and a short entry such as `sub` would whitelist everything. The pack writes `ESub,ESubs,MSub,MSubs,EngSub,EngSubs` without spaces; the corpus test checks that `KORSUB` stays blocked. Phase 0 set the same list live and confirmed it ([record](#phase-0-record-applied-2026-11-28)).
 
 **K.11 Audio-languages naming token:** `{MediaInfo AudioLanguages}` (and `{MediaInfo AudioLanguagesAll}`) exist in both Radarr 7.0.3 and Sonarr 4.0.20. Previewed read-only with `GET /api/v3/config/naming/examples?id=1&standardMovieFormat=...` (with `id=0` the endpoint ignores the query and shows the saved format): `[{MediaInfo AudioLanguages}]` renders `[[DE]]`, so the token brings its own brackets. Per `FileNameBuilder.cs`, `AudioLanguages` omits a list that is only `EN`; `AudioLanguagesAll` always shows it.
 
