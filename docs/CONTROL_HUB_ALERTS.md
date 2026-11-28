@@ -144,7 +144,7 @@ services:
 and `./etc/server.yml`:
 
 ```yaml
-base-url: "http://192.168.1.31:2586"          # how phones reach it (LAN IP or Tailscale name)
+base-url: "http://<server-lan-ip>:2586"          # how phones reach it (LAN IP or Tailscale name)
 cache-file: "/var/cache/ntfy/cache.db"
 auth-file: "/var/lib/ntfy/user.db"
 auth-default-access: "deny-all"               # nothing is readable or writable without a login
@@ -168,13 +168,13 @@ docker exec -it ntfy ntfy token add hub             # prints tk_...
 ```
 
 **3. Point the Control Hub at it.** In the ntfy section: **Server**
-`http://192.168.1.31:2586`, **Topic** `homelab-alerts`, **Access token** the `tk_...`
+`http://<server-lan-ip>:2586`, **Topic** `homelab-alerts`, **Access token** the `tk_...`
 value. Tick **Send alerts here**, **Save**, **Send test**. Use the host address and
 published port: the Control Hub runs on the host, not in the ntfy container's Docker
 network, so `http://ntfy` does not resolve.
 
 **4. Subscribe on the phone.** In the ntfy app, add your server
-(`http://192.168.1.31:2586`) with the user `phone` and its password, then subscribe to
+(`http://<server-lan-ip>:2586`) with the user `phone` and its password, then subscribe to
 `homelab-alerts`.
 
 Things to know:
