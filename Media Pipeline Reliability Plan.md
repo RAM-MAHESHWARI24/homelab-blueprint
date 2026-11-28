@@ -265,6 +265,21 @@ What changed from the plan while implementing Phase 1, and what was found. Secti
   - all 3 torrents in qBittorrent were recognised as managed and classified correctly: *Goldfinger* (4%, availability below 1) and *Spectre* dead, *Thunderball* stuck on metadata;
   - the sweep found 89 candidates, oversized first (*Supergirl*, *Jaws*, then the *Succession* seasons).
 
+**After deploy (2026-11-29).**
+- The Doctor runs on the live server from `/etc/cron.d/mediaserver-download-doctor` (installed with the installer's `install_cron`, recorded in the install manifest). Watch-only until 2026-12-06.
+- **The three stuck Bond films, a lesson.** *Goldfinger*, *Thunderball* and *Spectre* had been re-searched during Phase 0, while the legacy `Hindi Audio` format still scored +50,000. All three picked a Hindi + English release that the indexer advertised with 8 or 20 seeders; qBittorrent found 1, 1 and 0 in the swarm. Today's profiles would still rank the Goldfinger one first: score decides before seeders, and the minimum of 4 seeders trusts the indexer's count, which can be stale (RC2). The designed answer is the Doctor's quick replacement, so a dead Hindi pick falls back to the next healthy release, then the daily sweep keeps looking for a healthy Hindi one.
+- With the owner's approval the three were replaced by hand through Radarr's queue (remove, blocklist, search again), the Doctor's own path, without waiting out the watch-only week. Radarr then grabbed the well-seeded English HEVC releases (HazMatt, HazMatt, PSA: 30, 45 and 43 seeders), and all three started downloading at once.
+
+**Owner decision for TV packs (2026-11-29).** Season packs are preferred. Episode-by-episode is used when a pack is far too big per episode or has very few seeders.
+- Normal grabs already mostly follow this:
+  - packs score `TV · Season Pack` +150, and Sonarr itself prefers full seasons;
+  - Sonarr checks a pack against the per-episode size limit ("87.0 GB is larger than maximum allowed 20.2 GB"), so an oversized pack loses to the episodes;
+  - packs under the 4-seeder minimum are rejected.
+- What remains, that a pack with 5 seeders still beats single episodes with hundreds, is handled where it matters most, in the compact replacement job (section 8.6):
+  - a pack must have at least 10 seeders;
+  - otherwise the job replaces episode by episode (4 seeders each);
+  - a 4–9 seeder pack is used only when the episodes can't all be found individually.
+
 ---
 
 ## 1. Summary
@@ -922,7 +937,7 @@ Goal (owner's request): for oversized titles on `1080p Compact`, keep looking fo
    - same or higher resolution;
    - language no worse: if the current files have Hindi audio, the candidate must carry the Hindi token;
    - no `Junk ·`/`Compat ·` match and at least 4 seeders;
-   - for TV, a full-season pack covering every episode on disk for that season (single episodes only when no pack exists);
+   - for TV, a full-season pack covering every episode on disk for that season, with at least 10 seeders. Otherwise single episodes with at least 4 seeders each, and a 4–9 seeder pack only when the episodes can't all be found individually (decision 16);
    - the app's only objection is "not an upgrade".
 4. **Grab** it (`POST /api/v3/release` with the candidate's ID). Tag the torrent `compact-replace` and record the expected file list.
 5. **Import safely.** The app blocks the finished download as "not an upgrade". The job then runs the same verified manual import as [auto_import.py](apps/mediaserver/scripts/auto_import.py): file count matches the episodes, title match, no samples, sizes as expected. Sonarr/Radarr replace each old file **during** import, so an old file goes to the recycle bin only after its replacement is in place.
@@ -1272,6 +1287,7 @@ Every change ships with its documentation, following [AGENTS.md](AGENTS.md) §3:
 | 8 | Oversized titles such as *Succession* | **Keep hunting for compact versions;** delete old files only after a verified import (section 8.6) |
 | 14 | Who is the second profile for? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **`1080p Family`: Hindi required, English a bonus.** The owner understands both, the parents only Hindi. 1080p dual > 720p dual > 1080p Hindi only > 720p Hindi only; English-only rejected (minimum score 1400) |
 | 15 | May HEVC or other small extras trigger an upgrade? ([revision 4](#revision-4-owner-decisions-on-profiles-and-scoring-2026-11-28)) | **No.** Only language, resolution, leaving the oversized range or moving into the compact band; the extras together stay under the 400 step. TV size savings go through the compact replacement job |
+| 16 | TV: season pack or single episodes? (2026-11-29) | **Season packs preferred.** Go episode by episode when a pack is far too big per episode or has very few seeders. The compact replacement job takes a pack only with at least 10 seeders ([Phase 2 notes](#phase-2-implementation-notes)) |
 
 Still open, with the default the plan uses:
 
